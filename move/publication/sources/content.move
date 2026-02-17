@@ -2,24 +2,21 @@ module publication::content;
 
 use std::string::String;
 
-public struct Content has store, key {
-  id: UID,
+public struct Content has store, drop {
+  name: String,
   content_type: String,
   blob_id: u256,
 }
 
-public fun new_content(content_type: String, blob_id: u256, ctx: &mut TxContext): Content {
+public fun new_content(name: String, content_type: String, blob_id: u256): Content {
   let content = Content {
-    id: object::new(ctx),
+    name,
     content_type,
     blob_id,
   };
   content
 }
 
-public fun get_address(content: &Content): address {
-  content.id.to_address()
-}
 
 #[test_only]
 use std::unit_test;
@@ -29,11 +26,14 @@ use std::unit_test::assert_eq;
 
 #[test]
 fun test_new_content() {
-  let ctx = &mut tx_context::dummy();
-
-  let content_type = b"article".to_string();
+  let name = b"First Blog Post".to_string();
+  let content_type = b"application/json".to_string();
   let blob_id = 1234;
-  let content = new_content(content_type, blob_id, ctx);
+  let content = new_content(
+    name,
+    content_type,
+    blob_id,
+  );
 
   assert_eq!(content.content_type, content_type);
 
