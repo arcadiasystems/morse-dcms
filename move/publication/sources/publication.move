@@ -26,13 +26,27 @@ public fun new_publication(ctx: &mut TxContext, name: String): Publication {
     collections: vec_map::empty(),
   };
 
-
   event::emit(PublicationCreated {
     publication: object::id(&publication),
     name,
   });
 
   publication
+}
+
+/// Delete a publication.
+/// The collections vector must be empty, or an error will be thrown.
+public fun delete_publication(publication: Publication) {
+  let Publication{ id, name, collections } = publication;
+  let publication_id = id.to_inner();
+
+  collections.destroy_empty();
+  id.delete();
+
+  event::emit(PublicationDeleted {
+    publication: publication_id,
+    name,
+  });
 }
 
 /// Add a new collection to the publication.
@@ -52,6 +66,12 @@ public fun add_collection(publication: &mut Publication, collection: Collection)
 
 /// Event emitted when a new publication is created.
 public struct PublicationCreated has copy, drop {
+  publication: ID,
+  name: String,
+}
+
+/// Event emitted when a publication is deleted.
+public struct PublicationDeleted has copy, drop {
   publication: ID,
   name: String,
 }
@@ -80,6 +100,14 @@ fun test_new_publication() {
   assert_eq!(publication.name, publication_name);
 
   unit_test::destroy(publication);
+}
+
+#[test]
+fun test_delete_publication() {
+  let ctx = &mut tx_context::dummy();
+  let publication_name = b"ArcSys Blog".to_string();
+  let publication = new_publication(ctx, publication_name);
+  publication.delete_publication();
 }
 
 #[test]
