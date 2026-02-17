@@ -1,8 +1,11 @@
-/// Module: publication
+/// Module: publication.
+/// A publication is a container for related collections of items.
+/// It also acts as an entry point for the publication, allowing users to interact with the publication and its collections.
 module publication::publication;
 
 use std::string::String;
 use sui::vec_map::{Self, VecMap};
+use sui::event;
 
 use publication::collection::Collection;
 
@@ -15,18 +18,49 @@ public struct Publication has key, store {
 }
 
 /// Create a new publication.
+/// By default, the publication is empty and can be managed by the admin.
 public fun new_publication(ctx: &mut TxContext, name: String): Publication {
   let publication = Publication {
     id: object::new(ctx),
     name,
     collections: vec_map::empty(),
   };
+
+
+  event::emit(PublicationCreated {
+    publication: object::id(&publication),
+    name,
+  });
+
   publication
 }
 
 /// Add a new collection to the publication.
 public fun add_collection(publication: &mut Publication, collection: Collection) {
-  publication.collections.insert(collection.get_name(), collection);
+  let publication_id = object::id(publication);
+  let collection_id = object::id(&collection);
+  let collection_name = collection.get_name();
+
+  publication.collections.insert(collection_name, collection);
+
+  event::emit(CollectionAdded {
+    publication: publication_id,
+    collection: collection_id,
+    name: collection_name,
+  });
+}
+
+/// Event emitted when a new publication is created.
+public struct PublicationCreated has copy, drop {
+  publication: ID,
+  name: String,
+}
+
+/// Event emitted when a new collection is added to a publication.
+public struct CollectionAdded has copy, drop {
+  publication: ID,
+  collection: ID,
+  name: String,
 }
 
 #[test_only]

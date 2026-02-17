@@ -2,6 +2,8 @@ module publication::content;
 
 use std::string::String;
 
+/// A piece of Content belonging to a collection.
+/// The content data is stored in decentralized storage and accessed via a blob_id.
 public struct Content has store, drop {
   name: String,
   content_type: String,
@@ -16,7 +18,6 @@ public fun new_content(name: String, content_type: String, blob_id: u256): Conte
   };
   content
 }
-
 
 #[test_only]
 use std::unit_test;
