@@ -7,7 +7,7 @@ use std::string::String;
 use sui::vec_map::{Self, VecMap};
 use sui::event;
 
-use publication::collection::Collection;
+use publication::collection::{Self, Collection};
 
 /// A publication. Can be managed by the owner and shared with others.
 /// The publication contains zero or more collections of items that are stored in decentralized storage.
@@ -64,6 +64,22 @@ public fun add_collection(publication: &mut Publication, collection: Collection)
   });
 }
 
+/// Remove and delete a collection from the publication.
+/// The collection's content bag must be empty, or an error will be thrown.
+public fun delete_collection(publication: &mut Publication, name: String) {
+  let publication_id = object::id(publication);
+  let (_, collection) = publication.collections.remove(&name);
+  let collection_id = object::id(&collection);
+
+  collection::delete_collection(collection);
+
+  event::emit(CollectionRemoved {
+    publication: publication_id,
+    collection: collection_id,
+    name,
+  });
+}
+
 /// Event emitted when a new publication is created.
 public struct PublicationCreated has copy, drop {
   publication: ID,
@@ -78,6 +94,13 @@ public struct PublicationDeleted has copy, drop {
 
 /// Event emitted when a new collection is added to a publication.
 public struct CollectionAdded has copy, drop {
+  publication: ID,
+  collection: ID,
+  name: String,
+}
+
+/// Event emitted when a collection is removed from a publication.
+public struct CollectionRemoved has copy, drop {
   publication: ID,
   collection: ID,
   name: String,
@@ -131,6 +154,28 @@ fun test_add_collection() {
   // Check if the collection was added
   assert_eq!(publication.collections.length(), 1);
   assert_eq!(publication.collections.contains(&collection_name), true);
+
+  unit_test::destroy(publication);
+}
+
+#[test]
+fun test_delete_collection() {
+  use publication::collection::new_collection;
+
+  let ctx = &mut tx_context::dummy();
+
+  let publication_name = b"ArcSys Blog".to_string();
+  let mut publication = new_publication(ctx, publication_name);
+
+  let collection_name = b"articles".to_string();
+  let collection_type = b"article".to_string();
+  let collection = new_collection(publication.id.to_inner(), collection_name, collection_type, ctx);
+
+  publication.add_collection(collection);
+  assert_eq!(publication.collections.length(), 1);
+
+  publication.delete_collection(collection_name);
+  assert_eq!(publication.collections.length(), 0);
 
   unit_test::destroy(publication);
 }

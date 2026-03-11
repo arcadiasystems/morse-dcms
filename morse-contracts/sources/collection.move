@@ -39,6 +39,14 @@ public fun delete_content(collection: &mut Collection, index: u64) {
   collection.content.remove<u64, Content>(index);
 }
 
+/// Delete a collection.
+/// The content bag must be empty, or an error will be thrown.
+public fun delete_collection(collection: Collection) {
+  let Collection { id, publication_id: _, name: _, collection_type: _, content } = collection;
+  content.destroy_empty();
+  id.delete();
+}
+
 #[test_only]
 use std::unit_test;
 
