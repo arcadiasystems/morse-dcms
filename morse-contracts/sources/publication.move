@@ -1,6 +1,6 @@
 /// Module: publication.
-/// A publication is a container for related collections of items.
-/// It also acts as an entry point for the publication, allowing users to interact with the publication and its collections.
+/// A publication is a root container for your content.
+/// It also acts as an entry point for the publication, allowing users to interact with the publication and its content.
 module publication::publication;
 
 use std::string::String;
@@ -9,8 +9,14 @@ use sui::event;
 
 use publication::collection::{Self, Collection};
 
-/// A publication. Can be managed by the owner and shared with others.
-/// The publication contains zero or more collections of items that are stored in decentralized storage.
+/// Root object that must be created before any collections or content can be added.
+/// A publication groups related collections and acts as the entry point for all interactions.
+/// Collections are wrapped inside the publication and are only accessible through it.
+///
+/// Authorization is enforced through native Sui object ownership: only the owner of this object
+/// can pass it as a mutable argument, so no explicit capability checks are needed.
+/// This guarantee holds only while the publication remains an owned object — do not share it
+/// via `transfer::share_object`, as that would allow anyone to mutate it.
 public struct Publication has key, store {
   id: UID,
   name: String,
@@ -18,7 +24,7 @@ public struct Publication has key, store {
 }
 
 /// Create a new publication.
-/// By default, the publication is empty and can be managed by the admin.
+/// By default, the publication is empty and can be managed by the owner.
 public fun new_publication(ctx: &mut TxContext, name: String): Publication {
   let publication = Publication {
     id: object::new(ctx),
