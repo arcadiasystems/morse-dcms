@@ -8,6 +8,7 @@ use sui::vec_map::{Self, VecMap};
 use sui::event;
 
 use publication::collection::{Self, Collection};
+use publication::singleton::{Self, Singleton};
 
 /// Root object that must be created before any collections or content can be added.
 /// A publication groups related collections and acts as the entry point for all interactions.
@@ -21,6 +22,7 @@ public struct Publication has key, store {
   id: UID,
   name: String,
   collections: VecMap<String, Collection>,
+  singletons: VecMap<String, Singleton>,
 }
 
 /// Create a new publication.
@@ -30,6 +32,7 @@ public fun new_publication(ctx: &mut TxContext, name: String): Publication {
     id: object::new(ctx),
     name,
     collections: vec_map::empty(),
+    singletons: vec_map::empty(),
   };
 
   event::emit(PublicationCreated {
@@ -43,10 +46,11 @@ public fun new_publication(ctx: &mut TxContext, name: String): Publication {
 /// Delete a publication.
 /// The collections vector must be empty, or an error will be thrown.
 public fun delete_publication(publication: Publication) {
-  let Publication{ id, name, collections } = publication;
+  let Publication{ id, name, collections, singletons } = publication;
   let publication_id = id.to_inner();
 
   collections.destroy_empty();
+  singletons.destroy_empty();
   id.delete();
 
   event::emit(PublicationDeleted {
@@ -86,6 +90,36 @@ public fun delete_collection(publication: &mut Publication, name: String) {
   });
 }
 
+/// Add a new singleton to the publication.
+public fun add_singleton(publication: &mut Publication, singleton: Singleton) {
+  let publication_id = object::id(publication);
+  let singleton_id = object::id(&singleton);
+  let singleton_name = singleton.get_name();
+
+  publication.singletons.insert(singleton_name, singleton);
+
+  event::emit(SingletonAdded {
+    publication: publication_id,
+    singleton: singleton_id,
+    name: singleton_name,
+  });
+}
+
+/// Remove and delete a singleton from the publication.
+public fun delete_singleton(publication: &mut Publication, name: String) {
+  let publication_id = object::id(publication);
+  let (_, singleton) = publication.singletons.remove(&name);
+  let singleton_id = object::id(&singleton);
+
+  singleton::delete_singleton(singleton);
+
+  event::emit(SingletonRemoved {
+    publication: publication_id,
+    singleton: singleton_id,
+    name,
+  });
+}
+
 /// Event emitted when a new publication is created.
 public struct PublicationCreated has copy, drop {
   publication: ID,
@@ -109,6 +143,20 @@ public struct CollectionAdded has copy, drop {
 public struct CollectionRemoved has copy, drop {
   publication: ID,
   collection: ID,
+  name: String,
+}
+
+/// Event emitted when a new singleton is added to a publication.
+public struct SingletonAdded has copy, drop {
+  publication: ID,
+  singleton: ID,
+  name: String,
+}
+
+/// Event emitted when a singleton is removed from a publication.
+public struct SingletonRemoved has copy, drop {
+  publication: ID,
+  singleton: ID,
   name: String,
 }
 
@@ -183,5 +231,48 @@ fun test_delete_collection() {
   publication.delete_collection(collection_name);
   assert_eq!(publication.collections.length(), 0);
 
+  unit_test::destroy(publication);
+}
+
+#[test]
+fun test_add_singleton() {
+  use publication::singleton::new_singleton;
+
+  let ctx = &mut tx_context::dummy();
+
+  let publication_name = b"ArcSys Blog".to_string();
+  let mut publication = new_publication(ctx, publication_name);
+
+  let mock_blob_id = object::new(ctx);
+  let singleton = new_singleton(publication.id.to_inner(), b"cover".to_string(), mock_blob_id.to_inner(), ctx);
+
+  publication.add_singleton(singleton);
+
+  assert_eq!(publication.singletons.length(), 1);
+  assert_eq!(publication.singletons.contains(&b"cover".to_string()), true);
+
+  unit_test::destroy(mock_blob_id);
+  unit_test::destroy(publication);
+}
+
+#[test]
+fun test_delete_singleton() {
+  use publication::singleton::new_singleton;
+
+  let ctx = &mut tx_context::dummy();
+
+  let publication_name = b"ArcSys Blog".to_string();
+  let mut publication = new_publication(ctx, publication_name);
+
+  let mock_blob_id = object::new(ctx);
+  let singleton = new_singleton(publication.id.to_inner(), b"cover".to_string(), mock_blob_id.to_inner(), ctx);
+
+  publication.add_singleton(singleton);
+  assert_eq!(publication.singletons.length(), 1);
+
+  publication.delete_singleton(b"cover".to_string());
+  assert_eq!(publication.singletons.length(), 0);
+
+  unit_test::destroy(mock_blob_id);
   unit_test::destroy(publication);
 }
