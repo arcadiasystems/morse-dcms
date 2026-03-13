@@ -26,6 +26,10 @@ public fun get_name(collection: &Collection): String {
   collection.name
 }
 
+public fun entries_length(collection: &Collection): u64 {
+  collection.entries.length()
+}
+
 public fun add_entry(collection: &mut Collection, entry: Entry) {
   let index = collection.entries.length();
   collection.entries.add(index, entry)
