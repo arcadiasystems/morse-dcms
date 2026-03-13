@@ -89,12 +89,8 @@ fun test_add_entry() {
   // Create an entry
   let name = b"First Blog Post".to_string();
   let entry_type = b"application/json".to_string();
-  let blob_id = 1234;
-  let entry = new_entry(
-    name,
-    entry_type,
-    blob_id,
-  );
+  let mock_blob = object::new(ctx);
+  let entry = new_entry(name, entry_type, mock_blob.to_inner());
 
   // Add the entry to the collection
   collection.add_entry(entry);
@@ -103,6 +99,7 @@ fun test_add_entry() {
   let index: u64 = 0;
   assert_eq!(collection.entries.contains(index), true);
 
+  unit_test::destroy(mock_blob);
   unit_test::destroy(mock_publication_id);
   unit_test::destroy(collection);
 }
@@ -123,12 +120,8 @@ fun test_delete_entry() {
   // Create an entry
   let name = b"First Blog Post".to_string();
   let entry_type = b"application/json".to_string();
-  let blob_id = 1234;
-  let entry = new_entry(
-    name,
-    entry_type,
-    blob_id,
-  );
+  let mock_blob = object::new(ctx);
+  let entry = new_entry(name, entry_type, mock_blob.to_inner());
 
   // Add the entry to the collection
   collection.add_entry(entry);
@@ -143,6 +136,7 @@ fun test_delete_entry() {
   // Check if the collection is empty
   assert_eq!(collection.entries.length(), 0);
 
+  unit_test::destroy(mock_blob);
   unit_test::destroy(mock_publication_id);
   unit_test::destroy(collection);
 }

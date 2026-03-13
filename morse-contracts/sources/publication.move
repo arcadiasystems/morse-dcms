@@ -8,7 +8,7 @@ use sui::vec_map::{Self, VecMap};
 use sui::event;
 
 use publication::collection::{Self, Collection};
-use publication::singleton::{Self, Singleton};
+use publication::entry::Entry;
 
 /// Root object that must be created before any collections or content can be added.
 /// A publication groups related collections and acts as the entry point for all interactions.
@@ -18,11 +18,14 @@ use publication::singleton::{Self, Singleton};
 /// can pass it as a mutable argument, so no explicit capability checks are needed.
 /// This guarantee holds only while the publication remains an owned object — do not share it
 /// via `transfer::share_object`, as that would allow anyone to mutate it.
+///
+/// `collections` and `singletons` use `VecMap` because a publication is expected to have only a
+/// few of each. Individual entries within a collection use `Table` as they can be numerous.
 public struct Publication has key, store {
   id: UID,
   name: String,
   collections: VecMap<String, Collection>,
-  singletons: VecMap<String, Singleton>,
+  singletons: VecMap<String, Entry>,
 }
 
 /// Create a new publication.
@@ -98,33 +101,29 @@ public fun delete_collection(publication: &mut Publication, name: String) {
   });
 }
 
-/// Add a new singleton to the publication.
-public fun add_singleton(publication: &mut Publication, singleton: Singleton) {
+/// Add a new singleton entry to the publication.
+/// Aborts with `ESingletonAlreadyExists` if a singleton with the same name already exists.
+public fun add_singleton(publication: &mut Publication, entry: Entry) {
   let publication_id = object::id(publication);
-  let singleton_id = object::id(&singleton);
-  let singleton_name = singleton.get_name();
+  let entry_name = entry.get_name();
 
-  assert!(!publication.singletons.contains(&singleton_name), ESingletonAlreadyExists);
-  publication.singletons.insert(singleton_name, singleton);
+  assert!(!publication.singletons.contains(&entry_name), ESingletonAlreadyExists);
+  publication.singletons.insert(entry_name, entry);
 
   event::emit(SingletonAdded {
     publication: publication_id,
-    singleton: singleton_id,
-    name: singleton_name,
+    name: entry_name,
   });
 }
 
-/// Remove and delete a singleton from the publication.
+/// Remove and delete a singleton entry from the publication.
+/// Entry has drop trait, so it is automatically destroyed on removal.
 public fun delete_singleton(publication: &mut Publication, name: String) {
   let publication_id = object::id(publication);
-  let (_, singleton) = publication.singletons.remove(&name);
-  let singleton_id = object::id(&singleton);
-
-  singleton::delete_singleton(singleton);
+  publication.singletons.remove(&name);
 
   event::emit(SingletonRemoved {
     publication: publication_id,
-    singleton: singleton_id,
     name,
   });
 }
@@ -155,17 +154,15 @@ public struct CollectionRemoved has copy, drop {
   name: String,
 }
 
-/// Event emitted when a new singleton is added to a publication.
+/// Event emitted when a new singleton entry is added to a publication.
 public struct SingletonAdded has copy, drop {
   publication: ID,
-  singleton: ID,
   name: String,
 }
 
-/// Event emitted when a singleton is removed from a publication.
+/// Event emitted when a singleton entry is removed from a publication.
 public struct SingletonRemoved has copy, drop {
   publication: ID,
-  singleton: ID,
   name: String,
 }
 
@@ -260,65 +257,65 @@ fun test_delete_collection() {
 
 #[test]
 fun test_add_singleton() {
-  use publication::singleton::new_singleton;
+  use publication::entry::new_entry;
 
   let ctx = &mut tx_context::dummy();
 
   let publication_name = b"ArcSys Blog".to_string();
   let mut publication = new_publication(ctx, publication_name);
 
-  let mock_blob_id = object::new(ctx);
-  let singleton = new_singleton(publication.id.to_inner(), b"cover".to_string(), mock_blob_id.to_inner(), ctx);
+  let mock_blob = object::new(ctx);
+  let entry = new_entry(b"cover".to_string(), b"image/png".to_string(), mock_blob.to_inner());
 
-  publication.add_singleton(singleton);
+  publication.add_singleton(entry);
 
   assert_eq!(publication.singletons.length(), 1);
   assert_eq!(publication.singletons.contains(&b"cover".to_string()), true);
 
-  unit_test::destroy(mock_blob_id);
+  unit_test::destroy(mock_blob);
   unit_test::destroy(publication);
 }
 
 #[test]
 #[expected_failure(abort_code = ESingletonAlreadyExists)]
 fun test_add_duplicate_singleton() {
-  use publication::singleton::new_singleton;
+  use publication::entry::new_entry;
 
   let ctx = &mut tx_context::dummy();
 
   let mut publication = new_publication(ctx, b"ArcSys Blog".to_string());
 
-  let blob_id_1 = object::new(ctx);
-  let blob_id_2 = object::new(ctx);
-  let singleton = new_singleton(publication.id.to_inner(), b"cover".to_string(), blob_id_1.to_inner(), ctx);
-  let duplicate = new_singleton(publication.id.to_inner(), b"cover".to_string(), blob_id_2.to_inner(), ctx);
+  let mock_blob_1 = object::new(ctx);
+  let mock_blob_2 = object::new(ctx);
+  let entry = new_entry(b"cover".to_string(), b"image/png".to_string(), mock_blob_1.to_inner());
+  let duplicate = new_entry(b"cover".to_string(), b"image/png".to_string(), mock_blob_2.to_inner());
 
-  publication.add_singleton(singleton);
+  publication.add_singleton(entry);
   publication.add_singleton(duplicate);
 
-  unit_test::destroy(blob_id_1);
-  unit_test::destroy(blob_id_2);
+  unit_test::destroy(mock_blob_1);
+  unit_test::destroy(mock_blob_2);
   unit_test::destroy(publication);
 }
 
 #[test]
 fun test_delete_singleton() {
-  use publication::singleton::new_singleton;
+  use publication::entry::new_entry;
 
   let ctx = &mut tx_context::dummy();
 
   let publication_name = b"ArcSys Blog".to_string();
   let mut publication = new_publication(ctx, publication_name);
 
-  let mock_blob_id = object::new(ctx);
-  let singleton = new_singleton(publication.id.to_inner(), b"cover".to_string(), mock_blob_id.to_inner(), ctx);
+  let mock_blob = object::new(ctx);
+  let entry = new_entry(b"cover".to_string(), b"image/png".to_string(), mock_blob.to_inner());
 
-  publication.add_singleton(singleton);
+  publication.add_singleton(entry);
   assert_eq!(publication.singletons.length(), 1);
 
   publication.delete_singleton(b"cover".to_string());
   assert_eq!(publication.singletons.length(), 0);
 
-  unit_test::destroy(mock_blob_id);
+  unit_test::destroy(mock_blob);
   unit_test::destroy(publication);
 }
