@@ -208,8 +208,7 @@ fun test_add_collection() {
 
   // Create a collection
   let collection_name = b"articles".to_string();
-  let collection_type = b"article".to_string();
-  let collection = new_collection(publication.id.to_inner(), collection_name, collection_type, ctx);
+  let collection = new_collection(publication.id.to_inner(), collection_name, ctx);
 
   // Add the collection to the publication
   publication.add_collection(collection);
@@ -229,8 +228,8 @@ fun test_add_duplicate_collection() {
   let ctx = &mut tx_context::dummy();
 
   let mut publication = new_publication(ctx, b"ArcSys Blog".to_string());
-  let collection = new_collection(publication.id.to_inner(), b"articles".to_string(), b"article".to_string(), ctx);
-  let duplicate = new_collection(publication.id.to_inner(), b"articles".to_string(), b"article".to_string(), ctx);
+  let collection = new_collection(publication.id.to_inner(), b"articles".to_string(), ctx);
+  let duplicate = new_collection(publication.id.to_inner(), b"articles".to_string(), ctx);
 
   publication.add_collection(collection);
   publication.add_collection(duplicate);
@@ -248,8 +247,7 @@ fun test_delete_collection() {
   let mut publication = new_publication(ctx, publication_name);
 
   let collection_name = b"articles".to_string();
-  let collection_type = b"article".to_string();
-  let collection = new_collection(publication.id.to_inner(), collection_name, collection_type, ctx);
+  let collection = new_collection(publication.id.to_inner(), collection_name, ctx);
 
   publication.add_collection(collection);
   assert_eq!(publication.collections.length(), 1);
