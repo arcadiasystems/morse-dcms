@@ -34,11 +34,15 @@ sui client new-env --alias local --rpc http://127.0.0.1:9000
 Then to develop locally:
 ```sh
 task localnet        # terminal 1 — keep running
-task switch:local    # terminal 2
-task faucet          # wait ~60s for coins to arrive
-task publish:local   # publish ephemerally
-task switch:testnet  # switch back when done
+task faucet          # terminal 2 — wait ~60s for coins to arrive
+task publish:local   # publishes to localnet (switches env to local internally)
+task clean           # delete the ephemeral Pub.local.toml
+task switch:testnet  # switch back to testnet
 ```
+
+> **Why switch back?** Sui requires the chain ID to be hardcoded in `Move.toml` to run `build` or `test` against a specific network. To avoid that, we keep `Move.toml` targeting testnet and only switch to localnet for the `publish:local` step. `task publish:local` handles the env switch internally.
+
+> **Stale `Pub.local.toml`?** Each fresh localnet (`--force-regenesis`) gets a new chain ID, making any existing `Pub.local.toml` invalid. If `publish:local` fails with a chain-id mismatch error, run `task clean` first and retry.
 
 ## Architecture
 

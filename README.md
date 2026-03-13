@@ -62,17 +62,31 @@ Chain ID: 4c78adac (Sui testnet)
 ### Move Contracts
 
 ```bash
-cd move/publication
+cd morse-contracts
 
 # Build
-sui move build
+task build
 
 # Run tests
-sui move test
+task test
 
-# Deploy (requires a funded Sui testnet wallet)
-sui client publish
+# Deploy to testnet (requires a funded Sui testnet wallet)
+task publish
 ```
+
+#### Local development
+
+To iterate locally without touching testnet, use the localnet workflow. `build` and `test` must run while the testnet environment is active — Sui requires the chain ID to be hardcoded in `Move.toml` otherwise, which we avoid.
+
+```bash
+task localnet        # terminal 1 — keep running
+task faucet          # terminal 2 — wait ~60s for coins
+task publish:local   # switches to localnet, publishes ephemerally, does not update Published.toml
+task clean           # delete the ephemeral Pub.local.toml
+task switch:testnet  # switch back so build/test work again
+```
+
+If `publish:local` fails with a chain-id mismatch, run `task clean` first (stale file from a previous localnet session).
 
 ### Morse CLI
 

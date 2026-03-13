@@ -2,20 +2,21 @@
 
 version: '3'
 
-vars:
-  GREETING: Hello, World!
-
 tasks:
   build:
+    desc: "Compile the Move package. ⚠️ Must be on 'testnet' or 'mainnet' — does not work on 'localnet'."
     cmds:
       - sui move build
   test:
+    desc: "Run Move unit tests. ⚠️ Must be on 'testnet' or 'mainnet' — does not work on 'localnet'."
     cmds:
       - sui move test
   publish:
+    desc: "Publish the package to the active environment and update Published.toml."
     cmds:
       - sui client publish
   upgrade:
+    desc: "Upgrade the published package on the active environment."
     cmds:
       - sui client upgrade
   localnet:
@@ -40,11 +41,14 @@ tasks:
     cmds:
       - sui client switch --env testnet
   update-sui:
+    desc: "Update the Sui CLI to the latest version."
     cmds:
       - suiup update sui
   update-suiup:
+    desc: "Update the suiup toolchain manager itself."
     cmds:
       - suiup self update
   clean:
+    desc: "Delete the ephemeral Pub.local.toml created by publish:local."
     cmds:
       - rm Pub.local.toml
