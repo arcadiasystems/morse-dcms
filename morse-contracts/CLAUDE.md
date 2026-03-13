@@ -8,14 +8,37 @@ Uses [Task](https://taskfile.dev) as a task runner (`task <name>`):
 
 | Command | Description |
 |---|---|
+| Command | Description |
+|---|---|
 | `task build` | `sui move build` |
 | `task test` | `sui move test` |
-| `task publish` | `sui client publish` |
-| `task upgrade` | `sui client upgrade` |
+| `task publish` | `sui client publish` (targets active env) |
+| `task upgrade` | `sui client upgrade` (targets active env) |
+| `task localnet` | Start local Sui node with faucet (fresh genesis) |
+| `task faucet` | Request SUI from local faucet |
+| `task publish:local` | Publish ephemerally to localnet; does not update `Published.toml` |
+| `task switch:local` | Switch active environment to localnet |
+| `task switch:testnet` | Switch active environment to testnet |
 | `task update-sui` | `suiup update sui` |
 | `task update-suiup` | `suiup self update` |
 
 To run a single test: `sui move test <test_function_name>`
+
+### Localnet workflow
+
+One-time setup (once per machine):
+```sh
+sui client new-env --alias local --rpc http://127.0.0.1:9000
+```
+
+Then to develop locally:
+```sh
+task localnet        # terminal 1 — keep running
+task switch:local    # terminal 2
+task faucet          # wait ~60s for coins to arrive
+task publish:local   # publish ephemerally
+task switch:testnet  # switch back when done
+```
 
 ## Architecture
 

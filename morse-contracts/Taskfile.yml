@@ -6,10 +6,6 @@ vars:
   GREETING: Hello, World!
 
 tasks:
-  default:
-    cmds:
-      - echo "{{.GREETING}}"
-    silent: true
   build:
     cmds:
       - sui move build
@@ -22,9 +18,33 @@ tasks:
   upgrade:
     cmds:
       - sui client upgrade
+  localnet:
+    desc: "Start local Sui node with fresh genesis."
+    cmds:
+      - RUST_LOG="off,sui_node=info" sui start --with-faucet --force-regenesis
+  faucet:
+    desc: Request SUI from the local faucet (run after localnet is up)
+    cmds:
+      - sui client faucet
+  publish:local:
+    desc: Publish ephemerally to localnet (does not update Published.toml but creates a Pub.local.toml with the new package ID)
+    cmds:
+      - task switch:local
+      - sui client test-publish --build-env testnet # build env is testnet because that's the target we are compiling for, but we are publishing to localnet
+  switch:local:
+    desc: Switch active Sui environment to localnet
+    cmds:
+      - sui client switch --env local
+  switch:testnet:
+    desc: Switch active Sui environment to testnet
+    cmds:
+      - sui client switch --env testnet
   update-sui:
     cmds:
       - suiup update sui
   update-suiup:
     cmds:
       - suiup self update
+  clean:
+    cmds:
+      - rm Pub.local.toml
