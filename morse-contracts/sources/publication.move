@@ -12,7 +12,7 @@ use publication::singleton::{Self, Singleton};
 
 /// Root object that must be created before any collections or content can be added.
 /// A publication groups related collections and acts as the entry point for all interactions.
-/// Collections are wrapped inside the publication and are only accessible through it.
+/// Collections and singletons are wrapped inside the publication and are only accessible through it.
 ///
 /// Authorization is enforced through native Sui object ownership: only the owner of this object
 /// can pass it as a mutable argument, so no explicit capability checks are needed.
@@ -26,7 +26,7 @@ public struct Publication has key, store {
 }
 
 /// Create a new publication.
-/// By default, the publication is empty and can be managed by the owner.
+/// By default, the publication is empty and can be managed by the owner only.
 public fun new_publication(ctx: &mut TxContext, name: String): Publication {
   let publication = Publication {
     id: object::new(ctx),
@@ -44,7 +44,7 @@ public fun new_publication(ctx: &mut TxContext, name: String): Publication {
 }
 
 /// Delete a publication.
-/// The collections vector must be empty, or an error will be thrown.
+/// The collections and singletons vectors must be empty, or an error will be thrown.
 public fun delete_publication(publication: Publication) {
   let Publication{ id, name, collections, singletons } = publication;
   let publication_id = id.to_inner();
@@ -59,12 +59,20 @@ public fun delete_publication(publication: Publication) {
   });
 }
 
+/// Error code: a collection with the given name already exists in the publication.
+const ECollectionAlreadyExists: u64 = 0;
+
+/// Error code: a singleton with the given name already exists in the publication.
+const ESingletonAlreadyExists: u64 = 1;
+
 /// Add a new collection to the publication.
+/// Aborts with `ECollectionAlreadyExists` if a collection with the same name already exists.
 public fun add_collection(publication: &mut Publication, collection: Collection) {
   let publication_id = object::id(publication);
   let collection_id = object::id(&collection);
   let collection_name = collection.get_name();
 
+  assert!(!publication.collections.contains(&collection_name), ECollectionAlreadyExists);
   publication.collections.insert(collection_name, collection);
 
   event::emit(CollectionAdded {
@@ -96,6 +104,7 @@ public fun add_singleton(publication: &mut Publication, singleton: Singleton) {
   let singleton_id = object::id(&singleton);
   let singleton_name = singleton.get_name();
 
+  assert!(!publication.singletons.contains(&singleton_name), ESingletonAlreadyExists);
   publication.singletons.insert(singleton_name, singleton);
 
   event::emit(SingletonAdded {
@@ -213,6 +222,23 @@ fun test_add_collection() {
 }
 
 #[test]
+#[expected_failure(abort_code = ECollectionAlreadyExists)]
+fun test_add_duplicate_collection() {
+  use publication::collection::new_collection;
+
+  let ctx = &mut tx_context::dummy();
+
+  let mut publication = new_publication(ctx, b"ArcSys Blog".to_string());
+  let collection = new_collection(publication.id.to_inner(), b"articles".to_string(), b"article".to_string(), ctx);
+  let duplicate = new_collection(publication.id.to_inner(), b"articles".to_string(), b"article".to_string(), ctx);
+
+  publication.add_collection(collection);
+  publication.add_collection(duplicate);
+
+  unit_test::destroy(publication);
+}
+
+#[test]
 fun test_delete_collection() {
   use publication::collection::new_collection;
 
@@ -252,6 +278,28 @@ fun test_add_singleton() {
   assert_eq!(publication.singletons.contains(&b"cover".to_string()), true);
 
   unit_test::destroy(mock_blob_id);
+  unit_test::destroy(publication);
+}
+
+#[test]
+#[expected_failure(abort_code = ESingletonAlreadyExists)]
+fun test_add_duplicate_singleton() {
+  use publication::singleton::new_singleton;
+
+  let ctx = &mut tx_context::dummy();
+
+  let mut publication = new_publication(ctx, b"ArcSys Blog".to_string());
+
+  let blob_id_1 = object::new(ctx);
+  let blob_id_2 = object::new(ctx);
+  let singleton = new_singleton(publication.id.to_inner(), b"cover".to_string(), blob_id_1.to_inner(), ctx);
+  let duplicate = new_singleton(publication.id.to_inner(), b"cover".to_string(), blob_id_2.to_inner(), ctx);
+
+  publication.add_singleton(singleton);
+  publication.add_singleton(duplicate);
+
+  unit_test::destroy(blob_id_1);
+  unit_test::destroy(blob_id_2);
   unit_test::destroy(publication);
 }
 
