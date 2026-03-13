@@ -52,15 +52,20 @@ This is a **Sui Move** smart contract package (`edition = "2024"`) targeting the
 
 Three modules form a clear hierarchy:
 
-- **`publication::publication`** — Top-level container (`Publication` object: `key, store`). Holds a `VecMap<String, Collection>` keyed by collection name. Entry point for all user interactions.
-- **`publication::collection`** — Mid-level grouping (`Collection` object: `key, store`). Belongs to a publication (stores `publication_id`), has a `collection_type`, and holds content items in a `Bag` indexed by `u64`.
-- **`publication::content`** — Leaf value (`Content` struct: `store, drop`). A pointer into decentralized storage: stores a `blob_id: u256` (Walrus blob reference), a `name`, and a `content_type` (MIME type).
+- **`publication::publication`** — Top-level shared object (`Publication`: `key, store`). Holds named collections (`VecMap<String, Collection>`) and named singletons (`VecMap<String, Entry>`). All mutations require an `OwnerCap` or `PublisherCap` tied to the publication's ID.
+- **`publication::collection`** — Mid-level grouping (`Collection`: `key, store`). Wrapped inside `Publication`; holds entries in a `Table<u64, Entry>`. `VecMap` is used for collections/singletons because publications are expected to have few of each; `Table` is used for entries because they can be numerous.
+- **`publication::entry`** — Leaf value (`Entry`: `store, drop`). A named pointer to an on-chain Walrus Blob object (`blob: ID`), plus an `entry_type` string (MIME type). Used for both collection entries and publication-level singletons.
 
-Content data lives off-chain in decentralized (Walrus) storage; the contract stores only the `blob_id` reference.
+### Capability model
+
+- **`OwnerCap`** (`key` only) — one per publication. Required to issue `PublisherCap`s and delete the publication.
+- **`PublisherCap`** (`key` only) — multiple per publication. Required for all write operations (add/delete collections, singletons, entries). Issued by the owner via `issue_publisher_cap`.
+
+Neither cap has `store`, so they cannot be re-transferred through public APIs.
 
 ### Events
 
-`publication` emits events for: `PublicationCreated`, `PublicationDeleted`, `CollectionAdded`.
+`publication` emits events for: `PublicationCreated`, `PublicationDeleted`, `CollectionAdded`, `CollectionRemoved`, `SingletonAdded`, `SingletonRemoved`.
 
 ### Deployment metadata
 

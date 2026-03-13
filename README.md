@@ -15,12 +15,11 @@ Traditional headless CMSs (Strapi, Ghost, Storyblok) store content in centralize
 
 ```
 morse/
-├── move/
-│   └── publication/          # Sui Move smart contracts
-│       └── sources/
-│           ├── publication.move   # Publication container
-│           ├── collection.move    # Content collections
-│           └── content.move       # Individual content items
+├── morse-contracts/          # Sui Move smart contracts
+│   └── sources/
+│       ├── publication.move  # Publication container + capability model
+│       ├── collection.move   # Content collections
+│       └── entry.move        # Individual content entries (used in both collections and singletons)
 ├── morse-cli/                # CLI tool (TypeScript/Bun)
 └── morse-indexer/            # Blockchain event indexer (TypeScript/Bun)
 ```
@@ -40,11 +39,13 @@ morse/
 
 The Move contracts implement the core data model on-chain:
 
-- **`Publication`** — Top-level container owned by an admin. Holds named collections in a `VecMap`.
-- **`Collection`** — A named group of content items stored in a `Bag`.
-- **`Content`** — An individual content item with a `blob_id` pointing to encrypted data in Walrus.
+- **`Publication`** — Shared top-level container. Holds named `Collection`s and named singleton `Entry`s. Created by the owner; write access is gated by `OwnerCap` / `PublisherCap`.
+- **`Collection`** — A named group of `Entry` items, stored in a `Table<u64, Entry>`. Wrapped inside `Publication`.
+- **`Entry`** — A named pointer to an on-chain Walrus Blob object (`blob: ID`), with an `entry_type` (MIME type). Used for both collection items and publication-level singletons.
 
-All three modules emit events (`PublicationCreated`, `PublicationDeleted`, `CollectionAdded`) so the indexer can track state changes without scanning the full chain.
+**Capability model:** creating a publication mints an `OwnerCap` (required to issue `PublisherCap`s and delete the publication) and a `PublisherCap` (required for all write operations). Multiple `PublisherCap`s can exist per publication; only the owner can issue them.
+
+All modules emit events so the indexer can track state without scanning the full chain.
 
 **Testnet deployment:**
 ```
@@ -131,7 +132,7 @@ bun run index.ts pub delete --id <publication-id>
 
 ## Roadmap
 
-- [x] Move smart contracts (Publication, Collection, Content)
+- [x] Move smart contracts (Publication, Collection, Entry, Publisher capability model)
 - [x] Morse CLI (publication CRUD)
 - [ ] Morse Indexer
 - [ ] Morse Content API
