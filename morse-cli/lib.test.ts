@@ -1,6 +1,6 @@
 import { test, expect, mock } from "bun:test";
-import type { TransactionExecutor, ObjectFetcher, PublicationDeleter } from "./lib.ts";
-import { createPublication, listPublications, getPublication, deletePublication } from "./lib.ts";
+import type { TransactionExecutor, ObjectFetcher, PublicationDeleter, CollectionManager } from "./lib.ts";
+import { createPublication, listPublications, getPublication, deletePublication, addCollection, deleteCollection, listCollections } from "./lib.ts";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import type { SuiClientTypes } from "@mysten/sui/client";
 
@@ -233,6 +233,120 @@ test("deletePublication returns digest and name on success", async () => {
   const result = await deletePublication(client, keypair, "0xADDR", "0xPUBLICATION", "0xCAP");
   expect(result.digest).toBe("abc123");
   expect(result.name).toBe("Test");
+});
+
+// --- collection helpers ---
+
+// tx.pure.id() validates a full 32-byte Sui address
+const VALID_PUB_ID = "0x" + "a".repeat(64);
+
+function makeCollectionManager(
+  fetcherOverrides?: any,
+  executorOverrides?: any,
+): CollectionManager {
+  return {
+    listOwnedObjects: mock(async () => ({
+      objects: [makeObject("0xCAP", { publication_id: VALID_PUB_ID })],
+      hasNextPage: false,
+      cursor: null,
+    })),
+    ...makeExecutor(executorOverrides),
+    ...fetcherOverrides,
+  } as unknown as CollectionManager;
+}
+
+// --- addCollection ---
+
+test("addCollection resolves PublisherCap and executes transaction", async () => {
+  const client = makeCollectionManager();
+  const digest = await addCollection(client, keypair, "0xADDR", VALID_PUB_ID, "blog");
+
+  expect(digest).toBe("abc123");
+  const signCalls = (client.signAndExecuteTransaction as ReturnType<typeof mock>).mock.calls;
+  expect(signCalls).toHaveLength(1);
+});
+
+test("addCollection throws when no PublisherCap found", async () => {
+  const client = makeCollectionManager({
+    listOwnedObjects: mock(async () => ({ objects: [], hasNextPage: false, cursor: null })),
+  });
+
+  expect(
+    addCollection(client, keypair, "0xADDR", VALID_PUB_ID, "blog")
+  ).rejects.toThrow("No PublisherCap found");
+});
+
+test("addCollection throws on FailedTransaction", async () => {
+  const failResult: SuiClientTypes.TransactionResult = {
+    $kind: "FailedTransaction",
+    FailedTransaction: {
+      digest: "",
+      signatures: [],
+      epoch: null,
+      status: { success: false, error: { message: "abort", $kind: "Unknown", Unknown: null } },
+      balanceChanges: undefined,
+      effects: undefined,
+      events: undefined,
+      objectTypes: undefined,
+      transaction: undefined,
+      bcs: undefined,
+    },
+  };
+
+  const client = makeCollectionManager(undefined, {
+    signAndExecuteTransaction: mock(async () => failResult),
+  });
+
+  expect(
+    addCollection(client, keypair, "0xADDR", VALID_PUB_ID, "blog")
+  ).rejects.toThrow("Transaction failed: abort");
+});
+
+// --- deleteCollection ---
+
+test("deleteCollection resolves PublisherCap and executes transaction", async () => {
+  const client = makeCollectionManager();
+  const digest = await deleteCollection(client, keypair, "0xADDR", VALID_PUB_ID, "blog");
+
+  expect(digest).toBe("abc123");
+  const signCalls = (client.signAndExecuteTransaction as ReturnType<typeof mock>).mock.calls;
+  expect(signCalls).toHaveLength(1);
+});
+
+test("deleteCollection throws when no PublisherCap found", async () => {
+  const client = makeCollectionManager({
+    listOwnedObjects: mock(async () => ({ objects: [], hasNextPage: false, cursor: null })),
+  });
+
+  expect(
+    deleteCollection(client, keypair, "0xADDR", VALID_PUB_ID, "blog")
+  ).rejects.toThrow("No PublisherCap found");
+});
+
+// --- listCollections ---
+
+test("listCollections returns collection names from VecMap", async () => {
+  const client = makeObjectFetcher({
+    getObject: mock(async () => ({
+      object: makeObject("0xPUB", {
+        collections: { contents: [{ key: "blog", value: {} }, { key: "news", value: {} }] },
+      }),
+    })),
+  });
+
+  const result = await listCollections(client, "0xPUB");
+  expect(result).toEqual(["blog", "news"]);
+});
+
+test("listCollections returns empty array when no collections", async () => {
+  const client = makeObjectFetcher({
+    getObject: mock(async () => ({
+      object: makeObject("0xPUB", { collections: { contents: [] } }),
+    })),
+  });
+
+  const result = await listCollections(client, "0xPUB");
+  expect(result).toEqual([]);
 });
 
 // --- createPublication ---

@@ -9,6 +9,9 @@ import {
   listPublications,
   getPublication,
   deletePublication,
+  addCollection,
+  deleteCollection,
+  listCollections,
 } from "./lib.ts";
 
 const PRIVATE_KEY = process.env.PRIVATE_KEY || "";
@@ -113,6 +116,57 @@ pub
       process.stderr.write(`Deleting "${entry.name}"...\n`);
       const { digest, name } = await deletePublication(suiClient, keypair, PUBLICATION_ADDRESS, options.id, entry.capId);
       console.log(`Deleted "${name}". (tx: ${digest})`);
+    } catch (e) {
+      die(e instanceof Error ? e.message : String(e));
+    }
+  });
+
+const col = pub.command("collection").description("Manage collections within a publication");
+
+col
+  .command("add")
+  .description("Add a collection to a publication")
+  .requiredOption("--publication-id <id>", "Publication ID")
+  .requiredOption("--name <name>", "Collection name")
+  .action(async (options) => {
+    try {
+      process.stderr.write(`Adding collection "${options.name}"...\n`);
+      const digest = await addCollection(suiClient, keypair, PUBLICATION_ADDRESS, options.publicationId, options.name);
+      console.log(`Added collection "${options.name}". (tx: ${digest})`);
+    } catch (e) {
+      die(e instanceof Error ? e.message : String(e));
+    }
+  });
+
+col
+  .command("list")
+  .description("List collections in a publication")
+  .requiredOption("--publication-id <id>", "Publication ID")
+  .action(async (options) => {
+    try {
+      const collections = await listCollections(suiClient, options.publicationId);
+      if (collections.length === 0) {
+        console.log("No collections found.");
+        return;
+      }
+      for (const name of collections) {
+        console.log(name);
+      }
+    } catch (e) {
+      die(e instanceof Error ? e.message : String(e));
+    }
+  });
+
+col
+  .command("delete")
+  .description("Delete a collection from a publication (must be empty)")
+  .requiredOption("--publication-id <id>", "Publication ID")
+  .requiredOption("--name <name>", "Collection name")
+  .action(async (options) => {
+    try {
+      process.stderr.write(`Deleting collection "${options.name}"...\n`);
+      const digest = await deleteCollection(suiClient, keypair, PUBLICATION_ADDRESS, options.publicationId, options.name);
+      console.log(`Deleted collection "${options.name}". (tx: ${digest})`);
     } catch (e) {
       die(e instanceof Error ? e.message : String(e));
     }
