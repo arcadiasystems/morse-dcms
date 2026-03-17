@@ -1,6 +1,6 @@
 import { test, expect, mock } from "bun:test";
 import type { TransactionExecutor, ObjectFetcher, PublicationDeleter, CollectionManager } from "./lib.ts";
-import { createPublication, listPublications, getPublication, deletePublication, addCollection, deleteCollection, listCollections } from "./lib.ts";
+import { createPublication, listPublications, getPublication, deletePublication, addCollection, deleteCollection, listCollections, addEntry, deleteEntry } from "./lib.ts";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import type { SuiClientTypes } from "@mysten/sui/client";
 
@@ -347,6 +347,74 @@ test("listCollections returns empty array when no collections", async () => {
 
   const result = await listCollections(client, "0xPUB");
   expect(result).toEqual([]);
+});
+
+// --- addEntry ---
+
+test("addEntry resolves PublisherCap and executes transaction", async () => {
+  const client = makeCollectionManager();
+  const digest = await addEntry(client, keypair, "0xADDR", VALID_PUB_ID, "blog", "post-1", "application/json", VALID_PUB_ID);
+
+  expect(digest).toBe("abc123");
+  const signCalls = (client.signAndExecuteTransaction as ReturnType<typeof mock>).mock.calls;
+  expect(signCalls).toHaveLength(1);
+});
+
+test("addEntry throws when no PublisherCap found", async () => {
+  const client = makeCollectionManager({
+    listOwnedObjects: mock(async () => ({ objects: [], hasNextPage: false, cursor: null })),
+  });
+
+  expect(
+    addEntry(client, keypair, "0xADDR", VALID_PUB_ID, "blog", "post-1", "application/json", VALID_PUB_ID)
+  ).rejects.toThrow("No PublisherCap found");
+});
+
+test("addEntry throws on FailedTransaction", async () => {
+  const failResult: SuiClientTypes.TransactionResult = {
+    $kind: "FailedTransaction",
+    FailedTransaction: {
+      digest: "",
+      signatures: [],
+      epoch: null,
+      status: { success: false, error: { message: "abort", $kind: "Unknown", Unknown: null } },
+      balanceChanges: undefined,
+      effects: undefined,
+      events: undefined,
+      objectTypes: undefined,
+      transaction: undefined,
+      bcs: undefined,
+    },
+  };
+
+  const client = makeCollectionManager(undefined, {
+    signAndExecuteTransaction: mock(async () => failResult),
+  });
+
+  expect(
+    addEntry(client, keypair, "0xADDR", VALID_PUB_ID, "blog", "post-1", "application/json", VALID_PUB_ID)
+  ).rejects.toThrow("Transaction failed: abort");
+});
+
+// --- deleteEntry ---
+
+test("deleteEntry resolves PublisherCap and executes transaction", async () => {
+  const client = makeCollectionManager();
+  const digest = await deleteEntry(client, keypair, "0xADDR", VALID_PUB_ID, "blog", 0);
+
+  expect(digest).toBe("abc123");
+  const signCalls = (client.signAndExecuteTransaction as ReturnType<typeof mock>).mock.calls;
+  expect(signCalls).toHaveLength(1);
+});
+
+test("deleteEntry throws when no PublisherCap found", async () => {
+  const client = makeCollectionManager({
+    listOwnedObjects: mock(async () => ({ objects: [], hasNextPage: false, cursor: null })),
+  });
+
+  expect(
+    deleteEntry(client, keypair, "0xADDR", VALID_PUB_ID, "blog", 0)
+  ).rejects.toThrow("No PublisherCap found");
 });
 
 // --- createPublication ---

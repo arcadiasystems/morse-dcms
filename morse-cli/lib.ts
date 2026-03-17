@@ -6,6 +6,7 @@ export type TransactionExecutor = Pick<SuiGrpcClient, "signAndExecuteTransaction
 export type ObjectFetcher = Pick<SuiGrpcClient, "getObject" | "listOwnedObjects">;
 export type PublicationDeleter = TransactionExecutor & Pick<ObjectFetcher, "getObject">;
 export type CollectionManager = TransactionExecutor & Pick<ObjectFetcher, "listOwnedObjects">;
+export type EntryFetcher = Pick<SuiGrpcClient, "getObject" | "getObjects" | "listDynamicFields">;
 
 export async function createPublication(
   client: TransactionExecutor,
@@ -176,6 +177,62 @@ export async function deleteCollection(
   return waitResult.Transaction?.digest ?? "";
 }
 
+export async function addEntry(
+  client: CollectionManager,
+  signer: Ed25519Keypair,
+  publicationAddress: string,
+  publicationId: string,
+  collectionName: string,
+  name: string,
+  entryType: string,
+  blobId: string,
+): Promise<string> {
+  const publisherCapId = await resolvePublisherCap(client, signer, publicationAddress, publicationId);
+
+  const tx = new Transaction();
+  const entry = tx.moveCall({
+    target: `${publicationAddress}::entry::new_entry`,
+    arguments: [tx.pure.string(name), tx.pure.string(entryType), tx.pure.id(blobId)],
+  });
+  tx.moveCall({
+    target: `${publicationAddress}::publication::add_entry_to_collection`,
+    arguments: [tx.object(publicationId), tx.object(publisherCapId), tx.pure.string(collectionName), entry],
+  });
+
+  const result = await client.signAndExecuteTransaction({ signer, transaction: tx });
+
+  console.log(`Result of addEntry transaction: ${JSON.stringify(result)}`);
+  if (result.$kind === "FailedTransaction") {
+    throw new Error(`Transaction failed: ${result.FailedTransaction.status.error?.message}`);
+  }
+  const waitResult = await client.waitForTransaction({ result });
+  return waitResult.Transaction?.digest ?? "";
+}
+
+export async function deleteEntry(
+  client: CollectionManager,
+  signer: Ed25519Keypair,
+  publicationAddress: string,
+  publicationId: string,
+  collectionName: string,
+  index: number,
+): Promise<string> {
+  const publisherCapId = await resolvePublisherCap(client, signer, publicationAddress, publicationId);
+
+  const tx = new Transaction();
+  tx.moveCall({
+    target: `${publicationAddress}::publication::delete_entry_from_collection`,
+    arguments: [tx.object(publicationId), tx.object(publisherCapId), tx.pure.string(collectionName), tx.pure.u64(index)],
+  });
+
+  const result = await client.signAndExecuteTransaction({ signer, transaction: tx });
+  if (result.$kind === "FailedTransaction") {
+    throw new Error(`Transaction failed: ${result.FailedTransaction.status.error?.message}`);
+  }
+  const waitResult = await client.waitForTransaction({ result });
+  return waitResult.Transaction?.digest ?? "";
+}
+
 export async function listCollections(
   client: Pick<ObjectFetcher, "getObject">,
   publicationId: string,
@@ -183,4 +240,38 @@ export async function listCollections(
   const publication = await client.getObject({ objectId: publicationId, include: { json: true } });
   const collections = (publication.object.json as { collections?: { contents?: { key: string }[] } } | undefined)?.collections;
   return collections?.contents?.map((e) => e.key) ?? [];
+}
+
+export async function listEntries(
+  client: EntryFetcher,
+  publicationId: string,
+  collectionName: string,
+): Promise<Array<{ index: number; name: string; entryType: string; blob: string }>> {
+  const publication = await client.getObject({ objectId: publicationId, include: { json: true } });
+  type CollectionJson = { id: string; entries: { id: string } };
+  const contents = (publication.object.json as { collections?: { contents?: { key: string; value: CollectionJson }[] } } | undefined)?.collections?.contents;
+  const col = contents?.find((e) => e.key === collectionName);
+  if (!col) throw new Error(`Collection "${collectionName}" not found`);
+
+  const tableId = col.value.entries.id;
+  const { dynamicFields } = await client.listDynamicFields({ parentId: tableId });
+  if (dynamicFields.length === 0) return [];
+
+  const objects = await client.getObjects({
+    objectIds: dynamicFields.map((f) => f.fieldId),
+    include: { json: true },
+  });
+
+  return objects.objects
+    .filter((o) => !("$kind" in o))
+    .map((o) => {
+      const field = (o as { json?: { name: number | string; value?: { name: string; entry_type: string; blob: string } } }).json;
+      return {
+        index: Number(field?.name ?? 0),
+        name: field?.value?.name ?? "",
+        entryType: field?.value?.entry_type ?? "",
+        blob: field?.value?.blob ?? "",
+      };
+    })
+    .sort((a, b) => a.index - b.index);
 }
