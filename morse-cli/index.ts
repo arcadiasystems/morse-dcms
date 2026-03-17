@@ -3,8 +3,13 @@
 import "dotenv/config";
 import { Command } from "commander";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
-import { Transaction } from "@mysten/sui/transactions";
 import { SuiGrpcClient } from "@mysten/sui/grpc";
+import {
+  createPublication,
+  listPublications,
+  getPublication,
+  deletePublication,
+} from "./lib.ts";
 
 const PRIVATE_KEY = process.env.PRIVATE_KEY || "";
 const keypair = Ed25519Keypair.fromSecretKey(PRIVATE_KEY);
@@ -12,12 +17,13 @@ const keypair = Ed25519Keypair.fromSecretKey(PRIVATE_KEY);
 const PUBLICATION_ADDRESS = process.env.PUBLICATION_ADDRESS || "";
 const ORIGINAL_PUBLICATION_ADDRESS =
   process.env.ORIGINAL_PUBLICATION_ADDRESS || "";
+const SUI_RPC_URL = process.env.SUI_RPC_URL || "";
 
 const program = new Command();
 
 const suiClient = new SuiGrpcClient({
   network: "testnet",
-  baseUrl: "https://fullnode.testnet.sui.io:443",
+  baseUrl: SUI_RPC_URL,
 });
 
 program
@@ -31,54 +37,20 @@ pub
   .command("create")
   .description("Create a publication")
   .requiredOption("--name <name>", "Name of the publication")
-  .action(async (_options) => {
-    console.log("Creating publication with name:", _options.name);
-
-    const tx = new Transaction();
-
-    const publication = tx.moveCall({
-      package: "publication",
-      module: "publication",
-      function: "new_publication",
-      target: `${PUBLICATION_ADDRESS}::publication::new_publication`,
-      arguments: [tx.pure.string(_options.name)],
-    });
-
-    tx.transferObjects([publication], keypair.getPublicKey().toSuiAddress());
-
-    const result = await suiClient.signAndExecuteTransaction({
-      signer: keypair,
-      transaction: tx,
-    });
-
-    if (result.$kind === "FailedTransaction") {
-      throw new Error(
-        `Transaction failed: ${result.FailedTransaction.status.error?.message}`,
-      );
-    }
-
-    const waitResult = await suiClient.waitForTransaction({
-      result,
-    });
-
-    console.log(waitResult.Transaction);
+  .action(async (options) => {
+    console.log("Creating publication with name:", options.name);
+    const digest = await createPublication(suiClient, keypair, PUBLICATION_ADDRESS, options.name);
+    console.log("Created. Transaction digest:", digest);
   });
 
 pub
   .command("get")
   .description("Get a single publication")
   .requiredOption("--id <id>", "Sui ID of the publication")
-  .action(async (_options) => {
-    console.log("Fetching publication with id:", _options.id);
-
-    const publication = await suiClient.getObject({
-      objectId: _options.id,
-      include: {
-        json: true, // Display the publication fields in JSON format
-      },
-    });
-
-    console.log(publication);
+  .action(async (options) => {
+    console.log("Fetching publication with id:", options.id);
+    const publication = await getPublication(suiClient, options.id);
+    console.log(JSON.stringify(publication, null, 2));
   });
 
 pub
@@ -86,60 +58,20 @@ pub
   .description("List all publications")
   .action(async () => {
     console.log("Listing all publications");
-
-    const publications = await suiClient.listOwnedObjects({
-      owner: keypair.getPublicKey().toSuiAddress(),
-      type: `${ORIGINAL_PUBLICATION_ADDRESS}::publication::Publication`,
-      include: {
-        json: true,
-      },
-    });
-
-    console.log(publications.objects);
+    const publications = await listPublications(suiClient, keypair, ORIGINAL_PUBLICATION_ADDRESS);
+    for (const pub of publications) {
+      console.log(`${pub.id}  ${pub.name}`);
+    }
   });
 
 pub
   .command("delete")
   .description("Delete a publication")
   .requiredOption("--id <id>", "Sui ID of the publication")
-  .action(async (_options) => {
-    console.log("Deleting publication with id:", _options.id);
-
-    const tx = new Transaction();
-
-    const publication = await suiClient.getObject({
-      objectId: _options.id,
-      include: {
-        json: true,
-      },
-    });
-
-    console.log(`Deleting publication: ${publication}`);
-
-    tx.moveCall({
-      package: "publication",
-      module: "publication",
-      function: "delete_publication",
-      target: `${PUBLICATION_ADDRESS}::publication::delete_publication`,
-      arguments: [tx.object(publication.object.objectId)],
-    });
-
-    const result = await suiClient.signAndExecuteTransaction({
-      signer: keypair,
-      transaction: tx,
-    });
-
-    if (result.$kind === "FailedTransaction") {
-      throw new Error(
-        `Transaction failed: ${result.FailedTransaction.status.error?.message}`,
-      );
-    }
-
-    const waitResult = await suiClient.waitForTransaction({
-      result,
-    });
-
-    console.log(waitResult.Transaction);
+  .action(async (options) => {
+    console.log("Deleting publication with id:", options.id);
+    const digest = await deletePublication(suiClient, keypair, PUBLICATION_ADDRESS, options.id);
+    console.log("Deleted. Transaction digest:", digest);
   });
 
 program.parse();

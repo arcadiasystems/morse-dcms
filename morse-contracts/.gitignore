@@ -4,3 +4,4 @@ traces/*
 .trace
 .coverage*
 Pub.*.toml
+.env.*
