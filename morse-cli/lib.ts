@@ -4,7 +4,7 @@ import { Transaction } from "@mysten/sui/transactions";
 
 export type TransactionExecutor = Pick<SuiGrpcClient, "signAndExecuteTransaction" | "waitForTransaction">;
 export type ObjectFetcher = Pick<SuiGrpcClient, "getObject" | "listOwnedObjects">;
-export type PublicationDeleter = TransactionExecutor & ObjectFetcher;
+export type PublicationDeleter = TransactionExecutor & Pick<ObjectFetcher, "getObject">;
 
 export async function createPublication(
   client: TransactionExecutor,
@@ -38,7 +38,7 @@ export async function listPublications(
   client: ObjectFetcher,
   signer: Ed25519Keypair,
   originalPublicationAddress: string,
-): Promise<Array<{ id: string; name: string }>> {
+): Promise<Array<{ id: string; name: string; capId: string }>> {
   const caps = await client.listOwnedObjects({
     owner: signer.getPublicKey().toSuiAddress(),
     type: `${originalPublicationAddress}::publication::OwnerCap`,
@@ -54,9 +54,10 @@ export async function listPublications(
     )
   );
 
-  return publications.map((pub) => ({
+  return publications.map((pub, i) => ({
     id: pub.object.objectId,
     name: (pub.object.json as { name: string } | undefined)?.name ?? "(unknown)",
+    capId: caps.objects[i]!.objectId,
   }));
 }
 
@@ -76,23 +77,19 @@ export async function deletePublication(
   signer: Ed25519Keypair,
   publicationAddress: string,
   id: string,
-): Promise<string> {
-  const caps = await client.listOwnedObjects({
-    owner: signer.getPublicKey().toSuiAddress(),
-    type: `${publicationAddress}::publication::OwnerCap`,
+  capId: string,
+): Promise<{ digest: string; name: string }> {
+  const publication = await client.getObject({
+    objectId: id,
     include: { json: true },
   });
-
-  const ownerCap = caps.objects.find(
-    (cap) => (cap.json as { publication_id: string }).publication_id === id,
-  );
-  if (!ownerCap) throw new Error(`No OwnerCap found for publication ${id}`);
+  const name = (publication.object.json as { name: string } | undefined)?.name ?? id;
 
   const tx = new Transaction();
 
   tx.moveCall({
     target: `${publicationAddress}::publication::delete_publication`,
-    arguments: [tx.object(id), tx.object(ownerCap.objectId)],
+    arguments: [tx.object(id), tx.object(capId)],
   });
 
   const result = await client.signAndExecuteTransaction({
@@ -107,5 +104,5 @@ export async function deletePublication(
   }
 
   const waitResult = await client.waitForTransaction({ result });
-  return waitResult.Transaction?.digest ?? "";
+  return { digest: waitResult.Transaction?.digest ?? "", name };
 }

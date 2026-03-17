@@ -166,8 +166,8 @@ test("listPublications returns one entry per cap with correct id and name", asyn
   const result = await listPublications(client, keypair, "0xADDR");
 
   expect(result).toHaveLength(2);
-  expect(result[0]).toEqual({ id: "0xPUB1", name: "Blog 0xPUB1" });
-  expect(result[1]).toEqual({ id: "0xPUB2", name: "Blog 0xPUB2" });
+  expect(result[0]).toEqual({ id: "0xPUB1", name: "Blog 0xPUB1", capId: "0xCAP1" });
+  expect(result[1]).toEqual({ id: "0xPUB2", name: "Blog 0xPUB2", capId: "0xCAP2" });
 });
 
 // --- getPublication ---
@@ -192,7 +192,7 @@ test("getPublication passes objectId through unchanged", async () => {
 
 test("deletePublication fetches the publication before executing the transaction", async () => {
   const client = makeDeleter();
-  await deletePublication(client, keypair, "0xADDR", "0xPUBLICATION");
+  await deletePublication(client, keypair, "0xADDR", "0xPUBLICATION", "0xCAP");
 
   const getObjectCalls = (client.getObject as ReturnType<typeof mock>).mock.calls;
   const signCalls = (client.signAndExecuteTransaction as ReturnType<typeof mock>).mock.calls;
@@ -224,14 +224,15 @@ test("deletePublication throws on FailedTransaction", async () => {
   });
 
   expect(
-    deletePublication(client, keypair, "0xADDR", "0xPUBLICATION")
+    deletePublication(client, keypair, "0xADDR", "0xPUBLICATION", "0xCAP")
   ).rejects.toThrow("Transaction failed: abort");
 });
 
-test("deletePublication returns digest on success", async () => {
+test("deletePublication returns digest and name on success", async () => {
   const client = makeDeleter();
-  const digest = await deletePublication(client, keypair, "0xADDR", "0xPUBLICATION");
-  expect(digest).toBe("abc123");
+  const result = await deletePublication(client, keypair, "0xADDR", "0xPUBLICATION", "0xCAP");
+  expect(result.digest).toBe("abc123");
+  expect(result.name).toBe("Test");
 });
 
 // --- createPublication ---
