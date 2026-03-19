@@ -4,6 +4,47 @@ globs: "*.ts, *.tsx, *.html, *.css, *.js, *.jsx, package.json"
 alwaysApply: false
 ---
 
+# morse-cli
+
+CLI for interacting with Morse publications on Sui.
+
+## Architecture
+
+- `lib.ts` — all business logic (pure functions, no Commander, no env vars)
+- `index.ts` — thin CLI wiring: reads env vars, creates `SuiGrpcClient` and `Ed25519Keypair`, delegates to `lib.ts`
+
+## Testable interfaces
+
+Functions in `lib.ts` take minimal interfaces derived from `SuiGrpcClient` using `Pick`:
+
+```ts
+export type TransactionExecutor = Pick<SuiGrpcClient, "signAndExecuteTransaction" | "waitForTransaction">;
+export type ObjectFetcher = Pick<SuiGrpcClient, "getObject" | "listOwnedObjects">;
+export type PublicationDeleter = TransactionExecutor & ObjectFetcher;
+```
+
+`SuiGrpcClient` satisfies all of these structurally — `index.ts` passes it directly with no casting.
+
+## Testing
+
+After every TypeScript change, run `bun tsc --noEmit` to check for errors, then `bun test` to run tests.
+
+Mock helpers use `as unknown as InterfaceType` because `Pick<SuiGrpcClient, ...>` preserves generic method signatures that concrete mocks can't satisfy directly:
+
+```ts
+function makeExecutor(overrides?: any): TransactionExecutor {
+  return {
+    signAndExecuteTransaction: mock(async () => successResult),
+    waitForTransaction: mock(async () => successResult),
+    ...overrides,
+  } as unknown as TransactionExecutor;
+}
+```
+
+Override parameters are typed `any` for the same reason — call-site override objects are not checked against the generic signatures.
+
+---
+
 Default to using Bun instead of Node.js.
 
 - Use `bun <file>` instead of `node <file>` or `ts-node <file>`
