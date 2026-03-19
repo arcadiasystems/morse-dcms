@@ -102,6 +102,7 @@ Create a `.env` file in `morse-cli/`:
 PRIVATE_KEY=<your-ed25519-private-key>
 PUBLICATION_ADDRESS=<deployed-package-address>
 ORIGINAL_PUBLICATION_ADDRESS=<original-package-id>
+SUI_RPC_URL=https://fullnode.testnet.sui.io:443
 ```
 
 **Commands:**
