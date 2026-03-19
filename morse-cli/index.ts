@@ -3,6 +3,7 @@
 import "dotenv/config";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Command } from "commander";
+import { addAssetCommands } from "./commands/asset.ts";
 import { addCollectionCommands } from "./commands/collection.ts";
 import { addEntryCommands } from "./commands/entry.ts";
 import { addPublicationCommands } from "./commands/publication.ts";
@@ -27,5 +28,6 @@ addPublicationCommands(pub, ctx);
 addCollectionCommands(pub, ctx);
 addEntryCommands(pub, ctx);
 addSingletonCommands(pub, ctx);
+addAssetCommands(pub, ctx);
 
 await program.parseAsync();

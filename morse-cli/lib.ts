@@ -452,6 +452,129 @@ export async function listSingletons(
 	}));
 }
 
+export async function addAsset(
+	client: CollectionManager,
+	signer: Ed25519Keypair,
+	publicationAddress: string,
+	publicationId: string,
+	name: string,
+	entryType: string,
+	blobId: string,
+): Promise<string> {
+	const publisherCapId = await resolvePublisherCap(
+		client,
+		signer,
+		publicationAddress,
+		publicationId,
+	);
+
+	const tx = new Transaction();
+	const asset = tx.moveCall({
+		target: `${publicationAddress}::entry::new_entry`,
+		arguments: [
+			tx.pure.string(name),
+			tx.pure.string(entryType),
+			tx.pure.id(blobId),
+		],
+	});
+	tx.moveCall({
+		target: `${publicationAddress}::publication::add_asset`,
+		arguments: [tx.object(publicationId), tx.object(publisherCapId), asset],
+	});
+
+	const result = await client.signAndExecuteTransaction({
+		signer,
+		transaction: tx,
+	});
+	if (result.$kind === "FailedTransaction") {
+		throw new Error(
+			`Transaction failed: ${result.FailedTransaction.status.error?.message}`,
+		);
+	}
+	const waitResult = await client.waitForTransaction({ result });
+	return waitResult.Transaction?.digest ?? "";
+}
+
+export async function deleteAsset(
+	client: CollectionManager,
+	signer: Ed25519Keypair,
+	publicationAddress: string,
+	publicationId: string,
+	name: string,
+): Promise<string> {
+	const publisherCapId = await resolvePublisherCap(
+		client,
+		signer,
+		publicationAddress,
+		publicationId,
+	);
+
+	const tx = new Transaction();
+	tx.moveCall({
+		target: `${publicationAddress}::publication::delete_asset`,
+		arguments: [
+			tx.object(publicationId),
+			tx.object(publisherCapId),
+			tx.pure.string(name),
+		],
+	});
+
+	const result = await client.signAndExecuteTransaction({
+		signer,
+		transaction: tx,
+	});
+	if (result.$kind === "FailedTransaction") {
+		throw new Error(
+			`Transaction failed: ${result.FailedTransaction.status.error?.message}`,
+		);
+	}
+	const waitResult = await client.waitForTransaction({ result });
+	return waitResult.Transaction?.digest ?? "";
+}
+
+export async function listAssets(
+	client: EntryFetcher,
+	publicationId: string,
+): Promise<Array<{ name: string; entryType: string; blob: string }>> {
+	const publication = await client.getObject({
+		objectId: publicationId,
+		include: { json: true },
+	});
+	const tableId = (
+		publication.object.json as { assets?: { id: string } } | undefined
+	)?.assets?.id;
+	if (!tableId) return [];
+
+	const { dynamicFields } = await client.listDynamicFields({
+		parentId: tableId,
+	});
+	if (dynamicFields.length === 0) return [];
+
+	const objects = await client.getObjects({
+		objectIds: dynamicFields.map((f) => f.fieldId),
+		include: { json: true },
+	});
+
+	return objects.objects
+		.filter((o) => !("$kind" in o))
+		.map((o) => {
+			const field = (
+				o as {
+					json?: {
+						name: string;
+						value?: { name: string; entry_type: string; blob: string };
+					};
+				}
+			).json;
+			return {
+				name: field?.name ?? "",
+				entryType: field?.value?.entry_type ?? "",
+				blob: field?.value?.blob ?? "",
+			};
+		})
+		.sort((a, b) => a.name.localeCompare(b.name));
+}
+
 export async function listEntries(
 	client: EntryFetcher,
 	publicationId: string,
