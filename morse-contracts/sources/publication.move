@@ -5,10 +5,11 @@ module publication::publication;
 
 use std::string::String;
 use sui::vec_map::{Self, VecMap};
+use sui::table::{Self, Table};
 use sui::event;
 
 use publication::collection::{Self, Collection};
-use publication::entry::Entry;
+use publication::entry::{Self, Entry};
 
 /// Root container for a publication's collections and singletons.
 /// Created as a shared object so both the owner and issued publishers can interact with it.
@@ -21,6 +22,7 @@ public struct Publication has key, store {
   name: String,
   collections: VecMap<String, Collection>,
   singletons: VecMap<String, Entry>,
+  assets: Table<String, Entry>,
 }
 
 /// Proves ownership of a publication.
@@ -48,6 +50,9 @@ const ESingletonAlreadyExists: u64 = 1;
 /// Error code: the capability does not belong to this publication.
 const EUnauthorized: u64 = 2;
 
+/// Error code: an asset with the given name already exists in the publication.
+const EAssetAlreadyExists: u64 = 3;
+
 /// Create a new publication.
 /// The publication is shared so publishers can interact with it.
 /// An OwnerCap and a PublisherCap are transferred to the caller.
@@ -66,11 +71,12 @@ public fun delete_publication(publication: Publication, owner_cap: OwnerCap) {
   let OwnerCap { id: cap_id, publication_id: _ } = owner_cap;
   cap_id.delete();
 
-  let Publication { id, name, collections, singletons } = publication;
+  let Publication { id, name, collections, singletons, assets } = publication;
   let publication_id = id.to_inner();
 
   collections.destroy_empty();
   singletons.destroy_empty();
+  assets.destroy_empty();
   id.delete();
 
   event::emit(PublicationDeleted { publication: publication_id, name });
@@ -173,6 +179,41 @@ public fun delete_entry_from_collection(
   collection::delete_entry(collection, index);
 }
 
+/// Add a static asset to the publication.
+/// Aborts with `EAssetAlreadyExists` if an asset with the same name already exists.
+public fun add_asset(publication: &mut Publication, cap: &PublisherCap, asset: Entry) {
+  assert!(cap.publication_id == object::id(publication), EUnauthorized);
+
+  let publication_id = object::id(publication);
+  let asset_name = entry::get_name(&asset);
+
+  assert!(!publication.assets.contains(asset_name), EAssetAlreadyExists);
+  publication.assets.add(asset_name, asset);
+
+  event::emit(AssetAdded { publication: publication_id, name: asset_name });
+}
+
+/// Remove and delete a static asset from the publication by name.
+/// Entry has drop trait, so it is automatically destroyed on removal.
+public fun delete_asset(publication: &mut Publication, cap: &PublisherCap, name: String) {
+  assert!(cap.publication_id == object::id(publication), EUnauthorized);
+
+  let publication_id = object::id(publication);
+  publication.assets.remove(name);
+
+  event::emit(AssetRemoved { publication: publication_id, name });
+}
+
+/// Return a reference to a static asset by name.
+public fun get_asset(publication: &Publication, name: String): &Entry {
+  publication.assets.borrow(name)
+}
+
+/// Return the number of static assets in the publication.
+public fun assets_length(publication: &Publication): u64 {
+  publication.assets.length()
+}
+
 // --- Events ---
 
 /// Event emitted when a new publication is created.
@@ -219,6 +260,18 @@ public struct SingletonRemoved has copy, drop {
   name: String,
 }
 
+/// Event emitted when a static asset is added to a publication.
+public struct AssetAdded has copy, drop {
+  publication: ID,
+  name: String,
+}
+
+/// Event emitted when a static asset is removed from a publication.
+public struct AssetRemoved has copy, drop {
+  publication: ID,
+  name: String,
+}
+
 // --- Internal helpers ---
 
 fun create_publication(ctx: &mut TxContext, name: String): (Publication, OwnerCap, PublisherCap) {
@@ -227,6 +280,7 @@ fun create_publication(ctx: &mut TxContext, name: String): (Publication, OwnerCa
     name,
     collections: vec_map::empty(),
     singletons: vec_map::empty(),
+    assets: table::new(ctx),
   };
 
   let owner_cap = OwnerCap { id: object::new(ctx), publication_id: object::id(&publication) };
