@@ -6,7 +6,7 @@ import type {
 	ObjectFetcher,
 	PublicationDeleter,
 	TransactionExecutor,
-} from "./lib.ts";
+} from "morse-sdk";
 import {
 	addCollection,
 	addEntry,
@@ -18,7 +18,7 @@ import {
 	getPublication,
 	listCollections,
 	listPublications,
-} from "./lib.ts";
+} from "morse-sdk";
 
 // --- shared helpers ---
 

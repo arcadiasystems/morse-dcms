@@ -1,11 +1,11 @@
 import type { Command } from "commander";
-import type { AppContext } from "../context.ts";
 import {
 	addSingleton,
 	deleteSingleton,
 	formatMist,
 	listSingletons,
-} from "../lib.ts";
+} from "morse-sdk";
+import type { AppContext } from "../context.ts";
 import { die } from "../utils/output.ts";
 import { readBlob, uploadBlob } from "../utils/walrus.ts";
 

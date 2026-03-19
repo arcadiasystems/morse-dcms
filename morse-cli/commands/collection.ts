@@ -1,6 +1,6 @@
 import type { Command } from "commander";
+import { addCollection, deleteCollection, listCollections } from "morse-sdk";
 import type { AppContext } from "../context.ts";
-import { addCollection, deleteCollection, listCollections } from "../lib.ts";
 import { die } from "../utils/output.ts";
 
 export function addCollectionCommands(pub: Command, ctx: AppContext): void {

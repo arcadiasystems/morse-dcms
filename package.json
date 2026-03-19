@@ -1,0 +1,5 @@
+{
+  "name": "morse",
+  "private": true,
+  "workspaces": ["morse-cli", "morse-sdk", "morse-indexer"]
+}

@@ -1,11 +1,11 @@
 import type { Command } from "commander";
-import type { AppContext } from "../context.ts";
 import {
 	createPublication,
 	deletePublication,
 	getPublication,
 	listPublications,
-} from "../lib.ts";
+} from "morse-sdk";
+import type { AppContext } from "../context.ts";
 import { die } from "../utils/output.ts";
 
 function vecMapKeys(v: unknown): string {
