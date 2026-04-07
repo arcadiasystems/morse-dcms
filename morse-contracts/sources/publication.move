@@ -173,16 +173,16 @@ public fun add_entry_to_collection(
   collection::add_entry(collection, entry);
 }
 
-/// Delete an entry by index from a named collection within the publication.
+/// Delete an entry by `entry_id` from a named collection within the publication.
 public fun delete_entry_from_collection(
   publication: &mut Publication,
   cap: &PublisherCap,
   collection_name: String,
-  index: u64,
+  entry_id: u64,
 ) {
   assert!(cap.publication_id == object::id(publication), EUnauthorized);
   let collection = publication.collections.get_mut(&collection_name);
-  collection::delete_entry(collection, index);
+  collection::delete_entry(collection, entry_id);
 }
 
 // --- Events ---
@@ -551,6 +551,58 @@ fun test_delete_entry_from_collection() {
   assert_eq!(collection::entries_length(publication.collections.get(&collection_name)), 0);
 
   unit_test::destroy(mock_blob);
+  unit_test::destroy(publication);
+  unit_test::destroy(owner_cap);
+  unit_test::destroy(publisher_cap);
+}
+
+#[test]
+fun test_delete_then_add_entry_to_collection_uses_monotonic_entry_id() {
+  use publication::collection::new_collection;
+  use publication::entry::new_entry;
+
+  let ctx = &mut tx_context::dummy();
+  let (mut publication, owner_cap, publisher_cap) = new_publication_for_testing(ctx, b"ArcSys Blog".to_string());
+
+  let collection_name = b"articles".to_string();
+  let collection = new_collection(object::id(&publication), collection_name, ctx);
+  publication.add_collection(&publisher_cap, collection);
+
+  let blob_0 = object::new(ctx);
+  let blob_1 = object::new(ctx);
+  let blob_2 = object::new(ctx);
+  let blob_3 = object::new(ctx);
+
+  publication.add_entry_to_collection(
+    &publisher_cap,
+    collection_name,
+    new_entry(b"a".to_string(), b"application/json".to_string(), blob_0.to_inner()),
+  );
+  publication.add_entry_to_collection(
+    &publisher_cap,
+    collection_name,
+    new_entry(b"b".to_string(), b"application/json".to_string(), blob_1.to_inner()),
+  );
+  publication.add_entry_to_collection(
+    &publisher_cap,
+    collection_name,
+    new_entry(b"c".to_string(), b"application/json".to_string(), blob_2.to_inner()),
+  );
+
+  publication.delete_entry_from_collection(&publisher_cap, collection_name, 1);
+
+  publication.add_entry_to_collection(
+    &publisher_cap,
+    collection_name,
+    new_entry(b"d".to_string(), b"application/json".to_string(), blob_3.to_inner()),
+  );
+
+  assert_eq!(collection::entries_length(publication.collections.get(&collection_name)), 3);
+
+  unit_test::destroy(blob_0);
+  unit_test::destroy(blob_1);
+  unit_test::destroy(blob_2);
+  unit_test::destroy(blob_3);
   unit_test::destroy(publication);
   unit_test::destroy(owner_cap);
   unit_test::destroy(publisher_cap);
