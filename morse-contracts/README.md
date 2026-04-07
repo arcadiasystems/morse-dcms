@@ -16,7 +16,7 @@ The contract uses a three-level content model:
 
 - `Publication` (shared object): root container for everything.
 - `Collection` (object): named group of entries keyed by stable IDs.
-- `Entry` (value): named pointer to a Walrus blob object ID plus MIME type (`content_type`).
+- `Entry` (value): named entry with immutable blob revisions and separate draft/public heads.
 
 Inside a publication:
 
@@ -34,7 +34,8 @@ Entry ID behavior:
 
 Entry semantics:
 
-- `Entry.blob` is a raw Walrus blob object `ID` reference (pointer model).
+- Revisions store raw Walrus blob object `ID` references (pointer model).
+- Entries maintain `draft_head` and `public_head` revision pointers.
 - Entry deletion removes only the on-chain reference; it does not automatically delete the blob.
 - `content_type` is MIME metadata; lowercase values are recommended for consistency but not enforced.
 
@@ -81,12 +82,21 @@ Singleton operations:
 
 - `add_singleton(publication, cap, entry, ctx)`
 - `delete_singleton(publication, cap, name, ctx)`
+- `append_singleton_draft_revision(publication, cap, name, content_type, blob, encrypted, ctx)` -> `revision_id`
+- `publish_singleton_from_draft(publication, cap, name, draft_revision_id, content_type, blob, ctx)` -> `revision_id`
+- `publish_singleton_direct(publication, cap, name, content_type, blob, ctx)` -> `revision_id`
 - `get_singleton(publication, name)`
 - `singletons_length(publication)`
 
+Revision operations for collection entries:
+
+- `append_collection_entry_draft_revision(publication, cap, collection_name, entry_id, content_type, blob, encrypted, ctx)` -> `revision_id`
+- `publish_collection_entry_from_draft(publication, cap, collection_name, entry_id, draft_revision_id, content_type, blob, ctx)` -> `revision_id`
+- `publish_collection_entry_direct(publication, cap, collection_name, entry_id, content_type, blob, ctx)` -> `revision_id`
+
 Construction helpers:
 
-- `entry::new_entry(name, content_type, blob)`
+- `entry::new_entry(name, content_type, blob, encrypted)`
 
 ## Abort codes
 
@@ -109,6 +119,7 @@ Defined in `publication::entry`:
 - `EContentTypeEmpty = 1`
 - `ENameTooLong = 2`
 - `EContentTypeTooLong = 3`
+- `ERevisionNotFound = 4`
 
 Invariants:
 

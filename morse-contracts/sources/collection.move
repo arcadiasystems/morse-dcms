@@ -56,6 +56,11 @@ public fun delete_entry(collection: &mut Collection, entry_id: u64) {
   collection.entries.remove(entry_id);
 }
 
+public(package) fun get_entry_mut(collection: &mut Collection, entry_id: u64): &mut Entry {
+  assert!(collection.entries.contains(entry_id), EEntryNotFound);
+  collection.entries.borrow_mut(entry_id)
+}
+
 /// Delete a collection.
 /// The entries table must be empty, or an error will be thrown.
 public fun delete_collection(collection: Collection) {
@@ -110,7 +115,7 @@ fun test_add_entry() {
   let name = b"First Blog Post".to_string();
   let content_type = b"application/json".to_string();
   let mock_blob = object::new(ctx);
-  let entry = new_entry(name, content_type, mock_blob.to_inner());
+  let entry = new_entry(name, content_type, mock_blob.to_inner(), false);
 
   // Add the entry to the collection
   let entry_id = collection.add_entry(entry);
@@ -142,7 +147,7 @@ fun test_delete_entry() {
   let name = b"First Blog Post".to_string();
   let content_type = b"application/json".to_string();
   let mock_blob = object::new(ctx);
-  let entry = new_entry(name, content_type, mock_blob.to_inner());
+  let entry = new_entry(name, content_type, mock_blob.to_inner(), false);
 
   // Add the entry to the collection
   let entry_id = collection.add_entry(entry);
@@ -174,13 +179,13 @@ fun test_delete_then_add_uses_monotonic_entry_id() {
   let blob_2 = object::new(ctx);
   let blob_3 = object::new(ctx);
 
-  let first_id = collection.add_entry(new_entry(b"a".to_string(), b"application/json".to_string(), blob_0.to_inner()));
-  let second_id = collection.add_entry(new_entry(b"b".to_string(), b"application/json".to_string(), blob_1.to_inner()));
-  let third_id = collection.add_entry(new_entry(b"c".to_string(), b"application/json".to_string(), blob_2.to_inner()));
+  let first_id = collection.add_entry(new_entry(b"a".to_string(), b"application/json".to_string(), blob_0.to_inner(), false));
+  let second_id = collection.add_entry(new_entry(b"b".to_string(), b"application/json".to_string(), blob_1.to_inner(), false));
+  let third_id = collection.add_entry(new_entry(b"c".to_string(), b"application/json".to_string(), blob_2.to_inner(), false));
 
   collection.delete_entry(second_id);
 
-  let fourth_id = collection.add_entry(new_entry(b"d".to_string(), b"application/json".to_string(), blob_3.to_inner()));
+  let fourth_id = collection.add_entry(new_entry(b"d".to_string(), b"application/json".to_string(), blob_3.to_inner(), false));
 
   assert_eq!(collection.entries.length(), 3);
   assert_eq!(first_id, 0);

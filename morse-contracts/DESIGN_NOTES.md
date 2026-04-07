@@ -29,6 +29,8 @@ The current `publication` module already has:
 - owner-driven publisher-cap revocation via active-cap registry on `Publication`
 - entry input validation in `new_entry` (non-empty fields, `name <= 256`, `content_type <= 255`)
 - `content_type` lowercase MIME is advisory only (not enforced)
+- entries use immutable revisions with `draft_head` and `public_head`
+- each revision stores `{ blob, content_type, encrypted }`
 
 Reference: `morse-contracts/sources/publication.move`
 
@@ -146,6 +148,38 @@ Note: this is a design decision only; code has not been updated yet.
 Rationale:
 
 - The contract only has blob IDs today, not blob ownership/capability handles, so direct in-contract deletion is not guaranteed to be possible/safe.
+
+## Entry revision model (implemented)
+
+Entries now use immutable revisions with separate draft/public heads.
+
+### Core model
+
+- `Entry` stores:
+  - `revisions` (append-only sequence of `{ blob, content_type, encrypted }`)
+  - `draft_head: Option<u64>`
+  - `public_head: Option<u64>`
+- `new_entry(name, content_type, blob, encrypted)` seeds revision `0` and initializes heads based on encryption mode.
+
+### Invariants
+
+- Revisions are append-only; existing revisions are not mutated in place.
+- `public_head` is only moved by publish operations that append `encrypted = false` revisions.
+- `draft_head` can diverge from `public_head` and continue moving after publish.
+- Deleting an entry removes only on-chain references; blob lifecycle remains separate (see blob GC section above).
+
+### Lifecycle supported
+
+- Create encrypted draft revision.
+- Append additional encrypted draft revisions while collaborating.
+- Publish by appending a non-encrypted public revision.
+- Continue drafting privately after publish.
+- Re-publish from draft by appending another non-encrypted public revision.
+
+### Surface-area impact
+
+- Breaking API change: `entry::new_entry` now requires `encrypted`.
+- New publication-level revision operations exist for both singleton entries and collection entries.
 
 ## Planned (not implemented yet)
 

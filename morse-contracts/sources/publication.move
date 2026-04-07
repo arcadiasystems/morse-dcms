@@ -9,7 +9,7 @@ use sui::table::{Self, Table};
 use sui::event;
 
 use publication::collection::{Self, Collection};
-use publication::entry::Entry;
+use publication::entry::{Self, Entry};
 
 /// Root container for a publication's collections and singletons.
 /// Created as a shared object so both the owner and issued publishers can interact with it.
@@ -211,6 +211,50 @@ public fun get_singleton(publication: &Publication, name: String): &Entry {
   publication.singletons.borrow(name)
 }
 
+/// Append a draft revision to an existing singleton entry.
+public fun append_singleton_draft_revision(
+  publication: &mut Publication,
+  cap: &PublisherCap,
+  name: String,
+  content_type: String,
+  blob: ID,
+  encrypted: bool,
+  ctx: &TxContext,
+): u64 {
+  assert_active_publisher_cap(publication, cap, ctx);
+  let entry_ref = publication.singletons.borrow_mut(name);
+  entry::append_draft_revision(entry_ref, content_type, blob, encrypted)
+}
+
+/// Publish a singleton from an existing draft revision.
+public fun publish_singleton_from_draft(
+  publication: &mut Publication,
+  cap: &PublisherCap,
+  name: String,
+  draft_revision_id: u64,
+  content_type: String,
+  blob: ID,
+  ctx: &TxContext,
+): u64 {
+  assert_active_publisher_cap(publication, cap, ctx);
+  let entry_ref = publication.singletons.borrow_mut(name);
+  entry::publish_from_draft(entry_ref, draft_revision_id, content_type, blob)
+}
+
+/// Publish a singleton directly (non-encrypted public revision).
+public fun publish_singleton_direct(
+  publication: &mut Publication,
+  cap: &PublisherCap,
+  name: String,
+  content_type: String,
+  blob: ID,
+  ctx: &TxContext,
+): u64 {
+  assert_active_publisher_cap(publication, cap, ctx);
+  let entry_ref = publication.singletons.borrow_mut(name);
+  entry::publish_direct(entry_ref, content_type, blob)
+}
+
 /// Return the number of singletons in the publication.
 public fun singletons_length(publication: &Publication): u64 {
   publication.singletons.length()
@@ -240,6 +284,56 @@ public fun delete_entry_from_collection(
   assert_active_publisher_cap(publication, cap, ctx);
   let collection = publication.collections.get_mut(&collection_name);
   collection::delete_entry(collection, entry_id);
+}
+
+/// Append a draft revision to an existing collection entry.
+public fun append_collection_entry_draft_revision(
+  publication: &mut Publication,
+  cap: &PublisherCap,
+  collection_name: String,
+  entry_id: u64,
+  content_type: String,
+  blob: ID,
+  encrypted: bool,
+  ctx: &TxContext,
+): u64 {
+  assert_active_publisher_cap(publication, cap, ctx);
+  let collection = publication.collections.get_mut(&collection_name);
+  let entry_ref = collection::get_entry_mut(collection, entry_id);
+  entry::append_draft_revision(entry_ref, content_type, blob, encrypted)
+}
+
+/// Publish an existing collection entry from a draft revision.
+public fun publish_collection_entry_from_draft(
+  publication: &mut Publication,
+  cap: &PublisherCap,
+  collection_name: String,
+  entry_id: u64,
+  draft_revision_id: u64,
+  content_type: String,
+  blob: ID,
+  ctx: &TxContext,
+): u64 {
+  assert_active_publisher_cap(publication, cap, ctx);
+  let collection = publication.collections.get_mut(&collection_name);
+  let entry_ref = collection::get_entry_mut(collection, entry_id);
+  entry::publish_from_draft(entry_ref, draft_revision_id, content_type, blob)
+}
+
+/// Publish an existing collection entry directly (non-encrypted public revision).
+public fun publish_collection_entry_direct(
+  publication: &mut Publication,
+  cap: &PublisherCap,
+  collection_name: String,
+  entry_id: u64,
+  content_type: String,
+  blob: ID,
+  ctx: &TxContext,
+): u64 {
+  assert_active_publisher_cap(publication, cap, ctx);
+  let collection = publication.collections.get_mut(&collection_name);
+  let entry_ref = collection::get_entry_mut(collection, entry_id);
+  entry::publish_direct(entry_ref, content_type, blob)
 }
 
 // --- Events ---
@@ -663,7 +757,7 @@ fun test_add_singleton() {
   let (mut publication, owner_cap, publisher_cap) = new_publication_for_testing(ctx, b"ArcSys Blog".to_string());
 
   let mock_blob = object::new(ctx);
-  let entry = new_entry(b"cover".to_string(), b"image/png".to_string(), mock_blob.to_inner());
+  let entry = new_entry(b"cover".to_string(), b"image/png".to_string(), mock_blob.to_inner(), false);
 
   publication.add_singleton(&publisher_cap, entry, ctx);
 
@@ -686,8 +780,8 @@ fun test_add_duplicate_singleton() {
 
   let mock_blob_1 = object::new(ctx);
   let mock_blob_2 = object::new(ctx);
-  let entry = new_entry(b"cover".to_string(), b"image/png".to_string(), mock_blob_1.to_inner());
-  let duplicate = new_entry(b"cover".to_string(), b"image/png".to_string(), mock_blob_2.to_inner());
+  let entry = new_entry(b"cover".to_string(), b"image/png".to_string(), mock_blob_1.to_inner(), false);
+  let duplicate = new_entry(b"cover".to_string(), b"image/png".to_string(), mock_blob_2.to_inner(), false);
 
   publication.add_singleton(&publisher_cap, entry, ctx);
   publication.add_singleton(&publisher_cap, duplicate, ctx);
@@ -707,7 +801,7 @@ fun test_delete_singleton() {
   let (mut publication, owner_cap, publisher_cap) = new_publication_for_testing(ctx, b"ArcSys Blog".to_string());
 
   let mock_blob = object::new(ctx);
-  let entry = new_entry(b"cover".to_string(), b"image/png".to_string(), mock_blob.to_inner());
+  let entry = new_entry(b"cover".to_string(), b"image/png".to_string(), mock_blob.to_inner(), false);
 
   publication.add_singleton(&publisher_cap, entry, ctx);
   assert_eq!(singletons_length(&publication), 1);
@@ -730,7 +824,7 @@ fun test_get_singleton() {
 
   let mock_blob = object::new(ctx);
   let blob_id = mock_blob.to_inner();
-  let entry = new_entry(b"cover".to_string(), b"image/png".to_string(), blob_id);
+  let entry = new_entry(b"cover".to_string(), b"image/png".to_string(), blob_id, false);
 
   publication.add_singleton(&publisher_cap, entry, ctx);
 
@@ -756,7 +850,7 @@ fun test_add_entry_to_collection() {
   publication.add_collection(&publisher_cap, collection, ctx);
 
   let mock_blob = object::new(ctx);
-  let entry = new_entry(b"First Post".to_string(), b"application/json".to_string(), mock_blob.to_inner());
+  let entry = new_entry(b"First Post".to_string(), b"application/json".to_string(), mock_blob.to_inner(), false);
   let entry_id = publication.add_entry_to_collection(&publisher_cap, collection_name, entry, ctx);
 
   assert_eq!(entry_id, 0);
@@ -781,7 +875,7 @@ fun test_delete_entry_from_collection() {
   publication.add_collection(&publisher_cap, collection, ctx);
 
   let mock_blob = object::new(ctx);
-  let entry = new_entry(b"First Post".to_string(), b"application/json".to_string(), mock_blob.to_inner());
+  let entry = new_entry(b"First Post".to_string(), b"application/json".to_string(), mock_blob.to_inner(), false);
   let entry_id = publication.add_entry_to_collection(&publisher_cap, collection_name, entry, ctx);
 
   publication.delete_entry_from_collection(&publisher_cap, collection_name, entry_id, ctx);
@@ -814,19 +908,19 @@ fun test_delete_then_add_entry_to_collection_uses_monotonic_entry_id() {
   let first_id = publication.add_entry_to_collection(
     &publisher_cap,
     collection_name,
-    new_entry(b"a".to_string(), b"application/json".to_string(), blob_0.to_inner()),
+    new_entry(b"a".to_string(), b"application/json".to_string(), blob_0.to_inner(), false),
     ctx,
   );
   let second_id = publication.add_entry_to_collection(
     &publisher_cap,
     collection_name,
-    new_entry(b"b".to_string(), b"application/json".to_string(), blob_1.to_inner()),
+    new_entry(b"b".to_string(), b"application/json".to_string(), blob_1.to_inner(), false),
     ctx,
   );
   let third_id = publication.add_entry_to_collection(
     &publisher_cap,
     collection_name,
-    new_entry(b"c".to_string(), b"application/json".to_string(), blob_2.to_inner()),
+    new_entry(b"c".to_string(), b"application/json".to_string(), blob_2.to_inner(), false),
     ctx,
   );
 
@@ -835,7 +929,7 @@ fun test_delete_then_add_entry_to_collection_uses_monotonic_entry_id() {
   let fourth_id = publication.add_entry_to_collection(
     &publisher_cap,
     collection_name,
-    new_entry(b"d".to_string(), b"application/json".to_string(), blob_3.to_inner()),
+    new_entry(b"d".to_string(), b"application/json".to_string(), blob_3.to_inner(), false),
     ctx,
   );
 
@@ -849,6 +943,108 @@ fun test_delete_then_add_entry_to_collection_uses_monotonic_entry_id() {
   unit_test::destroy(blob_1);
   unit_test::destroy(blob_2);
   unit_test::destroy(blob_3);
+  unit_test::destroy(publication);
+  unit_test::destroy(owner_cap);
+  unit_test::destroy(publisher_cap);
+}
+
+#[test]
+fun test_singleton_draft_and_publish_heads() {
+  use publication::entry::new_entry;
+
+  let ctx = &mut tx_context::dummy();
+  let (mut publication, owner_cap, publisher_cap) = new_publication_for_testing(ctx, b"ArcSys Blog".to_string());
+
+  let blob_0 = object::new(ctx);
+  let blob_1 = object::new(ctx);
+  let blob_2 = object::new(ctx);
+
+  let entry = new_entry(b"cover".to_string(), b"application/json".to_string(), blob_0.to_inner(), true);
+  publication.add_singleton(&publisher_cap, entry, ctx);
+
+  let draft_rev = publication.append_singleton_draft_revision(
+    &publisher_cap,
+    b"cover".to_string(),
+    b"application/json".to_string(),
+    blob_1.to_inner(),
+    true,
+    ctx,
+  );
+
+  let public_rev = publication.publish_singleton_from_draft(
+    &publisher_cap,
+    b"cover".to_string(),
+    draft_rev,
+    b"application/json".to_string(),
+    blob_2.to_inner(),
+    ctx,
+  );
+
+  let singleton = publication.get_singleton(b"cover".to_string());
+  assert_eq!(entry::get_draft_head(singleton), option::some(draft_rev));
+  assert_eq!(entry::get_public_head(singleton), option::some(public_rev));
+  assert_eq!(entry::get_encrypted(singleton), false);
+
+  unit_test::destroy(blob_0);
+  unit_test::destroy(blob_1);
+  unit_test::destroy(blob_2);
+  unit_test::destroy(publication);
+  unit_test::destroy(owner_cap);
+  unit_test::destroy(publisher_cap);
+}
+
+#[test]
+fun test_collection_entry_draft_and_publish_heads() {
+  use publication::collection::new_collection;
+  use publication::entry::new_entry;
+
+  let ctx = &mut tx_context::dummy();
+  let (mut publication, owner_cap, publisher_cap) = new_publication_for_testing(ctx, b"ArcSys Blog".to_string());
+
+  let collection_name = b"articles".to_string();
+  let collection = new_collection(object::id(&publication), collection_name, ctx);
+  publication.add_collection(&publisher_cap, collection, ctx);
+
+  let blob_0 = object::new(ctx);
+  let blob_1 = object::new(ctx);
+  let blob_2 = object::new(ctx);
+
+  let entry_id = publication.add_entry_to_collection(
+    &publisher_cap,
+    collection_name,
+    new_entry(b"draft".to_string(), b"application/json".to_string(), blob_0.to_inner(), true),
+    ctx,
+  );
+
+  let draft_rev = publication.append_collection_entry_draft_revision(
+    &publisher_cap,
+    collection_name,
+    entry_id,
+    b"application/json".to_string(),
+    blob_1.to_inner(),
+    true,
+    ctx,
+  );
+
+  let public_rev = publication.publish_collection_entry_from_draft(
+    &publisher_cap,
+    collection_name,
+    entry_id,
+    draft_rev,
+    b"application/json".to_string(),
+    blob_2.to_inner(),
+    ctx,
+  );
+
+  let collection = publication.collections.get_mut(&collection_name);
+  let entry_ref = collection::get_entry_mut(collection, entry_id);
+  assert_eq!(entry::get_draft_head(entry_ref), option::some(draft_rev));
+  assert_eq!(entry::get_public_head(entry_ref), option::some(public_rev));
+  assert_eq!(entry::get_encrypted(entry_ref), false);
+
+  unit_test::destroy(blob_0);
+  unit_test::destroy(blob_1);
+  unit_test::destroy(blob_2);
   unit_test::destroy(publication);
   unit_test::destroy(owner_cap);
   unit_test::destroy(publisher_cap);
