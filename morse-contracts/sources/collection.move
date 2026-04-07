@@ -30,6 +30,10 @@ public fun get_name(collection: &Collection): String {
   collection.name
 }
 
+public fun get_publication_id(collection: &Collection): ID {
+  collection.publication_id
+}
+
 public fun entries_length(collection: &Collection): u64 {
   collection.entries.length()
 }

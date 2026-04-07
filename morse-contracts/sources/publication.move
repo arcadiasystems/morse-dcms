@@ -50,6 +50,9 @@ const ESingletonAlreadyExists: u64 = 1;
 /// Error code: the capability does not belong to this publication.
 const EUnauthorized: u64 = 2;
 
+/// Error code: the collection was created for a different publication.
+const ECollectionPublicationMismatch: u64 = 3;
+
 /// Create a new publication.
 /// The publication is shared so publishers can interact with it.
 /// An OwnerCap and a PublisherCap are transferred to the caller.
@@ -99,11 +102,13 @@ public fun destroy_publisher_cap(cap: PublisherCap) {
 
 /// Add a new collection to the publication.
 /// Aborts with `ECollectionAlreadyExists` if a collection with the same name already exists.
+/// Aborts with `ECollectionPublicationMismatch` if `collection.publication_id` does not match.
 public fun add_collection(publication: &mut Publication, cap: &PublisherCap, collection: Collection) {
   assert!(cap.publication_id == object::id(publication), EUnauthorized);
 
   let publication_id = object::id(publication);
   let collection_id = object::id(&collection);
+  assert!(collection::get_publication_id(&collection) == publication_id, ECollectionPublicationMismatch);
   let collection_name = collection.get_name();
 
   assert!(!publication.collections.contains(&collection_name), ECollectionAlreadyExists);
@@ -414,6 +419,28 @@ fun test_unauthorized_add_collection() {
   unit_test::destroy(owner_cap);
   unit_test::destroy(publisher_cap);
   unit_test::destroy(other_pub);
+  unit_test::destroy(other_owner_cap);
+  unit_test::destroy(other_publisher_cap);
+}
+
+#[test]
+#[expected_failure(abort_code = ECollectionPublicationMismatch)]
+fun test_add_collection_with_mismatched_publication_id() {
+  use publication::collection::new_collection;
+
+  let ctx = &mut tx_context::dummy();
+  let (mut publication, owner_cap, publisher_cap) = new_publication_for_testing(ctx, b"ArcSys Blog".to_string());
+  let (other_publication, other_owner_cap, other_publisher_cap) =
+    new_publication_for_testing(ctx, b"Other".to_string());
+
+  let collection = new_collection(object::id(&other_publication), b"articles".to_string(), ctx);
+
+  publication.add_collection(&publisher_cap, collection);
+
+  unit_test::destroy(publication);
+  unit_test::destroy(owner_cap);
+  unit_test::destroy(publisher_cap);
+  unit_test::destroy(other_publication);
   unit_test::destroy(other_owner_cap);
   unit_test::destroy(other_publisher_cap);
 }
