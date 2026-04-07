@@ -20,8 +20,14 @@ The contract uses a three-level content model:
 
 Inside a publication:
 
+- `slug`: immutable, user-provided URL slug.
 - `collections`: `VecMap<String, Collection>` for a small number of named collections.
 - `singletons`: `Table<String, Entry>` for one-off named entries and assets (for example, cover metadata or logo image).
+
+Global slug registry:
+
+- `PublicationRegistry` stores `slug -> publication_id` mappings.
+- Publication creation is factory-gated through the registry.
 
 Inside a collection:
 
@@ -63,12 +69,14 @@ Why holder binding exists:
 
 Core publication operations:
 
-- `new_publication(ctx, name)`
-- `delete_publication(publication, owner_cap)`
+- `new_publication(registry, ctx, name, slug)`
+- `delete_publication(registry, publication, owner_cap)`
 - `issue_publisher_cap(publication, owner_cap, holder, ctx)`
 - `revoke_publisher_cap(publication, owner_cap, cap_id)`
 - `destroy_publisher_cap(publication, cap, ctx)`
 - `transfer_owner_cap(owner_cap, recipient)`
+- `contains_slug(registry, slug)`
+- `get_publication_id_by_slug(registry, slug)`
 
 Collection and entry operations:
 
@@ -108,6 +116,11 @@ Defined in `publication::publication`:
 - `ECollectionPublicationMismatch = 3`
 - `EPublisherCapWrongHolder = 4`
 - `EPublisherCapNotActive = 5`
+- `ESlugAlreadyExists = 6`
+- `ESlugEmpty = 7`
+- `ESlugTooLong = 8`
+- `ESlugInvalidChar = 9`
+- `ESlugInvalidEdgeHyphen = 10`
 
 Defined in `publication::collection`:
 
@@ -127,6 +140,18 @@ Invariants:
 - Publisher write operations require the sender to be the cap's bound `holder`.
 - Publisher write operations require the cap ID to be active in the publication's `active_publisher_caps` table.
 - Collection creation is exposed via `publication::create_collection`; `collection::new_collection` is package-only.
+- Slugs are unique while active in `PublicationRegistry` and immutable once publication is created.
+
+Slug rules:
+
+- Non-empty, max length `64`.
+- Allowed characters: lowercase `a-z`, digits `0-9`, and `-`.
+- Slugs cannot start or end with `-`.
+
+Security note (slug reuse policy):
+
+- Slugs are intentionally reusable after publication deletion.
+- This increases flexibility, but introduces impersonation/squatting risk for previously known slugs.
 
 Collection behavior:
 

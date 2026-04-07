@@ -31,6 +31,9 @@ The current `publication` module already has:
 - `content_type` lowercase MIME is advisory only (not enforced)
 - entries use immutable revisions with `draft_head` and `public_head`
 - each revision stores `{ blob, content_type, encrypted }`
+- publications have immutable slugs
+- publication creation is factory-gated through shared `PublicationRegistry` (`slug -> publication_id`)
+- slugs are released on delete and reusable afterward
 
 Reference: `morse-contracts/sources/publication.move`
 
@@ -62,6 +65,7 @@ We want each publication to have a user-provided slug (for example `my-personal-
 - Slugs are immutable after publication creation.
 - Use classic registry mapping for uniqueness (`slug -> publication_id`).
 - Keep publication creation behind registry/factory entrypoints.
+- Slugs are reusable after publication deletion.
 
 Rationale:
 
@@ -73,6 +77,18 @@ Rationale:
 - Keep low-level publication constructor internal/private.
 - Expose public creation only through `Registry` entrypoints that perform uniqueness checks.
 - This enforces canonical Morse publications inside this package (while acknowledging other packages can exist).
+
+### Implementation status
+
+- Implemented: `Publication.slug` added and immutable after creation.
+- Implemented: `PublicationRegistry` shared object stores active `slug -> publication_id` mappings.
+- Implemented: public creation path is factory-gated through registry.
+- Implemented: delete releases slug mapping so the slug can be reused.
+
+Security note:
+
+- Reusable slugs improve flexibility, but introduce squatting/impersonation risk for previously known slugs.
+- Mitigation is currently social/off-chain (UI warnings and reputation checks); no on-chain grace/reservation period yet.
 
 ## Slug mutability tradeoff (for decentralized headless CMS)
 
@@ -181,14 +197,48 @@ Entries now use immutable revisions with separate draft/public heads.
 - Breaking API change: `entry::new_entry` now requires `encrypted`.
 - New publication-level revision operations exist for both singleton entries and collection entries.
 
+## Collection publish design (planned, not implemented)
+
+We will use a client-driven publish flow with optimistic concurrency checks.
+
+### Decision (chosen)
+
+- Draft updates are stored as normal (non-Quilt) entry revisions for fast, one-by-one UI edits.
+- Collection publish to public/non-encrypted mode uses Quilt-backed storage pointers.
+- No background/off-chain worker orchestration for this phase.
+- No sharding for this phase.
+
+### Proposed flow
+
+1. Client reads current collection draft heads from chain.
+2. Client computes deterministic `expected_heads_hash` from draft heads.
+3. Client uploads publish payload blobs to Quilt.
+4. Client calls one on-chain finalize-style function with:
+   - `expected_heads_hash`
+   - publish payload (entry mapping to Quilt pointers)
+
+### Concurrency model
+
+- Contract recomputes current heads hash and compares with `expected_heads_hash`.
+- If drafts changed since client snapshot, publish aborts with conflict error.
+- This prevents publishing stale snapshots without requiring `start_publish` / `publish_session_id`.
+
+### Constraints and notes
+
+- Publish is single-call for now (no shard/session protocol yet).
+- Public revisions created by publish must be `encrypted = false`.
+- Add payload size guardrails to keep publish txs practical.
+
+Status: Not implemented yet.
+
 ## Planned (not implemented yet)
 
-- [ ] Add `slug` field to `Publication`.
-- [ ] Add shared `PublicationRegistry` object.
-- [ ] Route publication creation through registry/factory only.
-- [ ] Add slug validation rules (format, length, normalization expectations).
-- [ ] Add events for slug lifecycle (`SlugRegistered`).
-- [ ] Add tests for duplicate slug race behavior and authorization.
+- [x] Add `slug` field to `Publication`.
+- [x] Add shared `PublicationRegistry` object.
+- [x] Route publication creation through registry/factory only.
+- [x] Add slug validation rules (format, length, normalization expectations).
+- [x] Add events for slug lifecycle (`SlugRegistered`).
+- [x] Add tests for duplicate slug behavior and authorization.
 - [ ] Add owner-cap transfer flow.
 - [ ] Restrict publisher assignment to owner-only entrypoints.
 - [ ] Add tests for owner transfer and post-transfer admin assignment permissions.

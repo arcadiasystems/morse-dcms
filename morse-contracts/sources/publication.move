@@ -4,6 +4,7 @@
 module publication::publication;
 
 use std::string::String;
+use std::string;
 use sui::vec_map::{Self, VecMap};
 use sui::table::{Self, Table};
 use sui::event;
@@ -20,10 +21,16 @@ use publication::entry::{Self, Entry};
 public struct Publication has key, store {
   id: UID,
   name: String,
-  // TODO: Should I add a 'slug' property? How do we guarantee slug uniqueness?
+  slug: String,
   collections: VecMap<String, Collection>,
   singletons: Table<String, Entry>,
   active_publisher_caps: Table<ID, address>,
+}
+
+/// Shared slug registry and canonical factory for publications.
+public struct PublicationRegistry has key {
+  id: UID,
+  slugs: Table<String, ID>,
 }
 
 /// Proves ownership of a publication.
@@ -61,11 +68,44 @@ const EPublisherCapWrongHolder: u64 = 4;
 /// Error code: the publisher capability is not active.
 const EPublisherCapNotActive: u64 = 5;
 
+/// Error code: a publication with the given slug already exists.
+const ESlugAlreadyExists: u64 = 6;
+
+/// Error code: slug is empty.
+const ESlugEmpty: u64 = 7;
+
+/// Error code: slug exceeds max length.
+const ESlugTooLong: u64 = 8;
+
+/// Error code: slug contains invalid characters.
+const ESlugInvalidChar: u64 = 9;
+
+/// Error code: slug starts or ends with a hyphen.
+const ESlugInvalidEdgeHyphen: u64 = 10;
+
+/// Maximum allowed slug length.
+const MAX_SLUG_LENGTH: u64 = 64;
+
+/// Package initializer: create and share a single publication registry.
+fun init(ctx: &mut TxContext) {
+  transfer::share_object(PublicationRegistry {
+    id: object::new(ctx),
+    slugs: table::new(ctx),
+  });
+}
+
 /// Create a new publication.
 /// The publication is shared so publishers can interact with it.
 /// An OwnerCap and a PublisherCap are transferred to the caller.
-public fun new_publication(ctx: &mut TxContext, name: String) {
-  let (publication, owner_cap, publisher_cap) = create_publication(ctx, name);
+public fun new_publication(registry: &mut PublicationRegistry, ctx: &mut TxContext, name: String, slug: String) {
+  validate_slug(&slug);
+  assert!(!registry.slugs.contains(slug), ESlugAlreadyExists);
+
+  let (publication, owner_cap, publisher_cap) = create_publication(ctx, name, slug);
+  let publication_id = object::id(&publication);
+  registry.slugs.add(slug, publication_id);
+
+  event::emit(SlugRegistered { slug, publication: publication_id });
   transfer::share_object(publication);
   transfer::transfer(owner_cap, ctx.sender());
   transfer::transfer(publisher_cap, ctx.sender());
@@ -73,14 +113,17 @@ public fun new_publication(ctx: &mut TxContext, name: String) {
 
 /// Delete a publication. Requires the OwnerCap; both are consumed.
 /// All collections and singletons must be removed first, or this will abort.
-public fun delete_publication(publication: Publication, owner_cap: OwnerCap) {
+public fun delete_publication(registry: &mut PublicationRegistry, publication: Publication, owner_cap: OwnerCap) {
   assert!(owner_cap.publication_id == object::id(&publication), EUnauthorized);
 
   let OwnerCap { id: cap_id, publication_id: _ } = owner_cap;
   cap_id.delete();
 
-  let Publication { id, name, collections, singletons, active_publisher_caps } = publication;
+  let Publication { id, name, slug, collections, singletons, active_publisher_caps } = publication;
   let publication_id = id.to_inner();
+
+  registry.slugs.remove(slug);
+  event::emit(SlugReleased { slug, publication: publication_id });
 
   collections.destroy_empty();
   singletons.destroy_empty();
@@ -88,6 +131,16 @@ public fun delete_publication(publication: Publication, owner_cap: OwnerCap) {
   id.delete();
 
   event::emit(PublicationDeleted { publication: publication_id, name });
+}
+
+/// Returns whether a slug is registered.
+public fun contains_slug(registry: &PublicationRegistry, slug: String): bool {
+  registry.slugs.contains(slug)
+}
+
+/// Return the publication ID for a slug.
+public fun get_publication_id_by_slug(registry: &PublicationRegistry, slug: String): &ID {
+  registry.slugs.borrow(slug)
 }
 
 /// Issue a new PublisherCap for this publication. Only callable by the owner.
@@ -342,6 +395,7 @@ public fun publish_collection_entry_direct(
 public struct PublicationCreated has copy, drop {
   publication: ID,
   name: String,
+  slug: String,
 }
 
 /// Event emitted when a publication is deleted.
@@ -360,6 +414,18 @@ public struct PublisherCapIssued has copy, drop {
 public struct PublisherCapRevoked has copy, drop {
   publication: ID,
   cap: ID,
+}
+
+/// Event emitted when a slug is registered.
+public struct SlugRegistered has copy, drop {
+  slug: String,
+  publication: ID,
+}
+
+/// Event emitted when a slug is released by publication deletion.
+public struct SlugReleased has copy, drop {
+  slug: String,
+  publication: ID,
 }
 
 /// Event emitted when a new collection is added to a publication.
@@ -396,10 +462,30 @@ fun assert_active_publisher_cap(publication: &Publication, cap: &PublisherCap, c
   assert!(publication.active_publisher_caps.contains(object::id(cap)), EPublisherCapNotActive);
 }
 
-fun create_publication(ctx: &mut TxContext, name: String): (Publication, OwnerCap, PublisherCap) {
+fun validate_slug(slug: &String) {
+  assert!(!slug.is_empty(), ESlugEmpty);
+  assert!(slug.length() <= MAX_SLUG_LENGTH, ESlugTooLong);
+
+  let bytes = string::as_bytes(slug);
+  assert!(*vector::borrow(bytes, 0) != 45, ESlugInvalidEdgeHyphen);
+  assert!(*vector::borrow(bytes, slug.length() - 1) != 45, ESlugInvalidEdgeHyphen);
+
+  let mut i = 0;
+  while (i < slug.length()) {
+    let b = *vector::borrow(bytes, i);
+    let is_lower = b >= 97 && b <= 122;
+    let is_digit = b >= 48 && b <= 57;
+    let is_hyphen = b == 45;
+    assert!(is_lower || is_digit || is_hyphen, ESlugInvalidChar);
+    i = i + 1;
+  };
+}
+
+fun create_publication(ctx: &mut TxContext, name: String, slug: String): (Publication, OwnerCap, PublisherCap) {
   let mut publication = Publication {
     id: object::new(ctx),
     name,
+    slug,
     collections: vec_map::empty(),
     singletons: table::new(ctx),
     active_publisher_caps: table::new(ctx),
@@ -414,7 +500,7 @@ fun create_publication(ctx: &mut TxContext, name: String): (Publication, OwnerCa
 
   publication.active_publisher_caps.add(object::id(&publisher_cap), publisher_cap.holder);
 
-  event::emit(PublicationCreated { publication: object::id(&publication), name });
+  event::emit(PublicationCreated { publication: object::id(&publication), name, slug });
 
   (publication, owner_cap, publisher_cap)
 }
@@ -430,7 +516,29 @@ use std::unit_test::assert_eq;
 /// Test helper: creates a publication without sharing/transferring, so tests can hold all objects directly.
 #[test_only]
 public fun new_publication_for_testing(ctx: &mut TxContext, name: String): (Publication, OwnerCap, PublisherCap) {
-  create_publication(ctx, name)
+  create_publication(ctx, name, b"test-slug".to_string())
+}
+
+#[test_only]
+fun new_registry_for_testing(ctx: &mut TxContext): PublicationRegistry {
+  PublicationRegistry {
+    id: object::new(ctx),
+    slugs: table::new(ctx),
+  }
+}
+
+#[test_only]
+fun new_publication_with_registry_for_testing(
+  registry: &mut PublicationRegistry,
+  ctx: &mut TxContext,
+  name: String,
+  slug: String,
+): (Publication, OwnerCap, PublisherCap) {
+  validate_slug(&slug);
+  assert!(!registry.slugs.contains(slug), ESlugAlreadyExists);
+  let (publication, owner_cap, publisher_cap) = create_publication(ctx, name, slug);
+  registry.slugs.add(slug, object::id(&publication));
+  (publication, owner_cap, publisher_cap)
 }
 
 #[test]
@@ -441,6 +549,7 @@ fun test_new_publication() {
   let (publication, owner_cap, publisher_cap) = new_publication_for_testing(ctx, publication_name);
 
   assert_eq!(publication.name, publication_name);
+  assert_eq!(publication.slug, b"test-slug".to_string());
   assert_eq!(owner_cap.publication_id, object::id(&publication));
   assert_eq!(publisher_cap.publication_id, object::id(&publication));
   assert_eq!(publisher_cap.holder, ctx.sender());
@@ -451,12 +560,113 @@ fun test_new_publication() {
 }
 
 #[test]
-fun test_delete_publication() {
+fun test_slug_registry_lookup() {
   let ctx = &mut tx_context::dummy();
-  let (mut publication, owner_cap, publisher_cap) = new_publication_for_testing(ctx, b"ArcSys Blog".to_string());
+  let mut registry = new_registry_for_testing(ctx);
+  let (publication, owner_cap, publisher_cap) = new_publication_with_registry_for_testing(
+    &mut registry,
+    ctx,
+    b"ArcSys Blog".to_string(),
+    b"my-personal-blog".to_string(),
+  );
+
+  assert_eq!(contains_slug(&registry, b"my-personal-blog".to_string()), true);
+  assert_eq!(*get_publication_id_by_slug(&registry, b"my-personal-blog".to_string()), object::id(&publication));
+
+  unit_test::destroy(registry);
+  unit_test::destroy(publication);
+  unit_test::destroy(owner_cap);
+  unit_test::destroy(publisher_cap);
+}
+
+#[test]
+#[expected_failure(abort_code = ESlugAlreadyExists)]
+fun test_duplicate_slug_fails() {
+  let ctx = &mut tx_context::dummy();
+  let mut registry = new_registry_for_testing(ctx);
+
+  let (publication, owner_cap, publisher_cap) = new_publication_with_registry_for_testing(
+    &mut registry,
+    ctx,
+    b"ArcSys Blog".to_string(),
+    b"my-personal-blog".to_string(),
+  );
+
+  let (_other_publication, _other_owner_cap, _other_publisher_cap) = new_publication_with_registry_for_testing(
+    &mut registry,
+    ctx,
+    b"Other".to_string(),
+    b"my-personal-blog".to_string(),
+  );
+
+  unit_test::destroy(_other_publication);
+  unit_test::destroy(_other_owner_cap);
+  unit_test::destroy(_other_publisher_cap);
+  unit_test::destroy(registry);
+  unit_test::destroy(publication);
+  unit_test::destroy(owner_cap);
+  unit_test::destroy(publisher_cap);
+}
+
+#[test]
+#[expected_failure(abort_code = ESlugInvalidChar)]
+fun test_invalid_slug_fails() {
+  let ctx = &mut tx_context::dummy();
+  let mut registry = new_registry_for_testing(ctx);
+  let (publication, owner_cap, publisher_cap) = new_publication_with_registry_for_testing(
+    &mut registry,
+    ctx,
+    b"ArcSys Blog".to_string(),
+    b"My-Personal-Blog".to_string(),
+  );
+  unit_test::destroy(publication);
+  unit_test::destroy(owner_cap);
+  unit_test::destroy(publisher_cap);
+  unit_test::destroy(registry);
+}
+
+#[test]
+fun test_slug_reusable_after_delete() {
+  let ctx = &mut tx_context::dummy();
+  let mut registry = new_registry_for_testing(ctx);
+
+  let (mut publication, owner_cap, publisher_cap) = new_publication_with_registry_for_testing(
+    &mut registry,
+    ctx,
+    b"ArcSys Blog".to_string(),
+    b"my-personal-blog".to_string(),
+  );
 
   publication.destroy_publisher_cap(publisher_cap, ctx);
-  delete_publication(publication, owner_cap);
+  delete_publication(&mut registry, publication, owner_cap);
+  assert_eq!(contains_slug(&registry, b"my-personal-blog".to_string()), false);
+
+  let (publication2, owner_cap2, publisher_cap2) = new_publication_with_registry_for_testing(
+    &mut registry,
+    ctx,
+    b"ArcSys Blog v2".to_string(),
+    b"my-personal-blog".to_string(),
+  );
+
+  assert_eq!(contains_slug(&registry, b"my-personal-blog".to_string()), true);
+
+  unit_test::destroy(registry);
+  unit_test::destroy(publication2);
+  unit_test::destroy(owner_cap2);
+  unit_test::destroy(publisher_cap2);
+}
+
+#[test]
+fun test_delete_publication() {
+  let ctx = &mut tx_context::dummy();
+  let mut registry = new_registry_for_testing(ctx);
+  let (mut publication, owner_cap, publisher_cap) = new_publication_for_testing(ctx, b"ArcSys Blog".to_string());
+
+  registry.slugs.add(publication.slug, object::id(&publication));
+  publication.destroy_publisher_cap(publisher_cap, ctx);
+  delete_publication(&mut registry, publication, owner_cap);
+
+  unit_test::destroy(registry);
 }
 
 #[test]
