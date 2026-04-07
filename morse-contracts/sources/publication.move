@@ -210,10 +210,10 @@ public fun add_entry_to_collection(
   collection_name: String,
   entry: Entry,
   ctx: &TxContext,
-) {
+): u64 {
   assert_active_publisher_cap(publication, cap, ctx);
   let collection = publication.collections.get_mut(&collection_name);
-  collection::add_entry(collection, entry);
+  collection::add_entry(collection, entry)
 }
 
 /// Delete an entry by `entry_id` from a named collection within the publication.
@@ -729,8 +729,9 @@ fun test_add_entry_to_collection() {
 
   let mock_blob = object::new(ctx);
   let entry = new_entry(b"First Post".to_string(), b"application/json".to_string(), mock_blob.to_inner());
-  publication.add_entry_to_collection(&publisher_cap, collection_name, entry, ctx);
+  let entry_id = publication.add_entry_to_collection(&publisher_cap, collection_name, entry, ctx);
 
+  assert_eq!(entry_id, 0);
   assert_eq!(collection::entries_length(publication.collections.get(&collection_name)), 1);
 
   unit_test::destroy(mock_blob);
@@ -753,9 +754,9 @@ fun test_delete_entry_from_collection() {
 
   let mock_blob = object::new(ctx);
   let entry = new_entry(b"First Post".to_string(), b"application/json".to_string(), mock_blob.to_inner());
-  publication.add_entry_to_collection(&publisher_cap, collection_name, entry, ctx);
+  let entry_id = publication.add_entry_to_collection(&publisher_cap, collection_name, entry, ctx);
 
-  publication.delete_entry_from_collection(&publisher_cap, collection_name, 0, ctx);
+  publication.delete_entry_from_collection(&publisher_cap, collection_name, entry_id, ctx);
 
   assert_eq!(collection::entries_length(publication.collections.get(&collection_name)), 0);
 
@@ -782,34 +783,38 @@ fun test_delete_then_add_entry_to_collection_uses_monotonic_entry_id() {
   let blob_2 = object::new(ctx);
   let blob_3 = object::new(ctx);
 
-  publication.add_entry_to_collection(
+  let first_id = publication.add_entry_to_collection(
     &publisher_cap,
     collection_name,
     new_entry(b"a".to_string(), b"application/json".to_string(), blob_0.to_inner()),
     ctx,
   );
-  publication.add_entry_to_collection(
+  let second_id = publication.add_entry_to_collection(
     &publisher_cap,
     collection_name,
     new_entry(b"b".to_string(), b"application/json".to_string(), blob_1.to_inner()),
     ctx,
   );
-  publication.add_entry_to_collection(
+  let third_id = publication.add_entry_to_collection(
     &publisher_cap,
     collection_name,
     new_entry(b"c".to_string(), b"application/json".to_string(), blob_2.to_inner()),
     ctx,
   );
 
-  publication.delete_entry_from_collection(&publisher_cap, collection_name, 1, ctx);
+  publication.delete_entry_from_collection(&publisher_cap, collection_name, second_id, ctx);
 
-  publication.add_entry_to_collection(
+  let fourth_id = publication.add_entry_to_collection(
     &publisher_cap,
     collection_name,
     new_entry(b"d".to_string(), b"application/json".to_string(), blob_3.to_inner()),
     ctx,
   );
 
+  assert_eq!(first_id, 0);
+  assert_eq!(second_id, 1);
+  assert_eq!(third_id, 2);
+  assert_eq!(fourth_id, 3);
   assert_eq!(collection::entries_length(publication.collections.get(&collection_name)), 3);
 
   unit_test::destroy(blob_0);

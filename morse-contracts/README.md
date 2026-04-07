@@ -61,7 +61,7 @@ Collection and entry operations:
 
 - `add_collection(publication, cap, collection, ctx)`
 - `delete_collection(publication, cap, name, ctx)`
-- `add_entry_to_collection(publication, cap, collection_name, entry, ctx)`
+- `add_entry_to_collection(publication, cap, collection_name, entry, ctx)` -> `entry_id`
 - `delete_entry_from_collection(publication, cap, collection_name, entry_id, ctx)`
 
 Singleton operations:
@@ -87,11 +87,20 @@ Defined in `publication::publication`:
 - `EPublisherCapWrongHolder = 4`
 - `EPublisherCapNotActive = 5`
 
+Defined in `publication::collection`:
+
+- `EEntryNotFound = 0`
+
 Invariants:
 
 - `add_collection` requires the incoming collection's `publication_id` to match the target publication ID.
 - Publisher write operations require the sender to be the cap's bound `holder`.
 - Publisher write operations require the cap ID to be active in the publication's `active_publisher_caps` table.
+
+Collection behavior:
+
+- `add_entry_to_collection` returns a monotonic `entry_id` assigned at insert time.
+- `delete_entry_from_collection` aborts with `collection::EEntryNotFound` for missing `entry_id`.
 
 ## Events
 

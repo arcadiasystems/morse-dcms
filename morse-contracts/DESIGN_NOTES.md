@@ -20,6 +20,8 @@ The current `publication` module already has:
 - root `singletons` as `Table<String, Entry>`
 - no separate `assets` bucket (assets are represented as named singletons)
 - collection entries keyed by monotonic `entry_id` (no key reuse after deletion)
+- collection entry insertion returns assigned `entry_id` for indexing
+- collection delete uses explicit `EEntryNotFound` abort semantics
 - collection ownership invariant enforced in `add_collection` (`collection.publication_id` must match target publication)
 - owner-transfer flow via `transfer_owner_cap`
 - publisher capability usage bound to a designated `holder` address (sender must match)

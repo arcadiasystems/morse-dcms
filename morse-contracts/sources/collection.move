@@ -4,6 +4,9 @@ use std::string::String;
 use sui::table::{Self, Table};
 use publication::entry::Entry;
 
+/// Error code: no entry exists for the requested `entry_id`.
+const EEntryNotFound: u64 = 0;
+
 /// A collection belonging to a publication.
 public struct Collection has store, key {
   id: UID,
@@ -38,16 +41,18 @@ public fun entries_length(collection: &Collection): u64 {
   collection.entries.length()
 }
 
-public fun add_entry(collection: &mut Collection, entry: Entry) {
+public fun add_entry(collection: &mut Collection, entry: Entry): u64 {
   // Keep IDs monotonic and stable across deletions (holes are expected).
   let entry_id = collection.next_entry_id;
   collection.entries.add(entry_id, entry);
   collection.next_entry_id = entry_id + 1;
+  entry_id
 }
 
 /// Delete an entry from the collection.
 /// Entry has drop trait, so it will be destroyed when removed from the collection.
 public fun delete_entry(collection: &mut Collection, entry_id: u64) {
+  assert!(collection.entries.contains(entry_id), EEntryNotFound);
   collection.entries.remove(entry_id);
 }
 
@@ -108,10 +113,10 @@ fun test_add_entry() {
   let entry = new_entry(name, entry_type, mock_blob.to_inner());
 
   // Add the entry to the collection
-  collection.add_entry(entry);
+  let entry_id = collection.add_entry(entry);
 
   // Check if the collection contains the entry
-  let entry_id: u64 = 0;
+  assert_eq!(entry_id, 0);
   assert_eq!(collection.entries.contains(entry_id), true);
   assert_eq!(collection.next_entry_id, 1);
 
@@ -140,10 +145,10 @@ fun test_delete_entry() {
   let entry = new_entry(name, entry_type, mock_blob.to_inner());
 
   // Add the entry to the collection
-  collection.add_entry(entry);
+  let entry_id = collection.add_entry(entry);
 
   // Sanity check
-  let entry_id: u64 = 0;
+  assert_eq!(entry_id, 0);
   assert_eq!(collection.entries.contains(entry_id), true);
 
   // Now delete it
@@ -169,19 +174,23 @@ fun test_delete_then_add_uses_monotonic_entry_id() {
   let blob_2 = object::new(ctx);
   let blob_3 = object::new(ctx);
 
-  collection.add_entry(new_entry(b"a".to_string(), b"application/json".to_string(), blob_0.to_inner()));
-  collection.add_entry(new_entry(b"b".to_string(), b"application/json".to_string(), blob_1.to_inner()));
-  collection.add_entry(new_entry(b"c".to_string(), b"application/json".to_string(), blob_2.to_inner()));
+  let first_id = collection.add_entry(new_entry(b"a".to_string(), b"application/json".to_string(), blob_0.to_inner()));
+  let second_id = collection.add_entry(new_entry(b"b".to_string(), b"application/json".to_string(), blob_1.to_inner()));
+  let third_id = collection.add_entry(new_entry(b"c".to_string(), b"application/json".to_string(), blob_2.to_inner()));
 
-  collection.delete_entry(1);
+  collection.delete_entry(second_id);
 
-  collection.add_entry(new_entry(b"d".to_string(), b"application/json".to_string(), blob_3.to_inner()));
+  let fourth_id = collection.add_entry(new_entry(b"d".to_string(), b"application/json".to_string(), blob_3.to_inner()));
 
   assert_eq!(collection.entries.length(), 3);
-  assert_eq!(collection.entries.contains(0), true);
-  assert_eq!(collection.entries.contains(1), false);
-  assert_eq!(collection.entries.contains(2), true);
-  assert_eq!(collection.entries.contains(3), true);
+  assert_eq!(first_id, 0);
+  assert_eq!(second_id, 1);
+  assert_eq!(third_id, 2);
+  assert_eq!(fourth_id, 3);
+  assert_eq!(collection.entries.contains(first_id), true);
+  assert_eq!(collection.entries.contains(second_id), false);
+  assert_eq!(collection.entries.contains(third_id), true);
+  assert_eq!(collection.entries.contains(fourth_id), true);
   assert_eq!(collection.next_entry_id, 4);
 
   unit_test::destroy(blob_0);
@@ -193,7 +202,7 @@ fun test_delete_then_add_uses_monotonic_entry_id() {
 }
 
 #[test]
-#[expected_failure]
+#[expected_failure(abort_code = EEntryNotFound)]
 fun test_delete_missing_entry_id_fails() {
   let ctx = &mut tx_context::dummy();
 
