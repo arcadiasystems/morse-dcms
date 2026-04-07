@@ -18,7 +18,7 @@ public struct Collection has store, key {
   entries: Table<u64, Entry>,
 }
 
-public fun new_collection(publication_id: ID, name: String, ctx: &mut TxContext): Collection {
+public(package) fun new_collection(publication_id: ID, name: String, ctx: &mut TxContext): Collection {
   let collection = Collection {
     id: object::new(ctx),
     publication_id,

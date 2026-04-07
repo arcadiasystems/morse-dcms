@@ -59,6 +59,7 @@ Core publication operations:
 
 Collection and entry operations:
 
+- `create_collection(publication, cap, name, ctx)`
 - `add_collection(publication, cap, collection, ctx)`
 - `delete_collection(publication, cap, name, ctx)`
 - `add_entry_to_collection(publication, cap, collection_name, entry, ctx)` -> `entry_id`
@@ -73,7 +74,6 @@ Singleton operations:
 
 Construction helpers:
 
-- `collection::new_collection(publication_id, name, ctx)`
 - `entry::new_entry(name, entry_type, blob)`
 
 ## Abort codes
@@ -96,6 +96,7 @@ Invariants:
 - `add_collection` requires the incoming collection's `publication_id` to match the target publication ID.
 - Publisher write operations require the sender to be the cap's bound `holder`.
 - Publisher write operations require the cap ID to be active in the publication's `active_publisher_caps` table.
+- Collection creation is exposed via `publication::create_collection`; `collection::new_collection` is package-only.
 
 Collection behavior:
 

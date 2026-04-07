@@ -132,6 +132,19 @@ public fun transfer_owner_cap(owner_cap: OwnerCap, recipient: address) {
   transfer::transfer(owner_cap, recipient)
 }
 
+/// Create and add a new collection to the publication.
+/// This is the canonical external flow for collection creation.
+public fun create_collection(
+  publication: &mut Publication,
+  cap: &PublisherCap,
+  name: String,
+  ctx: &mut TxContext,
+) {
+  let publication_id = object::id(publication);
+  let collection = collection::new_collection(publication_id, name, ctx);
+  add_collection(publication, cap, collection, ctx);
+}
+
 /// Add a new collection to the publication.
 /// Aborts with `ECollectionAlreadyExists` if a collection with the same name already exists.
 /// Aborts with `ECollectionPublicationMismatch` if `collection.publication_id` does not match.
@@ -515,6 +528,21 @@ fun test_add_collection() {
 
   assert_eq!(publication.collections.length(), 1);
   assert_eq!(publication.collections.contains(&collection_name), true);
+
+  unit_test::destroy(publication);
+  unit_test::destroy(owner_cap);
+  unit_test::destroy(publisher_cap);
+}
+
+#[test]
+fun test_create_collection() {
+  let ctx = &mut tx_context::dummy();
+  let (mut publication, owner_cap, publisher_cap) = new_publication_for_testing(ctx, b"ArcSys Blog".to_string());
+
+  publication.create_collection(&publisher_cap, b"articles".to_string(), ctx);
+
+  assert_eq!(publication.collections.length(), 1);
+  assert_eq!(publication.collections.contains(&b"articles".to_string()), true);
 
   unit_test::destroy(publication);
   unit_test::destroy(owner_cap);

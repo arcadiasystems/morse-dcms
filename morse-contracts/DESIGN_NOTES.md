@@ -23,6 +23,7 @@ The current `publication` module already has:
 - collection entry insertion returns assigned `entry_id` for indexing
 - collection delete uses explicit `EEntryNotFound` abort semantics
 - collection ownership invariant enforced in `add_collection` (`collection.publication_id` must match target publication)
+- collection creation exposed via `publication::create_collection`; `collection::new_collection` is package-only
 - owner-transfer flow via `transfer_owner_cap`
 - publisher capability usage bound to a designated `holder` address (sender must match)
 - owner-driven publisher-cap revocation via active-cap registry on `Publication`
