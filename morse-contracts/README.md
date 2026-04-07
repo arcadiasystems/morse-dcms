@@ -32,6 +32,18 @@ Entry ID behavior:
 - `entry_id` values are monotonic and are not re-used after deletions.
 - Deleting an entry can leave gaps (for example, `0, 2, 3`).
 
+Entry semantics:
+
+- `Entry.blob` is a raw Walrus blob object `ID` reference (pointer model).
+- Entry deletion removes only the on-chain reference; it does not automatically delete the blob.
+- `content_type` is MIME metadata; lowercase values are recommended for consistency but not enforced.
+
+Entry validation:
+
+- `name` and `content_type` must be non-empty.
+- `name` max length: `256`.
+- `content_type` max length: `255`.
+
 ## Capability and authorization model
 
 - `OwnerCap`: one per publication, required to issue/revoke publisher capabilities and delete a publication. Transferable by design so publication ownership can be transferred or sold.
@@ -90,6 +102,13 @@ Defined in `publication::publication`:
 Defined in `publication::collection`:
 
 - `EEntryNotFound = 0`
+
+Defined in `publication::entry`:
+
+- `ENameEmpty = 0`
+- `EContentTypeEmpty = 1`
+- `ENameTooLong = 2`
+- `EContentTypeTooLong = 3`
 
 Invariants:
 

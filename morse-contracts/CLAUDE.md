@@ -54,7 +54,7 @@ Three modules form a clear hierarchy:
 
 - **`publication::publication`** — Top-level shared object (`Publication`: `key, store`). Holds named collections (`VecMap<String, Collection>`) and root named entries (`Table<String, Entry>`) via `singletons` (used for one-off entries and assets). All mutations require an `OwnerCap` or `PublisherCap` tied to the publication's ID.
 - **`publication::collection`** — Mid-level grouping (`Collection`: `key, store`). Wrapped inside `Publication`; holds entries in a `Table<u64, Entry>`, keyed by monotonic `entry_id` values returned on insert. `collection::new_collection` is package-only; external creation flow goes through `publication::create_collection`. `VecMap` is used for collections because publications are expected to have few of them; `Table` is used for root singletons and collection entries because they can be numerous.
-- **`publication::entry`** — Leaf value (`Entry`: `store, drop`). A named pointer to an on-chain Walrus Blob object (`blob: ID`), plus a `content_type` string (MIME type). Used for both collection entries and publication-level singletons.
+- **`publication::entry`** — Leaf value (`Entry`: `store, drop`). A named pointer to an on-chain Walrus Blob object (`blob: ID`), plus a `content_type` string (MIME type). Used for both collection entries and publication-level singletons. `new_entry` enforces non-empty fields with max lengths (`name <= 256`, `content_type <= 255`); lowercase MIME casing is recommended but not enforced.
 
 ### Capability model
 

@@ -27,6 +27,8 @@ The current `publication` module already has:
 - owner-transfer flow via `transfer_owner_cap`
 - publisher capability usage bound to a designated `holder` address (sender must match)
 - owner-driven publisher-cap revocation via active-cap registry on `Publication`
+- entry input validation in `new_entry` (non-empty fields, `name <= 256`, `content_type <= 255`)
+- `content_type` lowercase MIME is advisory only (not enforced)
 
 Reference: `morse-contracts/sources/publication.move`
 
@@ -126,6 +128,24 @@ Rationale:
 - OTW can be introduced later if we add type-level registration flows or stricter one-time initialization guarantees where witness-based proof materially improves safety.
 
 Note: this is a design decision only; code has not been updated yet.
+
+## Blob lifecycle / garbage collection
+
+### Future work (not implemented yet)
+
+- Entries currently store a Walrus blob reference by `ID` and do not own/wrap the blob object.
+- Deleting an entry removes only the reference; it does not automatically delete the underlying blob.
+- We need a future blob-GC strategy to prevent unreferenced (hanging) blobs.
+
+### Candidate direction
+
+- Add publication-level blob reference tracking (for example, ref counts by blob ID).
+- Emit explicit events when blob references are added/removed and when a blob becomes unreferenced.
+- Run owner-controlled or off-chain cleanup for unreferenced blobs.
+
+Rationale:
+
+- The contract only has blob IDs today, not blob ownership/capability handles, so direct in-contract deletion is not guaranteed to be possible/safe.
 
 ## Planned (not implemented yet)
 
