@@ -34,11 +34,12 @@ Entry ID behavior:
 
 ## Capability and authorization model
 
-- `OwnerCap`: one per publication, required to issue publisher capabilities and delete a publication. Transferable by design so publication ownership can be transferred or sold.
+- `OwnerCap`: one per publication, required to issue/revoke publisher capabilities and delete a publication. Transferable by design so publication ownership can be transferred or sold.
 - `PublisherCap`: many per publication, required for all write operations (collections, singletons, and collection entries). Usage is bound to the approved `holder` address.
 
 Every mutating function validates that the cap's `publication_id` matches the target `Publication` ID and aborts with `EUnauthorized` when it does not.
 Publisher-gated mutators also require `tx_context::sender(ctx) == cap.holder` and abort with `EPublisherCapWrongHolder` otherwise.
+Publisher caps are also checked against `Publication.active_publisher_caps`; revoked/inactive caps abort with `EPublisherCapNotActive`.
 
 Why holder binding exists:
 
@@ -51,7 +52,8 @@ Core publication operations:
 - `new_publication(ctx, name)`
 - `delete_publication(publication, owner_cap)`
 - `issue_publisher_cap(publication, owner_cap, holder, ctx)`
-- `destroy_publisher_cap(cap, ctx)`
+- `revoke_publisher_cap(publication, owner_cap, cap_id)`
+- `destroy_publisher_cap(publication, cap, ctx)`
 - `transfer_owner_cap(owner_cap, recipient)`
 
 Collection and entry operations:
@@ -82,11 +84,13 @@ Defined in `publication::publication`:
 - `EUnauthorized = 2`
 - `ECollectionPublicationMismatch = 3`
 - `EPublisherCapWrongHolder = 4`
+- `EPublisherCapNotActive = 5`
 
 Invariants:
 
 - `add_collection` requires the incoming collection's `publication_id` to match the target publication ID.
 - Publisher write operations require the sender to be the cap's bound `holder`.
+- Publisher write operations require the cap ID to be active in the publication's `active_publisher_caps` table.
 
 ## Events
 
@@ -95,6 +99,7 @@ The publication module emits:
 - `PublicationCreated`
 - `PublicationDeleted`
 - `PublisherCapIssued`
+- `PublisherCapRevoked`
 - `CollectionAdded`
 - `CollectionRemoved`
 - `SingletonAdded`

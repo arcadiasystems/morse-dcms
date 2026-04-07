@@ -62,6 +62,7 @@ Three modules form a clear hierarchy:
 - **`PublisherCap`** (`key` only) — multiple per publication. Required for all write operations (add/delete collections, root singletons, and collection entries). Issued by the owner via `issue_publisher_cap` and bound to a `holder` address.
 
 Publisher-gated mutators additionally verify `tx_context::sender(ctx) == cap.holder` so a moved/shared cap object cannot be used by unapproved addresses.
+Publication state also tracks active publisher caps; owner can revoke by cap ID, and publisher writes require the cap to remain active.
 
 ### Events
 

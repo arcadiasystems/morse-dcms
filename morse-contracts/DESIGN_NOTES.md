@@ -23,6 +23,7 @@ The current `publication` module already has:
 - collection ownership invariant enforced in `add_collection` (`collection.publication_id` must match target publication)
 - owner-transfer flow via `transfer_owner_cap`
 - publisher capability usage bound to a designated `holder` address (sender must match)
+- owner-driven publisher-cap revocation via active-cap registry on `Publication`
 
 Reference: `morse-contracts/sources/publication.move`
 
@@ -97,6 +98,7 @@ Rationale:
 - Implemented: explicit owner transfer flow via `transfer_owner_cap`.
 - Implemented: publisher caps are owner-issued and bound to a `holder` address.
 - Implemented: publisher-gated mutators enforce both `publication_id` match and sender/holder match.
+- Implemented: owner can revoke publisher caps by ID; publisher writes require cap ID to be active.
 
 Rationale:
 
