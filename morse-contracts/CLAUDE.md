@@ -52,16 +52,16 @@ This is a **Sui Move** smart contract package (`edition = "2024"`) targeting the
 
 Three modules form a clear hierarchy:
 
-- **`publication::publication`** — Top-level shared object (`Publication`: `key, store`). Holds named collections (`VecMap<String, Collection>`) and named singletons (`VecMap<String, Entry>`). All mutations require an `OwnerCap` or `PublisherCap` tied to the publication's ID.
-- **`publication::collection`** — Mid-level grouping (`Collection`: `key, store`). Wrapped inside `Publication`; holds entries in a `Table<u64, Entry>`. `VecMap` is used for collections/singletons because publications are expected to have few of each; `Table` is used for entries because they can be numerous.
+- **`publication::publication`** — Top-level shared object (`Publication`: `key, store`). Holds named collections (`VecMap<String, Collection>`) and root named entries (`Table<String, Entry>`) via `singletons` (used for one-off entries and assets). All mutations require an `OwnerCap` or `PublisherCap` tied to the publication's ID.
+- **`publication::collection`** — Mid-level grouping (`Collection`: `key, store`). Wrapped inside `Publication`; holds entries in a `Table<u64, Entry>`. `VecMap` is used for collections because publications are expected to have few of them; `Table` is used for root singletons and collection entries because they can be numerous.
 - **`publication::entry`** — Leaf value (`Entry`: `store, drop`). A named pointer to an on-chain Walrus Blob object (`blob: ID`), plus an `entry_type` string (MIME type). Used for both collection entries and publication-level singletons.
 
 ### Capability model
 
-- **`OwnerCap`** (`key` only) — one per publication. Required to issue `PublisherCap`s and delete the publication.
-- **`PublisherCap`** (`key` only) — multiple per publication. Required for all write operations (add/delete collections, singletons, entries). Issued by the owner via `issue_publisher_cap`.
+- **`OwnerCap`** (`key` only) — one per publication. Required to issue `PublisherCap`s and delete the publication. Transferable by design to support publication ownership transfer.
+- **`PublisherCap`** (`key` only) — multiple per publication. Required for all write operations (add/delete collections, root singletons, and collection entries). Issued by the owner via `issue_publisher_cap` and bound to a `holder` address.
 
-Neither cap has `store`, so they cannot be re-transferred through public APIs.
+Publisher-gated mutators additionally verify `tx_context::sender(ctx) == cap.holder` so a moved/shared cap object cannot be used by unapproved addresses.
 
 ### Events
 

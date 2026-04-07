@@ -27,7 +27,7 @@ public struct Publication has key, store {
 
 /// Proves ownership of a publication.
 /// Required to issue PublisherCaps and delete the publication. Only one exists per publication.
-/// `key` only (no `store`) — cannot be publicly re-transferred.
+/// Transferable by design: ownership can be transferred or sold.
 public struct OwnerCap has key {
   id: UID,
   publication_id: ID,
@@ -35,10 +35,11 @@ public struct OwnerCap has key {
 
 /// Grants write access to a publication.
 /// Issued by the owner via `issue_publisher_cap`. Multiple can exist per publication.
-/// `key` only (no `store`) — cannot be publicly re-transferred.
+/// `holder` binds capability usage to a specific address to prevent permission sharing.
 public struct PublisherCap has key {
   id: UID,
   publication_id: ID,
+  holder: address,
 }
 
 /// Error code: a collection with the given name already exists in the publication.
@@ -52,6 +53,9 @@ const EUnauthorized: u64 = 2;
 
 /// Error code: the collection was created for a different publication.
 const ECollectionPublicationMismatch: u64 = 3;
+
+/// Error code: the sender is not the approved holder for this PublisherCap.
+const EPublisherCapWrongHolder: u64 = 4;
 
 /// Create a new publication.
 /// The publication is shared so publishers can interact with it.
@@ -82,29 +86,43 @@ public fun delete_publication(publication: Publication, owner_cap: OwnerCap) {
 }
 
 /// Issue a new PublisherCap for this publication. Only callable by the owner.
-/// The returned cap should be transferred to the intended publisher.
+/// The cap is bound to `holder`; only that address can use it.
 public fun issue_publisher_cap(
   publication: &Publication,
   owner_cap: &OwnerCap,
+  holder: address,
   ctx: &mut TxContext,
 ): PublisherCap {
   assert!(owner_cap.publication_id == object::id(publication), EUnauthorized);
-  let cap = PublisherCap { id: object::new(ctx), publication_id: object::id(publication) };
+  let cap = PublisherCap { id: object::new(ctx), publication_id: object::id(publication), holder };
   event::emit(PublisherCapIssued { publication: object::id(publication), cap: object::id(&cap) });
   cap
 }
 
 /// Destroy a PublisherCap, voluntarily revoking write access.
-public fun destroy_publisher_cap(cap: PublisherCap) {
-  let PublisherCap { id, publication_id: _ } = cap;
+/// Only the bound holder can destroy it.
+public fun destroy_publisher_cap(cap: PublisherCap, ctx: &TxContext) {
+  assert!(cap.holder == ctx.sender(), EPublisherCapWrongHolder);
+  let PublisherCap { id, publication_id: _, holder: _ } = cap;
   id.delete();
+}
+
+/// Transfer publication ownership to another address.
+public fun transfer_owner_cap(owner_cap: OwnerCap, recipient: address) {
+  transfer::transfer(owner_cap, recipient)
 }
 
 /// Add a new collection to the publication.
 /// Aborts with `ECollectionAlreadyExists` if a collection with the same name already exists.
 /// Aborts with `ECollectionPublicationMismatch` if `collection.publication_id` does not match.
-public fun add_collection(publication: &mut Publication, cap: &PublisherCap, collection: Collection) {
+public fun add_collection(
+  publication: &mut Publication,
+  cap: &PublisherCap,
+  collection: Collection,
+  ctx: &TxContext,
+) {
   assert!(cap.publication_id == object::id(publication), EUnauthorized);
+  assert!(cap.holder == ctx.sender(), EPublisherCapWrongHolder);
 
   let publication_id = object::id(publication);
   let collection_id = object::id(&collection);
@@ -119,8 +137,9 @@ public fun add_collection(publication: &mut Publication, cap: &PublisherCap, col
 
 /// Remove and delete a collection from the publication.
 /// The collection's entries table must be empty, or this will abort.
-public fun delete_collection(publication: &mut Publication, cap: &PublisherCap, name: String) {
+public fun delete_collection(publication: &mut Publication, cap: &PublisherCap, name: String, ctx: &TxContext) {
   assert!(cap.publication_id == object::id(publication), EUnauthorized);
+  assert!(cap.holder == ctx.sender(), EPublisherCapWrongHolder);
 
   let publication_id = object::id(publication);
   let (_, collection) = publication.collections.remove(&name);
@@ -133,8 +152,9 @@ public fun delete_collection(publication: &mut Publication, cap: &PublisherCap, 
 
 /// Add a new singleton entry to the publication.
 /// Aborts with `ESingletonAlreadyExists` if a singleton with the same name already exists.
-public fun add_singleton(publication: &mut Publication, cap: &PublisherCap, entry: Entry) {
+public fun add_singleton(publication: &mut Publication, cap: &PublisherCap, entry: Entry, ctx: &TxContext) {
   assert!(cap.publication_id == object::id(publication), EUnauthorized);
+  assert!(cap.holder == ctx.sender(), EPublisherCapWrongHolder);
 
   let publication_id = object::id(publication);
   let entry_name = entry.get_name();
@@ -147,8 +167,9 @@ public fun add_singleton(publication: &mut Publication, cap: &PublisherCap, entr
 
 /// Remove and delete a singleton entry from the publication.
 /// Entry has drop trait, so it is automatically destroyed on removal.
-public fun delete_singleton(publication: &mut Publication, cap: &PublisherCap, name: String) {
+public fun delete_singleton(publication: &mut Publication, cap: &PublisherCap, name: String, ctx: &TxContext) {
   assert!(cap.publication_id == object::id(publication), EUnauthorized);
+  assert!(cap.holder == ctx.sender(), EPublisherCapWrongHolder);
 
   let publication_id = object::id(publication);
   publication.singletons.remove(name);
@@ -172,8 +193,10 @@ public fun add_entry_to_collection(
   cap: &PublisherCap,
   collection_name: String,
   entry: Entry,
+  ctx: &TxContext,
 ) {
   assert!(cap.publication_id == object::id(publication), EUnauthorized);
+  assert!(cap.holder == ctx.sender(), EPublisherCapWrongHolder);
   let collection = publication.collections.get_mut(&collection_name);
   collection::add_entry(collection, entry);
 }
@@ -184,8 +207,10 @@ public fun delete_entry_from_collection(
   cap: &PublisherCap,
   collection_name: String,
   entry_id: u64,
+  ctx: &TxContext,
 ) {
   assert!(cap.publication_id == object::id(publication), EUnauthorized);
+  assert!(cap.holder == ctx.sender(), EPublisherCapWrongHolder);
   let collection = publication.collections.get_mut(&collection_name);
   collection::delete_entry(collection, entry_id);
 }
@@ -247,7 +272,11 @@ fun create_publication(ctx: &mut TxContext, name: String): (Publication, OwnerCa
   };
 
   let owner_cap = OwnerCap { id: object::new(ctx), publication_id: object::id(&publication) };
-  let publisher_cap = PublisherCap { id: object::new(ctx), publication_id: object::id(&publication) };
+  let publisher_cap = PublisherCap {
+    id: object::new(ctx),
+    publication_id: object::id(&publication),
+    holder: ctx.sender(),
+  };
 
   event::emit(PublicationCreated { publication: object::id(&publication), name });
 
@@ -278,6 +307,7 @@ fun test_new_publication() {
   assert_eq!(publication.name, publication_name);
   assert_eq!(owner_cap.publication_id, object::id(&publication));
   assert_eq!(publisher_cap.publication_id, object::id(&publication));
+  assert_eq!(publisher_cap.holder, ctx.sender());
 
   unit_test::destroy(publication);
   unit_test::destroy(owner_cap);
@@ -298,9 +328,10 @@ fun test_issue_publisher_cap() {
   let ctx = &mut tx_context::dummy();
   let (publication, owner_cap, publisher_cap) = new_publication_for_testing(ctx, b"ArcSys Blog".to_string());
 
-  let new_cap = issue_publisher_cap(&publication, &owner_cap, ctx);
+  let new_cap = issue_publisher_cap(&publication, &owner_cap, ctx.sender(), ctx);
 
   assert_eq!(new_cap.publication_id, object::id(&publication));
+  assert_eq!(new_cap.holder, ctx.sender());
 
   unit_test::destroy(publication);
   unit_test::destroy(owner_cap);
@@ -313,10 +344,43 @@ fun test_destroy_publisher_cap() {
   let ctx = &mut tx_context::dummy();
   let (publication, owner_cap, publisher_cap) = new_publication_for_testing(ctx, b"ArcSys Blog".to_string());
 
-  destroy_publisher_cap(publisher_cap);
+  destroy_publisher_cap(publisher_cap, ctx);
 
   unit_test::destroy(publication);
   unit_test::destroy(owner_cap);
+}
+
+#[test]
+#[expected_failure(abort_code = EPublisherCapWrongHolder)]
+fun test_wrong_holder_cannot_use_publisher_cap() {
+  use publication::collection::new_collection;
+
+  let ctx = &mut tx_context::dummy();
+  let (mut publication, owner_cap, publisher_cap) = new_publication_for_testing(ctx, b"ArcSys Blog".to_string());
+  let other_holder = @0xB;
+  let other_cap = issue_publisher_cap(&publication, &owner_cap, other_holder, ctx);
+
+  let collection = new_collection(object::id(&publication), b"articles".to_string(), ctx);
+  publication.add_collection(&other_cap, collection, ctx);
+
+  unit_test::destroy(publication);
+  unit_test::destroy(owner_cap);
+  unit_test::destroy(publisher_cap);
+  unit_test::destroy(other_cap);
+}
+
+#[test]
+#[expected_failure(abort_code = EPublisherCapWrongHolder)]
+fun test_wrong_holder_cannot_destroy_publisher_cap() {
+  let ctx = &mut tx_context::dummy();
+  let (publication, owner_cap, publisher_cap) = new_publication_for_testing(ctx, b"ArcSys Blog".to_string());
+  let other_cap = issue_publisher_cap(&publication, &owner_cap, @0xB, ctx);
+
+  destroy_publisher_cap(other_cap, ctx);
+
+  unit_test::destroy(publication);
+  unit_test::destroy(owner_cap);
+  unit_test::destroy(publisher_cap);
 }
 
 #[test]
@@ -329,7 +393,7 @@ fun test_add_collection() {
   let collection_name = b"articles".to_string();
   let collection = new_collection(object::id(&publication), collection_name, ctx);
 
-  publication.add_collection(&publisher_cap, collection);
+  publication.add_collection(&publisher_cap, collection, ctx);
 
   assert_eq!(publication.collections.length(), 1);
   assert_eq!(publication.collections.contains(&collection_name), true);
@@ -350,8 +414,8 @@ fun test_add_duplicate_collection() {
   let collection = new_collection(object::id(&publication), b"articles".to_string(), ctx);
   let duplicate = new_collection(object::id(&publication), b"articles".to_string(), ctx);
 
-  publication.add_collection(&publisher_cap, collection);
-  publication.add_collection(&publisher_cap, duplicate);
+  publication.add_collection(&publisher_cap, collection, ctx);
+  publication.add_collection(&publisher_cap, duplicate, ctx);
 
   unit_test::destroy(publication);
   unit_test::destroy(owner_cap);
@@ -368,10 +432,10 @@ fun test_delete_collection() {
   let collection_name = b"articles".to_string();
   let collection = new_collection(object::id(&publication), collection_name, ctx);
 
-  publication.add_collection(&publisher_cap, collection);
+  publication.add_collection(&publisher_cap, collection, ctx);
   assert_eq!(publication.collections.length(), 1);
 
-  publication.delete_collection(&publisher_cap, collection_name);
+  publication.delete_collection(&publisher_cap, collection_name, ctx);
   assert_eq!(publication.collections.length(), 0);
 
   unit_test::destroy(publication);
@@ -387,10 +451,10 @@ fun test_publisher_can_add_collection() {
   let (mut publication, owner_cap, _publisher_cap) = new_publication_for_testing(ctx, b"ArcSys Blog".to_string());
 
   // Issue a cap to a "publisher" (simulated by creating a new cap)
-  let publisher_cap = issue_publisher_cap(&publication, &owner_cap, ctx);
+  let publisher_cap = issue_publisher_cap(&publication, &owner_cap, ctx.sender(), ctx);
   let collection = new_collection(object::id(&publication), b"articles".to_string(), ctx);
 
-  publication.add_collection(&publisher_cap, collection);
+  publication.add_collection(&publisher_cap, collection, ctx);
 
   assert_eq!(publication.collections.length(), 1);
 
@@ -413,7 +477,7 @@ fun test_unauthorized_add_collection() {
   let collection = new_collection(object::id(&publication), b"articles".to_string(), ctx);
 
   // Using the wrong cap should abort
-  publication.add_collection(&other_publisher_cap, collection);
+  publication.add_collection(&other_publisher_cap, collection, ctx);
 
   unit_test::destroy(publication);
   unit_test::destroy(owner_cap);
@@ -435,7 +499,7 @@ fun test_add_collection_with_mismatched_publication_id() {
 
   let collection = new_collection(object::id(&other_publication), b"articles".to_string(), ctx);
 
-  publication.add_collection(&publisher_cap, collection);
+  publication.add_collection(&publisher_cap, collection, ctx);
 
   unit_test::destroy(publication);
   unit_test::destroy(owner_cap);
@@ -455,7 +519,7 @@ fun test_add_singleton() {
   let mock_blob = object::new(ctx);
   let entry = new_entry(b"cover".to_string(), b"image/png".to_string(), mock_blob.to_inner());
 
-  publication.add_singleton(&publisher_cap, entry);
+  publication.add_singleton(&publisher_cap, entry, ctx);
 
   assert_eq!(singletons_length(&publication), 1);
   assert_eq!(publication.singletons.contains(b"cover".to_string()), true);
@@ -479,8 +543,8 @@ fun test_add_duplicate_singleton() {
   let entry = new_entry(b"cover".to_string(), b"image/png".to_string(), mock_blob_1.to_inner());
   let duplicate = new_entry(b"cover".to_string(), b"image/png".to_string(), mock_blob_2.to_inner());
 
-  publication.add_singleton(&publisher_cap, entry);
-  publication.add_singleton(&publisher_cap, duplicate);
+  publication.add_singleton(&publisher_cap, entry, ctx);
+  publication.add_singleton(&publisher_cap, duplicate, ctx);
 
   unit_test::destroy(mock_blob_1);
   unit_test::destroy(mock_blob_2);
@@ -499,10 +563,10 @@ fun test_delete_singleton() {
   let mock_blob = object::new(ctx);
   let entry = new_entry(b"cover".to_string(), b"image/png".to_string(), mock_blob.to_inner());
 
-  publication.add_singleton(&publisher_cap, entry);
+  publication.add_singleton(&publisher_cap, entry, ctx);
   assert_eq!(singletons_length(&publication), 1);
 
-  publication.delete_singleton(&publisher_cap, b"cover".to_string());
+  publication.delete_singleton(&publisher_cap, b"cover".to_string(), ctx);
   assert_eq!(singletons_length(&publication), 0);
 
   unit_test::destroy(mock_blob);
@@ -522,7 +586,7 @@ fun test_get_singleton() {
   let blob_id = mock_blob.to_inner();
   let entry = new_entry(b"cover".to_string(), b"image/png".to_string(), blob_id);
 
-  publication.add_singleton(&publisher_cap, entry);
+  publication.add_singleton(&publisher_cap, entry, ctx);
 
   let singleton = get_singleton(&publication, b"cover".to_string());
   assert_eq!(publication::entry::get_blob(singleton), blob_id);
@@ -543,11 +607,11 @@ fun test_add_entry_to_collection() {
 
   let collection_name = b"articles".to_string();
   let collection = new_collection(object::id(&publication), collection_name, ctx);
-  publication.add_collection(&publisher_cap, collection);
+  publication.add_collection(&publisher_cap, collection, ctx);
 
   let mock_blob = object::new(ctx);
   let entry = new_entry(b"First Post".to_string(), b"application/json".to_string(), mock_blob.to_inner());
-  publication.add_entry_to_collection(&publisher_cap, collection_name, entry);
+  publication.add_entry_to_collection(&publisher_cap, collection_name, entry, ctx);
 
   assert_eq!(collection::entries_length(publication.collections.get(&collection_name)), 1);
 
@@ -567,13 +631,13 @@ fun test_delete_entry_from_collection() {
 
   let collection_name = b"articles".to_string();
   let collection = new_collection(object::id(&publication), collection_name, ctx);
-  publication.add_collection(&publisher_cap, collection);
+  publication.add_collection(&publisher_cap, collection, ctx);
 
   let mock_blob = object::new(ctx);
   let entry = new_entry(b"First Post".to_string(), b"application/json".to_string(), mock_blob.to_inner());
-  publication.add_entry_to_collection(&publisher_cap, collection_name, entry);
+  publication.add_entry_to_collection(&publisher_cap, collection_name, entry, ctx);
 
-  publication.delete_entry_from_collection(&publisher_cap, collection_name, 0);
+  publication.delete_entry_from_collection(&publisher_cap, collection_name, 0, ctx);
 
   assert_eq!(collection::entries_length(publication.collections.get(&collection_name)), 0);
 
@@ -593,7 +657,7 @@ fun test_delete_then_add_entry_to_collection_uses_monotonic_entry_id() {
 
   let collection_name = b"articles".to_string();
   let collection = new_collection(object::id(&publication), collection_name, ctx);
-  publication.add_collection(&publisher_cap, collection);
+  publication.add_collection(&publisher_cap, collection, ctx);
 
   let blob_0 = object::new(ctx);
   let blob_1 = object::new(ctx);
@@ -604,24 +668,28 @@ fun test_delete_then_add_entry_to_collection_uses_monotonic_entry_id() {
     &publisher_cap,
     collection_name,
     new_entry(b"a".to_string(), b"application/json".to_string(), blob_0.to_inner()),
+    ctx,
   );
   publication.add_entry_to_collection(
     &publisher_cap,
     collection_name,
     new_entry(b"b".to_string(), b"application/json".to_string(), blob_1.to_inner()),
+    ctx,
   );
   publication.add_entry_to_collection(
     &publisher_cap,
     collection_name,
     new_entry(b"c".to_string(), b"application/json".to_string(), blob_2.to_inner()),
+    ctx,
   );
 
-  publication.delete_entry_from_collection(&publisher_cap, collection_name, 1);
+  publication.delete_entry_from_collection(&publisher_cap, collection_name, 1, ctx);
 
   publication.add_entry_to_collection(
     &publisher_cap,
     collection_name,
     new_entry(b"d".to_string(), b"application/json".to_string(), blob_3.to_inner()),
+    ctx,
   );
 
   assert_eq!(collection::entries_length(publication.collections.get(&collection_name)), 3);

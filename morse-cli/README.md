@@ -1,15 +1,27 @@
-# morse-cli
+# Morse
 
-To install dependencies:
+Morse is a Sui-based publishing project.
+
+This workspace currently contains:
+
+- `morse-cli/` - Bun CLI for interacting with Morse publications.
+- `morse-contracts/` - Sui Move smart contracts for publications, collections, entries, and assets.
+- `morse-sdk/` - SDK package (work in progress).
+
+## Documentation
+
+- Contracts documentation: `morse-contracts/README.md`
+
+## CLI quickstart
+
+Install dependencies:
 
 ```bash
 bun install
 ```
 
-To run:
+Run the CLI:
 
 ```bash
 bun run index.ts
 ```
-
-This project was created using `bun init` in bun v1.2.23. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
