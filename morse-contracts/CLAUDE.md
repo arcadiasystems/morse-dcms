@@ -63,10 +63,11 @@ Three modules form a clear hierarchy:
 
 Publisher-gated mutators additionally verify `tx_context::sender(ctx) == cap.holder` so a moved/shared cap object cannot be used by unapproved addresses.
 Publication state also tracks active publisher caps; owner can revoke by cap ID, and publisher writes require the cap to remain active.
+Revocation removes write authority, while holders can still destroy revoked cap objects for cleanup.
 
 ### Events
 
-`publication` emits events for: `PublicationCreated`, `PublicationDeleted`, `CollectionAdded`, `CollectionRemoved`, `SingletonAdded`, `SingletonRemoved`.
+`publication` emits events for: `PublicationCreated`, `PublicationDeleted`, `PublisherCapIssued`, `PublisherCapRevoked`, `CollectionAdded`, `CollectionRemoved`, `SingletonAdded`, `SingletonRemoved`.
 
 ### Deployment metadata
 

@@ -40,6 +40,7 @@ Entry ID behavior:
 Every mutating function validates that the cap's `publication_id` matches the target `Publication` ID and aborts with `EUnauthorized` when it does not.
 Publisher-gated mutators also require `tx_context::sender(ctx) == cap.holder` and abort with `EPublisherCapWrongHolder` otherwise.
 Publisher caps are also checked against `Publication.active_publisher_caps`; revoked/inactive caps abort with `EPublisherCapNotActive`.
+Revocation disables write authority, but the holder can still destroy a revoked cap object for cleanup.
 
 Why holder binding exists:
 

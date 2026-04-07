@@ -99,6 +99,7 @@ Rationale:
 - Implemented: publisher caps are owner-issued and bound to a `holder` address.
 - Implemented: publisher-gated mutators enforce both `publication_id` match and sender/holder match.
 - Implemented: owner can revoke publisher caps by ID; publisher writes require cap ID to be active.
+- Implemented: revoked caps remain holder-destroyable so stale cap objects can be cleaned up.
 
 Rationale:
 

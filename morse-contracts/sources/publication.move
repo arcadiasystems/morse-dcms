@@ -111,9 +111,10 @@ public fun destroy_publisher_cap(publication: &mut Publication, cap: PublisherCa
   assert!(cap.publication_id == object::id(publication), EUnauthorized);
   assert!(cap.holder == ctx.sender(), EPublisherCapWrongHolder);
   let cap_id = object::id(&cap);
-  assert!(publication.active_publisher_caps.contains(cap_id), EPublisherCapNotActive);
-  publication.active_publisher_caps.remove(cap_id);
-  event::emit(PublisherCapRevoked { publication: object::id(publication), cap: cap_id });
+  if (publication.active_publisher_caps.contains(cap_id)) {
+    publication.active_publisher_caps.remove(cap_id);
+    event::emit(PublisherCapRevoked { publication: object::id(publication), cap: cap_id });
+  };
   let PublisherCap { id, publication_id: _, holder: _ } = cap;
   id.delete();
 }
@@ -486,8 +487,7 @@ fun test_revoke_nonexistent_cap_fails() {
 }
 
 #[test]
-#[expected_failure(abort_code = EPublisherCapNotActive)]
-fun test_destroy_revoked_cap_fails() {
+fun test_destroy_revoked_cap_succeeds() {
   let ctx = &mut tx_context::dummy();
   let (mut publication, owner_cap, publisher_cap) = new_publication_for_testing(ctx, b"ArcSys Blog".to_string());
   let cap = issue_publisher_cap(&mut publication, &owner_cap, ctx.sender(), ctx);
