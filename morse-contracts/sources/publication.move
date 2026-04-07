@@ -9,20 +9,20 @@ use sui::table::{Self, Table};
 use sui::event;
 
 use publication::collection::{Self, Collection};
-use publication::entry::{Self, Entry};
+use publication::entry::Entry;
 
 /// Root container for a publication's collections and singletons.
 /// Created as a shared object so both the owner and issued publishers can interact with it.
 /// All mutations require a valid PublisherCap or OwnerCap tied to this publication's ID.
 ///
-/// `collections` and `singletons` use `VecMap` because a publication is expected to have only a
-/// few of each. Individual entries within a collection use `Table` as they can be numerous.
+/// `collections` uses `VecMap` because a publication is expected (and a *best practice*) to have only a few collections.
+/// Root `singletons` and collection entries use `Table` because they can be numerous.
 public struct Publication has key, store {
   id: UID,
   name: String,
+  // TODO: Should I add a 'slug' property? How do we guarantee slug uniqueness?
   collections: VecMap<String, Collection>,
-  singletons: VecMap<String, Entry>,
-  assets: Table<String, Entry>,
+  singletons: Table<String, Entry>,
 }
 
 /// Proves ownership of a publication.
@@ -50,9 +50,6 @@ const ESingletonAlreadyExists: u64 = 1;
 /// Error code: the capability does not belong to this publication.
 const EUnauthorized: u64 = 2;
 
-/// Error code: an asset with the given name already exists in the publication.
-const EAssetAlreadyExists: u64 = 3;
-
 /// Create a new publication.
 /// The publication is shared so publishers can interact with it.
 /// An OwnerCap and a PublisherCap are transferred to the caller.
@@ -71,12 +68,11 @@ public fun delete_publication(publication: Publication, owner_cap: OwnerCap) {
   let OwnerCap { id: cap_id, publication_id: _ } = owner_cap;
   cap_id.delete();
 
-  let Publication { id, name, collections, singletons, assets } = publication;
+  let Publication { id, name, collections, singletons } = publication;
   let publication_id = id.to_inner();
 
   collections.destroy_empty();
   singletons.destroy_empty();
-  assets.destroy_empty();
   id.delete();
 
   event::emit(PublicationDeleted { publication: publication_id, name });
@@ -138,8 +134,8 @@ public fun add_singleton(publication: &mut Publication, cap: &PublisherCap, entr
   let publication_id = object::id(publication);
   let entry_name = entry.get_name();
 
-  assert!(!publication.singletons.contains(&entry_name), ESingletonAlreadyExists);
-  publication.singletons.insert(entry_name, entry);
+  assert!(!publication.singletons.contains(entry_name), ESingletonAlreadyExists);
+  publication.singletons.add(entry_name, entry);
 
   event::emit(SingletonAdded { publication: publication_id, name: entry_name });
 }
@@ -150,9 +146,19 @@ public fun delete_singleton(publication: &mut Publication, cap: &PublisherCap, n
   assert!(cap.publication_id == object::id(publication), EUnauthorized);
 
   let publication_id = object::id(publication);
-  publication.singletons.remove(&name);
+  publication.singletons.remove(name);
 
   event::emit(SingletonRemoved { publication: publication_id, name });
+}
+
+/// Return a reference to a singleton by name.
+public fun get_singleton(publication: &Publication, name: String): &Entry {
+  publication.singletons.borrow(name)
+}
+
+/// Return the number of singletons in the publication.
+public fun singletons_length(publication: &Publication): u64 {
+  publication.singletons.length()
 }
 
 /// Add an entry to a named collection within the publication.
@@ -177,41 +183,6 @@ public fun delete_entry_from_collection(
   assert!(cap.publication_id == object::id(publication), EUnauthorized);
   let collection = publication.collections.get_mut(&collection_name);
   collection::delete_entry(collection, index);
-}
-
-/// Add a static asset to the publication.
-/// Aborts with `EAssetAlreadyExists` if an asset with the same name already exists.
-public fun add_asset(publication: &mut Publication, cap: &PublisherCap, asset: Entry) {
-  assert!(cap.publication_id == object::id(publication), EUnauthorized);
-
-  let publication_id = object::id(publication);
-  let asset_name = entry::get_name(&asset);
-
-  assert!(!publication.assets.contains(asset_name), EAssetAlreadyExists);
-  publication.assets.add(asset_name, asset);
-
-  event::emit(AssetAdded { publication: publication_id, name: asset_name });
-}
-
-/// Remove and delete a static asset from the publication by name.
-/// Entry has drop trait, so it is automatically destroyed on removal.
-public fun delete_asset(publication: &mut Publication, cap: &PublisherCap, name: String) {
-  assert!(cap.publication_id == object::id(publication), EUnauthorized);
-
-  let publication_id = object::id(publication);
-  publication.assets.remove(name);
-
-  event::emit(AssetRemoved { publication: publication_id, name });
-}
-
-/// Return a reference to a static asset by name.
-public fun get_asset(publication: &Publication, name: String): &Entry {
-  publication.assets.borrow(name)
-}
-
-/// Return the number of static assets in the publication.
-public fun assets_length(publication: &Publication): u64 {
-  publication.assets.length()
 }
 
 // --- Events ---
@@ -260,18 +231,6 @@ public struct SingletonRemoved has copy, drop {
   name: String,
 }
 
-/// Event emitted when a static asset is added to a publication.
-public struct AssetAdded has copy, drop {
-  publication: ID,
-  name: String,
-}
-
-/// Event emitted when a static asset is removed from a publication.
-public struct AssetRemoved has copy, drop {
-  publication: ID,
-  name: String,
-}
-
 // --- Internal helpers ---
 
 fun create_publication(ctx: &mut TxContext, name: String): (Publication, OwnerCap, PublisherCap) {
@@ -279,8 +238,7 @@ fun create_publication(ctx: &mut TxContext, name: String): (Publication, OwnerCa
     id: object::new(ctx),
     name,
     collections: vec_map::empty(),
-    singletons: vec_map::empty(),
-    assets: table::new(ctx),
+    singletons: table::new(ctx),
   };
 
   let owner_cap = OwnerCap { id: object::new(ctx), publication_id: object::id(&publication) };
@@ -472,8 +430,8 @@ fun test_add_singleton() {
 
   publication.add_singleton(&publisher_cap, entry);
 
-  assert_eq!(publication.singletons.length(), 1);
-  assert_eq!(publication.singletons.contains(&b"cover".to_string()), true);
+  assert_eq!(singletons_length(&publication), 1);
+  assert_eq!(publication.singletons.contains(b"cover".to_string()), true);
 
   unit_test::destroy(mock_blob);
   unit_test::destroy(publication);
@@ -515,10 +473,32 @@ fun test_delete_singleton() {
   let entry = new_entry(b"cover".to_string(), b"image/png".to_string(), mock_blob.to_inner());
 
   publication.add_singleton(&publisher_cap, entry);
-  assert_eq!(publication.singletons.length(), 1);
+  assert_eq!(singletons_length(&publication), 1);
 
   publication.delete_singleton(&publisher_cap, b"cover".to_string());
-  assert_eq!(publication.singletons.length(), 0);
+  assert_eq!(singletons_length(&publication), 0);
+
+  unit_test::destroy(mock_blob);
+  unit_test::destroy(publication);
+  unit_test::destroy(owner_cap);
+  unit_test::destroy(publisher_cap);
+}
+
+#[test]
+fun test_get_singleton() {
+  use publication::entry::new_entry;
+
+  let ctx = &mut tx_context::dummy();
+  let (mut publication, owner_cap, publisher_cap) = new_publication_for_testing(ctx, b"ArcSys Blog".to_string());
+
+  let mock_blob = object::new(ctx);
+  let blob_id = mock_blob.to_inner();
+  let entry = new_entry(b"cover".to_string(), b"image/png".to_string(), blob_id);
+
+  publication.add_singleton(&publisher_cap, entry);
+
+  let singleton = get_singleton(&publication, b"cover".to_string());
+  assert_eq!(publication::entry::get_blob(singleton), blob_id);
 
   unit_test::destroy(mock_blob);
   unit_test::destroy(publication);
