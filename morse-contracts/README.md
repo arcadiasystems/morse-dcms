@@ -16,7 +16,7 @@ The contract uses a three-level content model:
 
 - `Publication` (shared object): root container for everything.
 - `Collection` (object): named group of entries keyed by stable IDs.
-- `Entry` (value): named pointer to a Walrus blob object ID plus MIME type (`entry_type`).
+- `Entry` (value): named pointer to a Walrus blob object ID plus MIME type (`content_type`).
 
 Inside a publication:
 
@@ -74,7 +74,7 @@ Singleton operations:
 
 Construction helpers:
 
-- `entry::new_entry(name, entry_type, blob)`
+- `entry::new_entry(name, content_type, blob)`
 
 ## Abort codes
 

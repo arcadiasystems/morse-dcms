@@ -108,9 +108,9 @@ fun test_add_entry() {
 
   // Create an entry
   let name = b"First Blog Post".to_string();
-  let entry_type = b"application/json".to_string();
+  let content_type = b"application/json".to_string();
   let mock_blob = object::new(ctx);
-  let entry = new_entry(name, entry_type, mock_blob.to_inner());
+  let entry = new_entry(name, content_type, mock_blob.to_inner());
 
   // Add the entry to the collection
   let entry_id = collection.add_entry(entry);
@@ -140,9 +140,9 @@ fun test_delete_entry() {
 
   // Create an entry
   let name = b"First Blog Post".to_string();
-  let entry_type = b"application/json".to_string();
+  let content_type = b"application/json".to_string();
   let mock_blob = object::new(ctx);
-  let entry = new_entry(name, entry_type, mock_blob.to_inner());
+  let entry = new_entry(name, content_type, mock_blob.to_inner());
 
   // Add the entry to the collection
   let entry_id = collection.add_entry(entry);
