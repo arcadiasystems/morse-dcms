@@ -17,8 +17,7 @@ Important: unless explicitly marked as implemented, items in this file are NOT y
 The current `publication` module already has:
 
 - `collections` as `VecMap<String, Collection>`
-- root `singletons` as `Table<String, Entry>`
-- no separate `assets` bucket (assets are represented as named singletons)
+- no separate singleton lane; all content is represented as collection entries
 - collection entries keyed by monotonic `entry_id` (no key reuse after deletion)
 - collection entry insertion returns assigned `entry_id` for indexing
 - collection delete uses explicit `EEntryNotFound` abort semantics
@@ -30,7 +29,8 @@ The current `publication` module already has:
 - entry input validation in `new_entry` (non-empty fields, `name <= 256`, `content_type <= 255`)
 - `content_type` lowercase MIME is advisory only (not enforced)
 - entries use immutable revisions with `draft_head` and `public_head`
-- each revision stores `{ blob, content_type, encrypted }`
+- each revision stores `{ blob, content_type, encrypted, author }`
+- publication write paths enforce new-entry author matches transaction sender
 - publications have immutable slugs
 - publication creation is factory-gated through shared `PublicationRegistry` (`slug -> publication_id`)
 - slugs are released on delete and reusable afterward
@@ -195,7 +195,7 @@ Entries now use immutable revisions with separate draft/public heads.
 ### Surface-area impact
 
 - Breaking API change: `entry::new_entry` now requires `encrypted`.
-- New publication-level revision operations exist for both singleton entries and collection entries.
+- Publication-level revision operations exist for collection entries.
 
 ## Collection publish design (planned, not implemented)
 

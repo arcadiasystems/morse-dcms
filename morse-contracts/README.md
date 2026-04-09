@@ -2,7 +2,7 @@
 
 Sui Move package for the Morse publication protocol.
 
-This package defines the on-chain data model and write permissions for publications, collections, and named entries.
+This package defines the on-chain data model and write permissions for publications, collections, and entries.
 
 ## Package
 
@@ -22,7 +22,6 @@ Inside a publication:
 
 - `slug`: immutable, user-provided URL slug.
 - `collections`: `VecMap<String, Collection>` for a small number of named collections.
-- `singletons`: `Table<String, Entry>` for one-off named entries and assets (for example, cover metadata or logo image).
 
 Global slug registry:
 
@@ -41,9 +40,11 @@ Entry ID behavior:
 Entry semantics:
 
 - Revisions store raw Walrus blob object `ID` references (pointer model).
+- Each revision stores author provenance (`author: address`).
 - Entries maintain `draft_head` and `public_head` revision pointers.
 - Entry deletion removes only the on-chain reference; it does not automatically delete the blob.
 - `content_type` is MIME metadata; lowercase values are recommended for consistency but not enforced.
+- Publication write APIs require entry revision author to match `tx_context::sender(ctx)` for new inserts.
 
 Entry validation:
 
@@ -54,7 +55,7 @@ Entry validation:
 ## Capability and authorization model
 
 - `OwnerCap`: one per publication, required to issue/revoke publisher capabilities and delete a publication. Transferable by design so publication ownership can be transferred or sold.
-- `PublisherCap`: many per publication, required for all write operations (collections, singletons, and collection entries). Usage is bound to the approved `holder` address.
+- `PublisherCap`: many per publication, required for all write operations on collections and collection entries. Usage is bound to the approved `holder` address.
 
 Every mutating function validates that the cap's `publication_id` matches the target `Publication` ID and aborts with `EUnauthorized` when it does not.
 Publisher-gated mutators also require `tx_context::sender(ctx) == cap.holder` and abort with `EPublisherCapWrongHolder` otherwise.
@@ -86,16 +87,6 @@ Collection and entry operations:
 - `add_entry_to_collection(publication, cap, collection_name, entry, ctx)` -> `entry_id`
 - `delete_entry_from_collection(publication, cap, collection_name, entry_id, ctx)`
 
-Singleton operations:
-
-- `add_singleton(publication, cap, entry, ctx)`
-- `delete_singleton(publication, cap, name, ctx)`
-- `append_singleton_draft_revision(publication, cap, name, content_type, blob, encrypted, ctx)` -> `revision_id`
-- `publish_singleton_from_draft(publication, cap, name, draft_revision_id, content_type, blob, ctx)` -> `revision_id`
-- `publish_singleton_direct(publication, cap, name, content_type, blob, ctx)` -> `revision_id`
-- `get_singleton(publication, name)`
-- `singletons_length(publication)`
-
 Revision operations for collection entries:
 
 - `append_collection_entry_draft_revision(publication, cap, collection_name, entry_id, content_type, blob, encrypted, ctx)` -> `revision_id`
@@ -104,14 +95,13 @@ Revision operations for collection entries:
 
 Construction helpers:
 
-- `entry::new_entry(name, content_type, blob, encrypted)`
+- `entry::new_entry(name, content_type, blob, encrypted, author)`
 
 ## Abort codes
 
 Defined in `publication::publication`:
 
 - `ECollectionAlreadyExists = 0`
-- `ESingletonAlreadyExists = 1`
 - `EUnauthorized = 2`
 - `ECollectionPublicationMismatch = 3`
 - `EPublisherCapWrongHolder = 4`
@@ -121,6 +111,7 @@ Defined in `publication::publication`:
 - `ESlugTooLong = 8`
 - `ESlugInvalidChar = 9`
 - `ESlugInvalidEdgeHyphen = 10`
+- `EEntryAuthorMismatch = 11`
 
 Defined in `publication::collection`:
 
@@ -168,8 +159,6 @@ The publication module emits:
 - `PublisherCapRevoked`
 - `CollectionAdded`
 - `CollectionRemoved`
-- `SingletonAdded`
-- `SingletonRemoved`
 
 ## Development commands
 

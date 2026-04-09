@@ -52,14 +52,14 @@ This is a **Sui Move** smart contract package (`edition = "2024"`) targeting the
 
 Three modules form a clear hierarchy:
 
-- **`publication::publication`** — Top-level shared object (`Publication`: `key, store`). Holds immutable `slug`, named collections (`VecMap<String, Collection>`), and root named entries (`Table<String, Entry>`) via `singletons` (used for one-off entries and assets). Creation is factory-gated through shared `PublicationRegistry` (`slug -> publication_id`). All mutations require an `OwnerCap` or `PublisherCap` tied to the publication's ID.
-- **`publication::collection`** — Mid-level grouping (`Collection`: `key, store`). Wrapped inside `Publication`; holds entries in a `Table<u64, Entry>`, keyed by monotonic `entry_id` values returned on insert. `collection::new_collection` is package-only; external creation flow goes through `publication::create_collection`. `VecMap` is used for collections because publications are expected to have few of them; `Table` is used for root singletons and collection entries because they can be numerous.
-- **`publication::entry`** — Leaf value (`Entry`: `store, drop`) with immutable revisions. Each revision stores a blob pointer (`blob: ID`), `content_type`, and `encrypted` flag; entries track `draft_head` and `public_head`. `new_entry` enforces non-empty fields with max lengths (`name <= 256`, `content_type <= 255`); lowercase MIME casing is recommended but not enforced.
+- **`publication::publication`** — Top-level shared object (`Publication`: `key, store`). Holds immutable `slug` and named collections (`VecMap<String, Collection>`). Creation is factory-gated through shared `PublicationRegistry` (`slug -> publication_id`). All mutations require an `OwnerCap` or `PublisherCap` tied to the publication's ID.
+- **`publication::collection`** — Mid-level grouping (`Collection`: `key, store`). Wrapped inside `Publication`; holds entries in a `Table<u64, Entry>`, keyed by monotonic `entry_id` values returned on insert. `collection::new_collection` is package-only; external creation flow goes through `publication::create_collection`. `VecMap` is used for top-level collections because publications are expected to have few of them; `Table` is used for collection entries because they can be numerous.
+- **`publication::entry`** — Leaf value (`Entry`: `store, drop`) with immutable revisions. Each revision stores a blob pointer (`blob: ID`), `content_type`, `encrypted` flag, and `author` address; entries track `draft_head` and `public_head`. `new_entry` enforces non-empty fields with max lengths (`name <= 256`, `content_type <= 255`); lowercase MIME casing is recommended but not enforced. Publication write APIs bind author provenance to `tx_context::sender(ctx)` on insert/append/publish flows.
 
 ### Capability model
 
 - **`OwnerCap`** (`key` only) — one per publication. Required to issue `PublisherCap`s and delete the publication. Transferable by design to support publication ownership transfer.
-- **`PublisherCap`** (`key` only) — multiple per publication. Required for all write operations (add/delete collections, root singletons, and collection entries). Issued by the owner via `issue_publisher_cap` and bound to a `holder` address.
+- **`PublisherCap`** (`key` only) — multiple per publication. Required for all write operations (add/delete collections and collection entries). Issued by the owner via `issue_publisher_cap` and bound to a `holder` address.
 
 Publisher-gated mutators additionally verify `tx_context::sender(ctx) == cap.holder` so a moved/shared cap object cannot be used by unapproved addresses.
 Publication state also tracks active publisher caps; owner can revoke by cap ID, and publisher writes require the cap to remain active.
@@ -69,7 +69,7 @@ Slug policy: slugs are immutable per publication and unique while active in the 
 
 ### Events
 
-`publication` emits events for: `PublicationCreated`, `PublicationDeleted`, `PublisherCapIssued`, `PublisherCapRevoked`, `CollectionAdded`, `CollectionRemoved`, `SingletonAdded`, `SingletonRemoved`.
+`publication` emits events for: `PublicationCreated`, `PublicationDeleted`, `PublisherCapIssued`, `PublisherCapRevoked`, `CollectionAdded`, `CollectionRemoved`.
 
 ### Deployment metadata
 
