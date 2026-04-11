@@ -237,7 +237,7 @@ Design choice: `VecMap` at publication level.
 
 Collections are created through publication entrypoints (publisher-gated), not as an unscoped free-for-all.
 
-- `create_collection(publication, cap, name, ctx)` creates and inserts a collection in one flow.
+- `create_collection(publication, cap, name, storage_mode, ctx)` creates and inserts a collection in one flow (`0 = blob`, `1 = quilt`).
 - `delete_collection(publication, cap, name, ctx)` removes and deletes a collection (only when its entries are empty).
 
 Why this matters:
@@ -263,7 +263,7 @@ Each entry in Morse is:
 
 - named (`name`),
 - versioned (immutable revisions),
-- pointer-based (stores Walrus blob IDs, not raw payload bytes on-chain).
+- pointer-based (stores Walrus references, not raw payload bytes on-chain).
 
 Design rationale:
 
@@ -307,11 +307,13 @@ Why two heads instead of one status flag:
 - publish is an explicit state transition,
 - consumers can reliably choose draft vs public view.
 
-### Walrus pointers and metadata
+### Walrus references and metadata
 
 An entry revision stores:
 
-- `blob: ID` (Walrus blob object id),
+- `blob_ref`:
+  - `Blob(ID)` for standalone Walrus blob object IDs,
+  - `QuiltPatch(vector<u8>)` for 37-byte QuiltPatchId (`quilt_blob_id || version || start_index || end_index`),
 - `content_type` (MIME metadata),
 - `encrypted` flag,
 - `access_policy` (`ACCESS_PUBLIC = 0`, `ACCESS_PUBLISHER = 1`, `ACCESS_SUBSCRIPTION = 2`),
@@ -324,11 +326,11 @@ Important boundary:
 - Morse does not inline payload bytes in Move state.
 - Deleting an entry removes the on-chain reference; it does not automatically delete the Walrus blob.
 
-Blob constraint:
+Walrus validation constraint:
 
-- All revision-creating functions require the caller to pass `&walrus::blob::Blob` (not just an ID).
-- The contract asserts `blob.is_deletable()` before storing the ID, enforcing the platform requirement that all stored content must be deletable.
-- The blob is not wrapped or owned by the entry — it remains an independent Walrus object. Only its ID is stored on-chain.
+- All production revision-creating functions require the caller to pass `&walrus::blob::Blob`.
+- The contract asserts `blob.is_deletable()` before storing a reference, enforcing the platform requirement that stored content must be deletable.
+- In blob mode, the stored reference is the blob's Sui object ID. In quilt mode, the stored reference is the 37-byte QuiltPatchId (which embeds quilt blob id + patch coordinates).
 
 ### Author provenance
 

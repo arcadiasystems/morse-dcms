@@ -25,9 +25,8 @@ const ENameTooLong: u64 = 2;
 /// `content_type` is MIME metadata. Lowercase MIME values are recommended for
 /// consistency, but casing is not enforced on-chain.
 ///
-/// `blob` is a raw ID reference. Existence/provenance are not validated in this
-/// module — only the deletable constraint is enforced at revision creation time
-/// by requiring the caller to pass the `Blob` object.
+/// The blob reference (`blob_ref`) is set at revision creation time.
+/// Only deletable blobs are accepted, enforced by requiring the `Blob` object.
 public struct Entry has store, drop {
   name: String,
   revisions: vector<EntryRevision>,
@@ -36,10 +35,10 @@ public struct Entry has store, drop {
 }
 
 /// Create a new entry with basic metadata validation.
-/// Requires the Walrus `Blob` object to enforce the deletable constraint.
+/// Requires the Walrus `Blob` object and a pre-constructed `BlobRef` (use `make_blob_ref`).
 public fun new_entry(
   name: String,
-  blob: &Blob,
+  blob_ref: BlobRef,
   content_type: String,
   encrypted: bool,
   author: address,
@@ -50,9 +49,8 @@ public fun new_entry(
   assert!(name.length() <= MAX_ENTRY_NAME_LENGTH, ENameTooLong);
   validate_content_type(&content_type);
   validate_revision_access(encrypted, access_policy, &seal_id);
-  let blob_id = validate_blob(blob);
 
-  let revision = EntryRevision { blob: blob_id, content_type, encrypted, access_policy, seal_id, author };
+  let revision = EntryRevision { blob_ref, content_type, encrypted, access_policy, seal_id, author };
   let revisions = vector[revision];
   let draft_head = if (encrypted) option::some(0) else option::none();
   let public_head = if (encrypted) option::none() else option::some(0);
@@ -79,6 +77,9 @@ public fun get_public_head(entry: &Entry): Option<u64> {
 
 /// Maximum allowed length for `content_type` metadata.
 const MAX_CONTENT_TYPE_LENGTH: u64 = 255;
+
+/// Expected byte length of a QuiltPatchId: quilt_blob_id (32) || version (1) || start_index (2) || end_index (2).
+const QUILT_PATCH_ID_LENGTH: u64 = 37;
 
 /// Access policy: unencrypted/public content.
 const ACCESS_PUBLIC: u8 = 0;
@@ -110,9 +111,27 @@ const ESealIdNotAllowed: u64 = 7;
 /// Error code: blob must be deletable (required by platform policy).
 const EBlobNotDeletable: u64 = 8;
 
+/// Error code: quilt collection requires a QuiltPatchId.
+const EQuiltPatchIdRequired: u64 = 9;
+
+/// Error code: blob collection must not include a QuiltPatchId.
+const EQuiltPatchIdNotAllowed: u64 = 10;
+
+/// Error code: QuiltPatchId must be exactly `QUILT_PATCH_ID_LENGTH` bytes.
+const EInvalidQuiltPatchId: u64 = 11;
+
+/// Identifies the Walrus content for a revision.
+/// - `Blob(ID)`: Sui object ID of a standalone Walrus Blob (used in STORAGE_MODE_BLOB collections).
+/// - `QuiltPatch(vector<u8>)`: 37-byte QuiltPatchId — quilt_blob_id_u256 (32) || version_u8 (1) || start_index_u16 (2) || end_index_u16 (2).
+///   Used in STORAGE_MODE_QUILT collections. The quilt blob's Walrus blob_id is embedded in the first 32 bytes.
+public enum BlobRef has copy, drop, store {
+  Blob(ID),
+  QuiltPatch(vector<u8>),
+}
+
 /// Immutable blob revision metadata for an entry.
 public struct EntryRevision has store, drop {
-  blob: ID,
+  blob_ref: BlobRef,
   content_type: String,
   encrypted: bool,
   access_policy: u8,
@@ -129,14 +148,14 @@ public fun access_policy_publisher(): u8 { ACCESS_PUBLISHER }
 /// Return the numeric value for the subscription access policy.
 public fun access_policy_subscription(): u8 { ACCESS_SUBSCRIPTION }
 
+/// Return the blob reference from the latest revision.
+public fun get_blob_ref(entry: &Entry): BlobRef {
+  vector::borrow(&entry.revisions, latest_revision_id(entry)).blob_ref
+}
+
 /// Return the entry's MIME content type from the latest revision.
 public fun get_content_type(entry: &Entry): String {
   vector::borrow(&entry.revisions, latest_revision_id(entry)).content_type
-}
-
-/// Return the referenced blob object ID from the latest revision.
-public fun get_blob(entry: &Entry): ID {
-  vector::borrow(&entry.revisions, latest_revision_id(entry)).blob
 }
 
 /// Return whether the latest revision is encrypted.
@@ -166,10 +185,10 @@ public fun get_revision(entry: &Entry, revision_id: u64): &EntryRevision {
 }
 
 /// Append a new draft revision and advance the draft head.
-/// Requires the Walrus `Blob` object to enforce the deletable constraint.
+/// Requires a pre-constructed `BlobRef` (use `make_blob_ref`).
 public fun append_draft_revision(
   entry: &mut Entry,
-  blob: &Blob,
+  blob_ref: BlobRef,
   content_type: String,
   encrypted: bool,
   author: address,
@@ -178,33 +197,31 @@ public fun append_draft_revision(
 ): u64 {
   validate_content_type(&content_type);
   validate_revision_access(encrypted, access_policy, &seal_id);
-  let blob_id = validate_blob(blob);
   let revision_id = vector::length(&entry.revisions);
   vector::push_back(
     &mut entry.revisions,
-    EntryRevision { blob: blob_id, content_type, encrypted, access_policy, seal_id, author },
+    EntryRevision { blob_ref, content_type, encrypted, access_policy, seal_id, author },
   );
   entry.draft_head = option::some(revision_id);
   revision_id
 }
 
 /// Publish from a draft revision by appending a new public revision.
-/// Requires the Walrus `Blob` object to enforce the deletable constraint.
+/// Requires a pre-constructed `BlobRef` (use `make_blob_ref`).
 public fun publish_from_draft(
   entry: &mut Entry,
   draft_revision_id: u64,
-  blob: &Blob,
+  blob_ref: BlobRef,
   content_type: String,
   author: address,
 ): u64 {
   assert!(draft_revision_id < vector::length(&entry.revisions), ERevisionNotFound);
   validate_content_type(&content_type);
-  let blob_id = validate_blob(blob);
   let revision_id = vector::length(&entry.revisions);
   vector::push_back(
     &mut entry.revisions,
     EntryRevision {
-      blob: blob_id,
+      blob_ref,
       content_type,
       encrypted: false,
       access_policy: ACCESS_PUBLIC,
@@ -217,15 +234,14 @@ public fun publish_from_draft(
 }
 
 /// Publish directly by appending a non-encrypted public revision.
-/// Requires the Walrus `Blob` object to enforce the deletable constraint.
-public fun publish_direct(entry: &mut Entry, blob: &Blob, content_type: String, author: address): u64 {
+/// Requires a pre-constructed `BlobRef` (use `make_blob_ref`).
+public fun publish_direct(entry: &mut Entry, blob_ref: BlobRef, content_type: String, author: address): u64 {
   validate_content_type(&content_type);
-  let blob_id = validate_blob(blob);
   let revision_id = vector::length(&entry.revisions);
   vector::push_back(
     &mut entry.revisions,
     EntryRevision {
-      blob: blob_id,
+      blob_ref,
       content_type,
       encrypted: false,
       access_policy: ACCESS_PUBLIC,
@@ -252,13 +268,12 @@ public(package) fun revision_has_seal_id(entry: &Entry, revision_id: u64): bool 
   option::is_some(&get_revision(entry, revision_id).seal_id)
 }
 
-/// Test bypass for `new_entry`: accepts a raw `blob_id` instead of `&Blob`.
-/// Legitimate because `walrus::blob::Blob` cannot be constructed in Move unit tests —
-/// `blob::new` is `public(package)` and Walrus provides no `#[test_only]` blob constructor.
+/// Test bypass for `new_entry`: accepts a raw `BlobRef` instead of requiring `make_blob_ref`.
+/// The deletable check is skipped — use `BlobRef::Blob(id)` or `BlobRef::QuiltPatch(bytes)` directly.
 #[test_only]
 public(package) fun new_entry_for_testing(
   name: String,
-  blob_id: ID,
+  blob_ref: BlobRef,
   content_type: String,
   encrypted: bool,
   author: address,
@@ -270,7 +285,7 @@ public(package) fun new_entry_for_testing(
   validate_content_type(&content_type);
   validate_revision_access(encrypted, access_policy, &seal_id);
 
-  let revision = EntryRevision { blob: blob_id, content_type, encrypted, access_policy, seal_id, author };
+  let revision = EntryRevision { blob_ref, content_type, encrypted, access_policy, seal_id, author };
   let revisions = vector[revision];
   let draft_head = if (encrypted) option::some(0) else option::none();
   let public_head = if (encrypted) option::none() else option::some(0);
@@ -278,11 +293,11 @@ public(package) fun new_entry_for_testing(
   Entry { name, revisions, draft_head, public_head }
 }
 
-/// Test bypass for `append_draft_revision`: accepts a raw `blob_id` instead of `&Blob`.
+/// Test bypass for `append_draft_revision`: accepts a raw `BlobRef`.
 #[test_only]
 public(package) fun append_draft_revision_for_testing(
   entry: &mut Entry,
-  blob_id: ID,
+  blob_ref: BlobRef,
   content_type: String,
   encrypted: bool,
   author: address,
@@ -294,18 +309,18 @@ public(package) fun append_draft_revision_for_testing(
   let revision_id = vector::length(&entry.revisions);
   vector::push_back(
     &mut entry.revisions,
-    EntryRevision { blob: blob_id, content_type, encrypted, access_policy, seal_id, author },
+    EntryRevision { blob_ref, content_type, encrypted, access_policy, seal_id, author },
   );
   entry.draft_head = option::some(revision_id);
   revision_id
 }
 
-/// Test bypass for `publish_from_draft`: accepts a raw `blob_id` instead of `&Blob`.
+/// Test bypass for `publish_from_draft`: accepts a raw `BlobRef`.
 #[test_only]
 public(package) fun publish_from_draft_for_testing(
   entry: &mut Entry,
   draft_revision_id: u64,
-  blob_id: ID,
+  blob_ref: BlobRef,
   content_type: String,
   author: address,
 ): u64 {
@@ -315,7 +330,7 @@ public(package) fun publish_from_draft_for_testing(
   vector::push_back(
     &mut entry.revisions,
     EntryRevision {
-      blob: blob_id,
+      blob_ref,
       content_type,
       encrypted: false,
       access_policy: ACCESS_PUBLIC,
@@ -327,11 +342,11 @@ public(package) fun publish_from_draft_for_testing(
   revision_id
 }
 
-/// Test bypass for `publish_direct`: accepts a raw `blob_id` instead of `&Blob`.
+/// Test bypass for `publish_direct`: accepts a raw `BlobRef`.
 #[test_only]
 public(package) fun publish_direct_for_testing(
   entry: &mut Entry,
-  blob_id: ID,
+  blob_ref: BlobRef,
   content_type: String,
   author: address,
 ): u64 {
@@ -340,7 +355,7 @@ public(package) fun publish_direct_for_testing(
   vector::push_back(
     &mut entry.revisions,
     EntryRevision {
-      blob: blob_id,
+      blob_ref,
       content_type,
       encrypted: false,
       access_policy: ACCESS_PUBLIC,
@@ -352,10 +367,63 @@ public(package) fun publish_direct_for_testing(
   revision_id
 }
 
+/// Construct a `BlobRef` from a Walrus `Blob` and optional `QuiltPatchId`, validating
+/// that the blob is deletable and that the arguments match the collection's `storage_mode`.
+/// This is the canonical way to create a `BlobRef` for production use.
+/// - `storage_mode == STORAGE_MODE_BLOB`: `quilt_patch_id` must be `None`; stores blob's Sui object ID.
+/// - `storage_mode == STORAGE_MODE_QUILT`: `quilt_patch_id` must be `Some(37 bytes)`; stores the patch ID.
+public(package) fun make_blob_ref(
+  storage_mode: u8,
+  blob: &Blob,
+  quilt_patch_id: Option<vector<u8>>,
+): BlobRef {
+  validate_blob(blob);
+  if (storage_mode == 1) { // STORAGE_MODE_QUILT
+    assert!(quilt_patch_id.is_some(), EQuiltPatchIdRequired);
+    let patch_id = quilt_patch_id.destroy_some();
+    assert!(patch_id.length() == QUILT_PATCH_ID_LENGTH, EInvalidQuiltPatchId);
+    BlobRef::QuiltPatch(patch_id)
+  } else { // STORAGE_MODE_BLOB
+    assert!(quilt_patch_id.is_none(), EQuiltPatchIdNotAllowed);
+    BlobRef::Blob(object::id(blob))
+  }
+}
+
+/// Construct a `BlobRef::Blob` variant for use in tests outside this module.
+/// Enums are internal to their defining module — this is the approved test constructor.
+#[test_only]
+public(package) fun blob_ref_blob(blob_id: ID): BlobRef {
+  BlobRef::Blob(blob_id)
+}
+
+/// Construct a `BlobRef::QuiltPatch` variant for use in tests outside this module.
+#[test_only]
+public(package) fun blob_ref_quilt_patch(patch_id: vector<u8>): BlobRef {
+  BlobRef::QuiltPatch(patch_id)
+}
+
+/// Test bypass for `make_blob_ref`: accepts a raw blob ID instead of `&Blob`.
+/// Legitimate because `walrus::blob::Blob` cannot be constructed in Move unit tests.
+#[test_only]
+public(package) fun make_blob_ref_for_testing(
+  storage_mode: u8,
+  blob_id: ID,
+  quilt_patch_id: Option<vector<u8>>,
+): BlobRef {
+  if (storage_mode == 1) { // STORAGE_MODE_QUILT
+    assert!(quilt_patch_id.is_some(), EQuiltPatchIdRequired);
+    let patch_id = quilt_patch_id.destroy_some();
+    assert!(patch_id.length() == QUILT_PATCH_ID_LENGTH, EInvalidQuiltPatchId);
+    BlobRef::QuiltPatch(patch_id)
+  } else { // STORAGE_MODE_BLOB
+    assert!(quilt_patch_id.is_none(), EQuiltPatchIdNotAllowed);
+    BlobRef::Blob(blob_id)
+  }
+}
+
 // internal
-fun validate_blob(blob: &Blob): ID {
+fun validate_blob(blob: &Blob) {
   assert!(blob.is_deletable(), EBlobNotDeletable);
-  object::id(blob)
 }
 
 // internal

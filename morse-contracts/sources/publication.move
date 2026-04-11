@@ -10,7 +10,7 @@ use sui::table::{Self, Table};
 use sui::event;
 
 use publication::collection::{Self, Collection};
-use publication::entry::{Self, Entry};
+use publication::entry::{Self};
 use Walrus::blob::Blob;
 
 // -- Publications --
@@ -300,18 +300,20 @@ fun assert_active_publisher_cap(publication: &Publication, cap: &PublisherCap, c
 const ECollectionAlreadyExists: u64 = 0;
 
 /// Create and add a new collection to the publication.
-/// This is the canonical external flow for collection creation.
+/// `storage_mode` must be `collection::STORAGE_MODE_BLOB` (0) or `collection::STORAGE_MODE_QUILT` (1).
+/// The storage mode is immutable after creation and determines how entry blob references are stored.
 public fun create_collection(
   publication: &mut Publication,
   cap: &PublisherCap,
   name: String,
+  storage_mode: u8,
   ctx: &mut TxContext,
 ) {
   assert_active_publisher_cap(publication, cap, ctx);
   assert!(!publication.collections.contains(&name), ECollectionAlreadyExists);
 
   let publication_id = object::id(publication);
-  let collection = collection::new_collection(name, ctx);
+  let collection = collection::new_collection(name, storage_mode, ctx);
   let collection_name = collection.get_name();
   publication.collections.insert(collection_name, collection);
 
@@ -361,18 +363,28 @@ public(package) fun collection_entries_length(publication: &Publication, collect
 
 // -- Entries --
 
-/// Add an entry to a named collection within the publication.
+/// Create a new entry and add it to a named collection within the publication.
+/// Pass `quilt_patch_id: option::none()` for STORAGE_MODE_BLOB collections.
+/// Pass `quilt_patch_id: option::some(<37-byte QuiltPatchId>)` for STORAGE_MODE_QUILT collections.
 public fun add_entry_to_collection(
   publication: &mut Publication,
   cap: &PublisherCap,
   collection_name: String,
-  entry: Entry,
+  name: String,
+  blob: &Blob,
+  quilt_patch_id: Option<vector<u8>>,
+  content_type: String,
+  encrypted: bool,
+  access_policy: u8,
+  seal_id: Option<vector<u8>>,
   ctx: &mut TxContext,
 ): u64 {
   assert_active_publisher_cap(publication, cap, ctx);
-  assert!(entry::get_author(&entry) == ctx.sender(), EEntryAuthorMismatch);
+  let sender = ctx.sender();
   let collection = publication.collections.get_mut(&collection_name);
-  collection::add_entry(collection, entry)
+  let blob_ref = entry::make_blob_ref(collection.get_storage_mode(), blob, quilt_patch_id);
+  let new_entry = entry::new_entry(name, blob_ref, content_type, encrypted, sender, access_policy, seal_id);
+  collection::add_entry(collection, new_entry)
 }
 
 /// Delete an entry by `entry_id` from a named collection within the publication.
@@ -389,24 +401,32 @@ public fun delete_entry_from_collection(
 }
 
 /// Append a draft revision to an existing collection entry.
+/// Pass `quilt_patch_id: option::none()` for STORAGE_MODE_BLOB collections.
+/// Pass `quilt_patch_id: option::some(<37-byte QuiltPatchId>)` for STORAGE_MODE_QUILT collections.
 public fun append_collection_entry_draft_revision(
   publication: &mut Publication,
   cap: &PublisherCap,
   collection_name: String,
   entry_id: u64,
   blob: &Blob,
+  quilt_patch_id: Option<vector<u8>>,
   content_type: String,
   encrypted: bool,
   access_policy: u8,
   seal_id: Option<vector<u8>>,
   ctx: &mut TxContext,
 ): u64 {
+  assert_active_publisher_cap(publication, cap, ctx);
   let sender = ctx.sender();
-  let entry_ref = get_collection_entry_for_write(publication, cap, collection_name, entry_id, ctx);
-  entry::append_draft_revision(entry_ref, blob, content_type, encrypted, sender, access_policy, seal_id)
+  let collection = publication.collections.get_mut(&collection_name);
+  let blob_ref = entry::make_blob_ref(collection.get_storage_mode(), blob, quilt_patch_id);
+  let entry_ref = collection::get_entry_mut(collection, entry_id);
+  entry::append_draft_revision(entry_ref, blob_ref, content_type, encrypted, sender, access_policy, seal_id)
 }
 
 /// Publish an existing collection entry from a draft revision.
+/// Pass `quilt_patch_id: option::none()` for STORAGE_MODE_BLOB collections.
+/// Pass `quilt_patch_id: option::some(<37-byte QuiltPatchId>)` for STORAGE_MODE_QUILT collections.
 public fun publish_collection_entry_from_draft(
   publication: &mut Publication,
   cap: &PublisherCap,
@@ -414,31 +434,44 @@ public fun publish_collection_entry_from_draft(
   entry_id: u64,
   draft_revision_id: u64,
   blob: &Blob,
+  quilt_patch_id: Option<vector<u8>>,
   content_type: String,
   ctx: &mut TxContext,
 ): u64 {
+  assert_active_publisher_cap(publication, cap, ctx);
   let sender = ctx.sender();
-  let entry_ref = get_collection_entry_for_write(publication, cap, collection_name, entry_id, ctx);
-  entry::publish_from_draft(entry_ref, draft_revision_id, blob, content_type, sender)
+  let collection = publication.collections.get_mut(&collection_name);
+  let blob_ref = entry::make_blob_ref(collection.get_storage_mode(), blob, quilt_patch_id);
+  let entry_ref = collection::get_entry_mut(collection, entry_id);
+  entry::publish_from_draft(entry_ref, draft_revision_id, blob_ref, content_type, sender)
 }
 
 /// Publish an existing collection entry directly (non-encrypted public revision).
+/// Pass `quilt_patch_id: option::none()` for STORAGE_MODE_BLOB collections.
+/// Pass `quilt_patch_id: option::some(<37-byte QuiltPatchId>)` for STORAGE_MODE_QUILT collections.
 public fun publish_collection_entry_direct(
   publication: &mut Publication,
   cap: &PublisherCap,
   collection_name: String,
   entry_id: u64,
   blob: &Blob,
+  quilt_patch_id: Option<vector<u8>>,
   content_type: String,
   ctx: &mut TxContext,
 ): u64 {
+  assert_active_publisher_cap(publication, cap, ctx);
   let sender = ctx.sender();
-  let entry_ref = get_collection_entry_for_write(publication, cap, collection_name, entry_id, ctx);
-  entry::publish_direct(entry_ref, blob, content_type, sender)
+  let collection = publication.collections.get_mut(&collection_name);
+  let blob_ref = entry::make_blob_ref(collection.get_storage_mode(), blob, quilt_patch_id);
+  let entry_ref = collection::get_entry_mut(collection, entry_id);
+  entry::publish_direct(entry_ref, blob_ref, content_type, sender)
 }
 
-/// Error code: entry author does not match transaction sender.
-const EEntryAuthorMismatch: u64 = 11;
+#[test_only]
+public(package) fun collection_storage_mode(publication: &Publication, collection_name: String): u8 {
+  let collection = publication.collections.get(&collection_name);
+  collection.get_storage_mode()
+}
 
 #[test_only]
 public(package) fun collection_entry_public_head(publication: &mut Publication, collection_name: String, entry_id: u64): Option<u64> {
@@ -475,7 +508,50 @@ public(package) fun collection_entry_draft_head(publication: &mut Publication, c
   entry::get_draft_head(entry_ref)
 }
 
-/// Test bypass for `append_collection_entry_draft_revision`: accepts a raw `blob_id` instead of `&Blob`.
+/// Test bypass for `add_entry_to_collection`: accepts raw blob_id/quilt_patch_id instead of `&Blob`.
+#[test_only]
+public(package) fun add_entry_to_collection_for_testing(
+  publication: &mut Publication,
+  cap: &PublisherCap,
+  collection_name: String,
+  name: String,
+  blob_id: ID,
+  quilt_patch_id: Option<vector<u8>>,
+  content_type: String,
+  encrypted: bool,
+  access_policy: u8,
+  seal_id: Option<vector<u8>>,
+  ctx: &TxContext,
+): u64 {
+  assert_active_publisher_cap(publication, cap, ctx);
+  let sender = ctx.sender();
+  let collection = publication.collections.get_mut(&collection_name);
+  let blob_ref = entry::make_blob_ref_for_testing(collection.get_storage_mode(), blob_id, quilt_patch_id);
+  let new_entry = entry::new_entry_for_testing(name, blob_ref, content_type, encrypted, sender, access_policy, seal_id);
+  collection::add_entry(collection, new_entry)
+}
+
+/// Test bypass for `publish_collection_entry_direct`: accepts raw blob_id/quilt_patch_id instead of `&Blob`.
+#[test_only]
+public(package) fun publish_collection_entry_direct_for_testing(
+  publication: &mut Publication,
+  cap: &PublisherCap,
+  collection_name: String,
+  entry_id: u64,
+  blob_id: ID,
+  quilt_patch_id: Option<vector<u8>>,
+  content_type: String,
+  ctx: &TxContext,
+): u64 {
+  assert_active_publisher_cap(publication, cap, ctx);
+  let sender = ctx.sender();
+  let collection = publication.collections.get_mut(&collection_name);
+  let blob_ref = entry::make_blob_ref_for_testing(collection.get_storage_mode(), blob_id, quilt_patch_id);
+  let entry_ref = collection::get_entry_mut(collection, entry_id);
+  entry::publish_direct_for_testing(entry_ref, blob_ref, content_type, sender)
+}
+
+/// Test bypass for `append_collection_entry_draft_revision`: accepts raw blob_id/quilt_patch_id instead of `&Blob`.
 #[test_only]
 public(package) fun append_collection_entry_draft_revision_for_testing(
   publication: &mut Publication,
@@ -483,18 +559,22 @@ public(package) fun append_collection_entry_draft_revision_for_testing(
   collection_name: String,
   entry_id: u64,
   blob_id: ID,
+  quilt_patch_id: Option<vector<u8>>,
   content_type: String,
   encrypted: bool,
   access_policy: u8,
   seal_id: Option<vector<u8>>,
   ctx: &TxContext,
 ): u64 {
+  assert_active_publisher_cap(publication, cap, ctx);
   let sender = ctx.sender();
-  let entry_ref = get_collection_entry_for_write(publication, cap, collection_name, entry_id, ctx);
-  entry::append_draft_revision_for_testing(entry_ref, blob_id, content_type, encrypted, sender, access_policy, seal_id)
+  let collection = publication.collections.get_mut(&collection_name);
+  let blob_ref = entry::make_blob_ref_for_testing(collection.get_storage_mode(), blob_id, quilt_patch_id);
+  let entry_ref = collection::get_entry_mut(collection, entry_id);
+  entry::append_draft_revision_for_testing(entry_ref, blob_ref, content_type, encrypted, sender, access_policy, seal_id)
 }
 
-/// Test bypass for `publish_collection_entry_from_draft`: accepts a raw `blob_id` instead of `&Blob`.
+/// Test bypass for `publish_collection_entry_from_draft`: accepts raw blob_id/quilt_patch_id instead of `&Blob`.
 #[test_only]
 public(package) fun publish_collection_entry_from_draft_for_testing(
   publication: &mut Publication,
@@ -503,25 +583,16 @@ public(package) fun publish_collection_entry_from_draft_for_testing(
   entry_id: u64,
   draft_revision_id: u64,
   blob_id: ID,
+  quilt_patch_id: Option<vector<u8>>,
   content_type: String,
   ctx: &TxContext,
 ): u64 {
-  let sender = ctx.sender();
-  let entry_ref = get_collection_entry_for_write(publication, cap, collection_name, entry_id, ctx);
-  entry::publish_from_draft_for_testing(entry_ref, draft_revision_id, blob_id, content_type, sender)
-}
-
-// internal
-fun get_collection_entry_for_write(
-  publication: &mut Publication,
-  cap: &PublisherCap,
-  collection_name: String,
-  entry_id: u64,
-  ctx: &TxContext,
-): &mut Entry {
   assert_active_publisher_cap(publication, cap, ctx);
+  let sender = ctx.sender();
   let collection = publication.collections.get_mut(&collection_name);
-  collection::get_entry_mut(collection, entry_id)
+  let blob_ref = entry::make_blob_ref_for_testing(collection.get_storage_mode(), blob_id, quilt_patch_id);
+  let entry_ref = collection::get_entry_mut(collection, entry_id);
+  entry::publish_from_draft_for_testing(entry_ref, draft_revision_id, blob_ref, content_type, sender)
 }
 
 // -- Seal (encryption) --
@@ -577,5 +648,4 @@ public(package) fun publisher_seal_id_for_testing(publication: &Publication, non
 public(package) fun seal_approve_publisher_for_testing(id: vector<u8>, publication: &Publication, cap: &PublisherCap, ctx: &TxContext) {
   seal_approve_publisher(id, publication, cap, ctx);
 }
-
 
