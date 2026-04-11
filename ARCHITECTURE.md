@@ -73,7 +73,7 @@ What happens in `new_publication(registry, ctx, name, slug)`:
 
 1. Validate slug format.
 2. Check uniqueness in registry.
-3. Create `Publication` shared object.
+3. Create `Publication` object and return it together with `OwnerCap` and `PublisherCap`. The caller is responsible for sharing the publication (via `share_publication`) and transferring the caps in their PTB.
 4. Register `slug -> publication_id` mapping.
 5. Emit creation/registration events.
 
@@ -238,8 +238,7 @@ Design choice: `VecMap` at publication level.
 Collections are created through publication entrypoints (publisher-gated), not as an unscoped free-for-all.
 
 - `create_collection(publication, cap, name, ctx)` creates and inserts a collection in one flow.
-- `add_collection(...)` inserts a pre-created collection, but enforces publication-id match and unique name.
-- `delete_collection(...)` removes and deletes a collection (only when its entries are empty).
+- `delete_collection(publication, cap, name, ctx)` removes and deletes a collection (only when its entries are empty).
 
 Why this matters:
 
@@ -315,6 +314,8 @@ An entry revision stores:
 - `blob: ID` (Walrus blob object id),
 - `content_type` (MIME metadata),
 - `encrypted` flag,
+- `access_policy` (`ACCESS_PUBLIC = 0`, `ACCESS_PUBLISHER = 1`, `ACCESS_SUBSCRIPTION = 2`),
+- `seal_id` (optional Seal identity for encrypted revisions),
 - `author` address.
 
 Important boundary:
@@ -322,6 +323,12 @@ Important boundary:
 - Morse stores references and metadata on-chain.
 - Morse does not inline payload bytes in Move state.
 - Deleting an entry removes the on-chain reference; it does not automatically delete the Walrus blob.
+
+Blob constraint:
+
+- All revision-creating functions require the caller to pass `&walrus::blob::Blob` (not just an ID).
+- The contract asserts `blob.is_deletable()` before storing the ID, enforcing the platform requirement that all stored content must be deletable.
+- The blob is not wrapped or owned by the entry — it remains an independent Walrus object. Only its ID is stored on-chain.
 
 ### Author provenance
 
@@ -389,7 +396,7 @@ This is the core separation of duties: owner governance vs publisher operations.
 
 Bob creates an entry in `articles` named `welcome-post`.
 
-1. Bob uploads draft content to Walrus (can be encrypted) and stores the blob id as a draft revision.
+1. Bob uploads draft content to Walrus (can be encrypted) and passes the resulting `Blob` object to create a draft revision. The contract validates it is deletable and stores its ID.
 2. `draft_head` moves to the new revision.
 3. Bob reviews/edits again by appending another draft revision.
 4. When ready, Bob publishes: a new public revision is appended and `public_head` is updated.
