@@ -527,10 +527,10 @@ fun test_add_entry_to_collection_with_mismatched_author_fails() {
   publication::create_collection(&mut publication_obj, &publisher_cap, collection_name, ctx);
 
   let mock_blob = object::new(ctx);
-  let entry_obj = entry::new_entry(
+  let entry_obj = entry::new_entry_for_testing(
     b"hero".to_string(),
-    b"application/json".to_string(),
     mock_blob.to_inner(),
+    b"application/json".to_string(),
     false,
     @0xB,
     entry::access_policy_public(),
@@ -561,10 +561,10 @@ fun test_add_entry_to_collection() {
   publication::create_collection(&mut publication_obj, &publisher_cap, collection_name, ctx);
 
   let mock_blob = object::new(ctx);
-  let entry_obj = entry::new_entry(
+  let entry_obj = entry::new_entry_for_testing(
     b"First Post".to_string(),
-    b"application/json".to_string(),
     mock_blob.to_inner(),
+    b"application/json".to_string(),
     false,
     ctx.sender(),
     entry::access_policy_public(),
@@ -597,10 +597,10 @@ fun test_delete_entry_from_collection() {
   publication::create_collection(&mut publication_obj, &publisher_cap, collection_name, ctx);
 
   let mock_blob = object::new(ctx);
-  let entry_obj = entry::new_entry(
+  let entry_obj = entry::new_entry_for_testing(
     b"First Post".to_string(),
-    b"application/json".to_string(),
     mock_blob.to_inner(),
+    b"application/json".to_string(),
     false,
     ctx.sender(),
     entry::access_policy_public(),
@@ -642,10 +642,10 @@ fun test_delete_then_add_entry_to_collection_uses_monotonic_entry_id() {
     &mut publication_obj,
     &publisher_cap,
     collection_name,
-    entry::new_entry(
+    entry::new_entry_for_testing(
       b"a".to_string(),
-      b"application/json".to_string(),
       blob_0.to_inner(),
+      b"application/json".to_string(),
       false,
       ctx.sender(),
       entry::access_policy_public(),
@@ -657,10 +657,10 @@ fun test_delete_then_add_entry_to_collection_uses_monotonic_entry_id() {
     &mut publication_obj,
     &publisher_cap,
     collection_name,
-    entry::new_entry(
+    entry::new_entry_for_testing(
       b"b".to_string(),
-      b"application/json".to_string(),
       blob_1.to_inner(),
+      b"application/json".to_string(),
       false,
       ctx.sender(),
       entry::access_policy_public(),
@@ -672,10 +672,10 @@ fun test_delete_then_add_entry_to_collection_uses_monotonic_entry_id() {
     &mut publication_obj,
     &publisher_cap,
     collection_name,
-    entry::new_entry(
+    entry::new_entry_for_testing(
       b"c".to_string(),
-      b"application/json".to_string(),
       blob_2.to_inner(),
+      b"application/json".to_string(),
       false,
       ctx.sender(),
       entry::access_policy_public(),
@@ -690,10 +690,10 @@ fun test_delete_then_add_entry_to_collection_uses_monotonic_entry_id() {
     &mut publication_obj,
     &publisher_cap,
     collection_name,
-    entry::new_entry(
+    entry::new_entry_for_testing(
       b"d".to_string(),
-      b"application/json".to_string(),
       blob_3.to_inner(),
+      b"application/json".to_string(),
       false,
       ctx.sender(),
       entry::access_policy_public(),
@@ -740,10 +740,10 @@ fun test_collection_entry_draft_and_publish_heads() {
     &mut publication_obj,
     &publisher_cap,
     collection_name,
-    entry::new_entry(
+    entry::new_entry_for_testing(
       b"draft".to_string(),
-      b"application/json".to_string(),
       blob_0.to_inner(),
+      b"application/json".to_string(),
       true,
       ctx.sender(),
       entry::access_policy_publisher(),
@@ -752,27 +752,27 @@ fun test_collection_entry_draft_and_publish_heads() {
     ctx,
   );
 
-  let draft_rev = publication::append_collection_entry_draft_revision(
+  let draft_rev = publication::append_collection_entry_draft_revision_for_testing(
     &mut publication_obj,
     &publisher_cap,
     collection_name,
     entry_id,
-    b"application/json".to_string(),
     blob_1.to_inner(),
+    b"application/json".to_string(),
     true,
     entry::access_policy_publisher(),
     option::some(b"draft-seal-1"),
     ctx,
   );
 
-  let public_rev = publication::publish_collection_entry_from_draft(
+  let public_rev = publication::publish_collection_entry_from_draft_for_testing(
     &mut publication_obj,
     &publisher_cap,
     collection_name,
     entry_id,
     draft_rev,
-    b"application/json".to_string(),
     blob_2.to_inner(),
+    b"application/json".to_string(),
     ctx,
   );
 

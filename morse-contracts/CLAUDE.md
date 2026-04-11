@@ -117,6 +117,7 @@ Use `#[test_only]` helpers **only** for things that are genuinely impossible to 
 - **Allowed:** Constructors for singleton objects created by `init()` (e.g. `new_registry_for_testing`) — `init` cannot be called directly in unit tests.
 - **Allowed:** Thin wrappers around `entry fun` functions (e.g. `seal_approve_publisher_for_testing`) — `entry` functions cannot be called from other Move modules.
 - **Allowed:** Read accessors for private struct fields (e.g. `collections_length`, `is_publisher_cap_revoked`) — struct fields are private.
+- **Allowed:** Bypasses for third-party objects with no test constructor (e.g. `new_entry_for_testing` accepting `blob_id: ID` instead of `blob: &walrus::blob::Blob`) — `walrus::blob::Blob` cannot be constructed in Move unit tests because `blob::new` is `public(package)` and Walrus provides no `#[test_only]` blob constructor. The bypass skips only the third-party validation, not your own logic.
 - **Not allowed:** Alternative constructors that bypass or duplicate production creation logic (e.g. `new_publication_for_testing` that skips the registry). Tests must call the real function.
 
 The rule: **if a test only exercises `#[test_only]` code, it is testing the mock, not the implementation.**

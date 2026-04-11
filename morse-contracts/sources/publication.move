@@ -11,6 +11,7 @@ use sui::event;
 
 use publication::collection::{Self, Collection};
 use publication::entry::{Self, Entry};
+use Walrus::blob::Blob;
 
 // -- Publications --
 
@@ -393,8 +394,8 @@ public fun append_collection_entry_draft_revision(
   cap: &PublisherCap,
   collection_name: String,
   entry_id: u64,
+  blob: &Blob,
   content_type: String,
-  blob: ID,
   encrypted: bool,
   access_policy: u8,
   seal_id: Option<vector<u8>>,
@@ -402,7 +403,7 @@ public fun append_collection_entry_draft_revision(
 ): u64 {
   let sender = ctx.sender();
   let entry_ref = get_collection_entry_for_write(publication, cap, collection_name, entry_id, ctx);
-  entry::append_draft_revision(entry_ref, content_type, blob, encrypted, sender, access_policy, seal_id)
+  entry::append_draft_revision(entry_ref, blob, content_type, encrypted, sender, access_policy, seal_id)
 }
 
 /// Publish an existing collection entry from a draft revision.
@@ -412,13 +413,13 @@ public fun publish_collection_entry_from_draft(
   collection_name: String,
   entry_id: u64,
   draft_revision_id: u64,
+  blob: &Blob,
   content_type: String,
-  blob: ID,
   ctx: &mut TxContext,
 ): u64 {
   let sender = ctx.sender();
   let entry_ref = get_collection_entry_for_write(publication, cap, collection_name, entry_id, ctx);
-  entry::publish_from_draft(entry_ref, draft_revision_id, content_type, blob, sender)
+  entry::publish_from_draft(entry_ref, draft_revision_id, blob, content_type, sender)
 }
 
 /// Publish an existing collection entry directly (non-encrypted public revision).
@@ -427,13 +428,13 @@ public fun publish_collection_entry_direct(
   cap: &PublisherCap,
   collection_name: String,
   entry_id: u64,
+  blob: &Blob,
   content_type: String,
-  blob: ID,
   ctx: &mut TxContext,
 ): u64 {
   let sender = ctx.sender();
   let entry_ref = get_collection_entry_for_write(publication, cap, collection_name, entry_id, ctx);
-  entry::publish_direct(entry_ref, content_type, blob, sender)
+  entry::publish_direct(entry_ref, blob, content_type, sender)
 }
 
 /// Error code: entry author does not match transaction sender.
@@ -472,6 +473,42 @@ public(package) fun collection_entry_draft_head(publication: &mut Publication, c
   let collection = publication.collections.get_mut(&collection_name);
   let entry_ref = collection::get_entry_mut(collection, entry_id);
   entry::get_draft_head(entry_ref)
+}
+
+/// Test bypass for `append_collection_entry_draft_revision`: accepts a raw `blob_id` instead of `&Blob`.
+#[test_only]
+public(package) fun append_collection_entry_draft_revision_for_testing(
+  publication: &mut Publication,
+  cap: &PublisherCap,
+  collection_name: String,
+  entry_id: u64,
+  blob_id: ID,
+  content_type: String,
+  encrypted: bool,
+  access_policy: u8,
+  seal_id: Option<vector<u8>>,
+  ctx: &TxContext,
+): u64 {
+  let sender = ctx.sender();
+  let entry_ref = get_collection_entry_for_write(publication, cap, collection_name, entry_id, ctx);
+  entry::append_draft_revision_for_testing(entry_ref, blob_id, content_type, encrypted, sender, access_policy, seal_id)
+}
+
+/// Test bypass for `publish_collection_entry_from_draft`: accepts a raw `blob_id` instead of `&Blob`.
+#[test_only]
+public(package) fun publish_collection_entry_from_draft_for_testing(
+  publication: &mut Publication,
+  cap: &PublisherCap,
+  collection_name: String,
+  entry_id: u64,
+  draft_revision_id: u64,
+  blob_id: ID,
+  content_type: String,
+  ctx: &TxContext,
+): u64 {
+  let sender = ctx.sender();
+  let entry_ref = get_collection_entry_for_write(publication, cap, collection_name, entry_id, ctx);
+  entry::publish_from_draft_for_testing(entry_ref, draft_revision_id, blob_id, content_type, sender)
 }
 
 // internal

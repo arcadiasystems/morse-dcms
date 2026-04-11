@@ -27,10 +27,10 @@ fun test_add_entry() {
   let name = b"First Blog Post".to_string();
   let content_type = b"application/json".to_string();
   let mock_blob = object::new(ctx);
-  let entry_obj = entry::new_entry(
+  let entry_obj = entry::new_entry_for_testing(
     name,
-    content_type,
     mock_blob.to_inner(),
+    content_type,
     false,
     ctx.sender(),
     entry::access_policy_public(),
@@ -56,10 +56,10 @@ fun test_delete_entry() {
   let name = b"First Blog Post".to_string();
   let content_type = b"application/json".to_string();
   let mock_blob = object::new(ctx);
-  let entry_obj = entry::new_entry(
+  let entry_obj = entry::new_entry_for_testing(
     name,
-    content_type,
     mock_blob.to_inner(),
+    content_type,
     false,
     ctx.sender(),
     entry::access_policy_public(),
@@ -92,10 +92,10 @@ fun test_delete_then_add_uses_monotonic_entry_id() {
 
   let first_id = collection::add_entry(
     &mut collection_obj,
-    entry::new_entry(
+    entry::new_entry_for_testing(
       b"a".to_string(),
-      b"application/json".to_string(),
       blob_0.to_inner(),
+      b"application/json".to_string(),
       false,
       ctx.sender(),
       entry::access_policy_public(),
@@ -104,10 +104,10 @@ fun test_delete_then_add_uses_monotonic_entry_id() {
   );
   let second_id = collection::add_entry(
     &mut collection_obj,
-    entry::new_entry(
+    entry::new_entry_for_testing(
       b"b".to_string(),
-      b"application/json".to_string(),
       blob_1.to_inner(),
+      b"application/json".to_string(),
       false,
       ctx.sender(),
       entry::access_policy_public(),
@@ -116,10 +116,10 @@ fun test_delete_then_add_uses_monotonic_entry_id() {
   );
   let third_id = collection::add_entry(
     &mut collection_obj,
-    entry::new_entry(
+    entry::new_entry_for_testing(
       b"c".to_string(),
-      b"application/json".to_string(),
       blob_2.to_inner(),
+      b"application/json".to_string(),
       false,
       ctx.sender(),
       entry::access_policy_public(),
@@ -131,10 +131,10 @@ fun test_delete_then_add_uses_monotonic_entry_id() {
 
   let fourth_id = collection::add_entry(
     &mut collection_obj,
-    entry::new_entry(
+    entry::new_entry_for_testing(
       b"d".to_string(),
-      b"application/json".to_string(),
       blob_3.to_inner(),
+      b"application/json".to_string(),
       false,
       ctx.sender(),
       entry::access_policy_public(),
