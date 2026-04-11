@@ -10,15 +10,11 @@ use publication::entry;
 fun test_new_collection() {
   let ctx = &mut tx_context::dummy();
 
-  let mock_publication_id = object::new(ctx);
+  let collection_obj = collection::new_collection(b"articles".to_string(), ctx);
 
-  let collection_obj = collection::new_collection(mock_publication_id.to_inner(), b"articles".to_string(), ctx);
-
-  assert_eq!(collection::get_publication_id(&collection_obj), mock_publication_id.to_inner());
   assert_eq!(collection::get_name(&collection_obj), b"articles".to_string());
   assert_eq!(collection::next_entry_id(&collection_obj), 0);
 
-  unit_test::destroy(mock_publication_id);
   unit_test::destroy(collection_obj);
 }
 
@@ -26,13 +22,20 @@ fun test_new_collection() {
 fun test_add_entry() {
   let ctx = &mut tx_context::dummy();
 
-  let mock_publication_id = object::new(ctx);
-  let mut collection_obj = collection::new_collection(mock_publication_id.to_inner(), b"articles".to_string(), ctx);
+  let mut collection_obj = collection::new_collection(b"articles".to_string(), ctx);
 
   let name = b"First Blog Post".to_string();
   let content_type = b"application/json".to_string();
   let mock_blob = object::new(ctx);
-  let entry_obj = entry::new_entry(name, content_type, mock_blob.to_inner(), false, ctx.sender());
+  let entry_obj = entry::new_entry(
+    name,
+    content_type,
+    mock_blob.to_inner(),
+    false,
+    ctx.sender(),
+    entry::access_policy_public(),
+    option::none(),
+  );
 
   let entry_id = collection::add_entry(&mut collection_obj, entry_obj);
 
@@ -41,7 +44,6 @@ fun test_add_entry() {
   assert_eq!(collection::next_entry_id(&collection_obj), 1);
 
   unit_test::destroy(mock_blob);
-  unit_test::destroy(mock_publication_id);
   unit_test::destroy(collection_obj);
 }
 
@@ -49,13 +51,20 @@ fun test_add_entry() {
 fun test_delete_entry() {
   let ctx = &mut tx_context::dummy();
 
-  let mock_publication_id = object::new(ctx);
-  let mut collection_obj = collection::new_collection(mock_publication_id.to_inner(), b"articles".to_string(), ctx);
+  let mut collection_obj = collection::new_collection(b"articles".to_string(), ctx);
 
   let name = b"First Blog Post".to_string();
   let content_type = b"application/json".to_string();
   let mock_blob = object::new(ctx);
-  let entry_obj = entry::new_entry(name, content_type, mock_blob.to_inner(), false, ctx.sender());
+  let entry_obj = entry::new_entry(
+    name,
+    content_type,
+    mock_blob.to_inner(),
+    false,
+    ctx.sender(),
+    entry::access_policy_public(),
+    option::none(),
+  );
 
   let entry_id = collection::add_entry(&mut collection_obj, entry_obj);
 
@@ -67,7 +76,6 @@ fun test_delete_entry() {
   assert_eq!(collection::entries_length(&collection_obj), 0);
 
   unit_test::destroy(mock_blob);
-  unit_test::destroy(mock_publication_id);
   unit_test::destroy(collection_obj);
 }
 
@@ -75,21 +83,64 @@ fun test_delete_entry() {
 fun test_delete_then_add_uses_monotonic_entry_id() {
   let ctx = &mut tx_context::dummy();
 
-  let mock_publication_id = object::new(ctx);
-  let mut collection_obj = collection::new_collection(mock_publication_id.to_inner(), b"articles".to_string(), ctx);
+  let mut collection_obj = collection::new_collection(b"articles".to_string(), ctx);
 
   let blob_0 = object::new(ctx);
   let blob_1 = object::new(ctx);
   let blob_2 = object::new(ctx);
   let blob_3 = object::new(ctx);
 
-  let first_id = collection::add_entry(&mut collection_obj, entry::new_entry(b"a".to_string(), b"application/json".to_string(), blob_0.to_inner(), false, ctx.sender()));
-  let second_id = collection::add_entry(&mut collection_obj, entry::new_entry(b"b".to_string(), b"application/json".to_string(), blob_1.to_inner(), false, ctx.sender()));
-  let third_id = collection::add_entry(&mut collection_obj, entry::new_entry(b"c".to_string(), b"application/json".to_string(), blob_2.to_inner(), false, ctx.sender()));
+  let first_id = collection::add_entry(
+    &mut collection_obj,
+    entry::new_entry(
+      b"a".to_string(),
+      b"application/json".to_string(),
+      blob_0.to_inner(),
+      false,
+      ctx.sender(),
+      entry::access_policy_public(),
+      option::none(),
+    ),
+  );
+  let second_id = collection::add_entry(
+    &mut collection_obj,
+    entry::new_entry(
+      b"b".to_string(),
+      b"application/json".to_string(),
+      blob_1.to_inner(),
+      false,
+      ctx.sender(),
+      entry::access_policy_public(),
+      option::none(),
+    ),
+  );
+  let third_id = collection::add_entry(
+    &mut collection_obj,
+    entry::new_entry(
+      b"c".to_string(),
+      b"application/json".to_string(),
+      blob_2.to_inner(),
+      false,
+      ctx.sender(),
+      entry::access_policy_public(),
+      option::none(),
+    ),
+  );
 
   collection::delete_entry(&mut collection_obj, second_id);
 
-  let fourth_id = collection::add_entry(&mut collection_obj, entry::new_entry(b"d".to_string(), b"application/json".to_string(), blob_3.to_inner(), false, ctx.sender()));
+  let fourth_id = collection::add_entry(
+    &mut collection_obj,
+    entry::new_entry(
+      b"d".to_string(),
+      b"application/json".to_string(),
+      blob_3.to_inner(),
+      false,
+      ctx.sender(),
+      entry::access_policy_public(),
+      option::none(),
+    ),
+  );
 
   assert_eq!(collection::entries_length(&collection_obj), 3);
   assert_eq!(first_id, 0);
@@ -106,7 +157,6 @@ fun test_delete_then_add_uses_monotonic_entry_id() {
   unit_test::destroy(blob_1);
   unit_test::destroy(blob_2);
   unit_test::destroy(blob_3);
-  unit_test::destroy(mock_publication_id);
   unit_test::destroy(collection_obj);
 }
 
@@ -114,11 +164,9 @@ fun test_delete_then_add_uses_monotonic_entry_id() {
 fun test_delete_missing_entry_id_fails() {
   let ctx = &mut tx_context::dummy();
 
-  let mock_publication_id = object::new(ctx);
-  let mut collection_obj = collection::new_collection(mock_publication_id.to_inner(), b"articles".to_string(), ctx);
+  let mut collection_obj = collection::new_collection(b"articles".to_string(), ctx);
 
   collection::delete_entry(&mut collection_obj, 42);
 
-  unit_test::destroy(mock_publication_id);
   unit_test::destroy(collection_obj);
 }

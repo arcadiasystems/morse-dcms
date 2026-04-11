@@ -3,23 +3,26 @@ module publication::publication_tests;
 use std::unit_test;
 use std::unit_test::assert_eq;
 
-use publication::collection;
 use publication::entry;
 use publication::publication;
 
 #[test]
 fun test_new_publication() {
   let ctx = &mut tx_context::dummy();
+  let mut registry = publication::new_registry_for_testing(ctx);
   let publication_name = b"ArcSys Blog".to_string();
 
-  let (publication_obj, owner_cap, publisher_cap) = publication::new_publication_for_testing(ctx, publication_name);
+  let (publication_obj, owner_cap, publisher_cap) = publication::new_publication(
+    &mut registry,
+    ctx,
+    publication_name,
+    b"arcsys-blog".to_string(),
+  );
 
-  assert_eq!(publication::name(&publication_obj), publication_name);
-  assert_eq!(publication::slug(&publication_obj), b"test-slug".to_string());
-  assert_eq!(publication::owner_cap_publication_id(&owner_cap), object::id(&publication_obj));
-  assert_eq!(publication::publisher_cap_publication_id(&publisher_cap), object::id(&publication_obj));
-  assert_eq!(publication::publisher_cap_holder(&publisher_cap), ctx.sender());
+  assert_eq!(publication::collections_length(&publication_obj), 0);
+  assert_eq!(publication::is_publisher_cap_revoked(&publication_obj, object::id(&publisher_cap)), false);
 
+  unit_test::destroy(registry);
   unit_test::destroy(publication_obj);
   unit_test::destroy(owner_cap);
   unit_test::destroy(publisher_cap);
@@ -29,7 +32,7 @@ fun test_new_publication() {
 fun test_slug_registry_lookup() {
   let ctx = &mut tx_context::dummy();
   let mut registry = publication::new_registry_for_testing(ctx);
-  let (publication_obj, owner_cap, publisher_cap) = publication::new_publication_with_registry_for_testing(
+  let (publication_obj, owner_cap, publisher_cap) = publication::new_publication(
     &mut registry,
     ctx,
     b"ArcSys Blog".to_string(),
@@ -53,14 +56,14 @@ fun test_duplicate_slug_fails() {
   let ctx = &mut tx_context::dummy();
   let mut registry = publication::new_registry_for_testing(ctx);
 
-  let (publication_obj, owner_cap, publisher_cap) = publication::new_publication_with_registry_for_testing(
+  let (publication_obj, owner_cap, publisher_cap) = publication::new_publication(
     &mut registry,
     ctx,
     b"ArcSys Blog".to_string(),
     b"my-personal-blog".to_string(),
   );
 
-  let (_other_publication, _other_owner_cap, _other_publisher_cap) = publication::new_publication_with_registry_for_testing(
+  let (_other_publication, _other_owner_cap, _other_publisher_cap) = publication::new_publication(
     &mut registry,
     ctx,
     b"Other".to_string(),
@@ -80,7 +83,7 @@ fun test_duplicate_slug_fails() {
 fun test_invalid_slug_fails() {
   let ctx = &mut tx_context::dummy();
   let mut registry = publication::new_registry_for_testing(ctx);
-  let (publication_obj, owner_cap, publisher_cap) = publication::new_publication_with_registry_for_testing(
+  let (publication_obj, owner_cap, publisher_cap) = publication::new_publication(
     &mut registry,
     ctx,
     b"ArcSys Blog".to_string(),
@@ -97,18 +100,17 @@ fun test_slug_reusable_after_delete() {
   let ctx = &mut tx_context::dummy();
   let mut registry = publication::new_registry_for_testing(ctx);
 
-  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication_with_registry_for_testing(
+  let (publication_obj, owner_cap, publisher_cap) = publication::new_publication(
     &mut registry,
     ctx,
     b"ArcSys Blog".to_string(),
     b"my-personal-blog".to_string(),
   );
 
-  publication::destroy_publisher_cap(&mut publication_obj, publisher_cap, ctx);
   publication::delete_publication(&mut registry, publication_obj, owner_cap);
   assert_eq!(publication::contains_slug(&registry, b"my-personal-blog".to_string()), false);
 
-  let (publication_obj_2, owner_cap_2, publisher_cap_2) = publication::new_publication_with_registry_for_testing(
+  let (publication_obj_2, owner_cap_2, publisher_cap_2) = publication::new_publication(
     &mut registry,
     ctx,
     b"ArcSys Blog v2".to_string(),
@@ -118,6 +120,7 @@ fun test_slug_reusable_after_delete() {
   assert_eq!(publication::contains_slug(&registry, b"my-personal-blog".to_string()), true);
 
   unit_test::destroy(registry);
+  unit_test::destroy(publisher_cap);
   unit_test::destroy(publication_obj_2);
   unit_test::destroy(owner_cap_2);
   unit_test::destroy(publisher_cap_2);
@@ -127,29 +130,57 @@ fun test_slug_reusable_after_delete() {
 fun test_delete_publication() {
   let ctx = &mut tx_context::dummy();
   let mut registry = publication::new_registry_for_testing(ctx);
-  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication_with_registry_for_testing(
+  let (publication_obj, owner_cap, publisher_cap) = publication::new_publication(
     &mut registry,
     ctx,
     b"ArcSys Blog".to_string(),
     b"delete-me".to_string(),
   );
 
-  publication::destroy_publisher_cap(&mut publication_obj, publisher_cap, ctx);
+  // Publisher cap does not need to be destroyed first: the revoked denylist is dropped on delete.
   publication::delete_publication(&mut registry, publication_obj, owner_cap);
 
   unit_test::destroy(registry);
+  unit_test::destroy(publisher_cap);
+}
+
+#[test]
+fun test_delete_publication_with_revoked_cap_succeeds() {
+  let ctx = &mut tx_context::dummy();
+  let mut registry = publication::new_registry_for_testing(ctx);
+  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication(
+    &mut registry,
+    ctx,
+    b"ArcSys Blog".to_string(),
+    b"delete-me-2".to_string(),
+  );
+
+  // Revoke the cap but do NOT destroy it — deletion must still succeed via table::drop.
+  let cap_id = object::id(&publisher_cap);
+  publication::revoke_publisher_cap(&mut publication_obj, &owner_cap, cap_id);
+
+  publication::delete_publication(&mut registry, publication_obj, owner_cap);
+
+  unit_test::destroy(registry);
+  unit_test::destroy(publisher_cap);
 }
 
 #[test]
 fun test_issue_publisher_cap() {
   let ctx = &mut tx_context::dummy();
-  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication_for_testing(ctx, b"ArcSys Blog".to_string());
+  let mut registry = publication::new_registry_for_testing(ctx);
+  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication(
+    &mut registry,
+    ctx,
+    b"ArcSys Blog".to_string(),
+    b"arcsys-blog".to_string(),
+  );
 
   let new_cap = publication::issue_publisher_cap(&mut publication_obj, &owner_cap, ctx.sender(), ctx);
 
-  assert_eq!(publication::publisher_cap_publication_id(&new_cap), object::id(&publication_obj));
-  assert_eq!(publication::publisher_cap_holder(&new_cap), ctx.sender());
+  assert_eq!(publication::is_publisher_cap_revoked(&publication_obj, object::id(&new_cap)), false);
 
+  unit_test::destroy(registry);
   unit_test::destroy(publication_obj);
   unit_test::destroy(owner_cap);
   unit_test::destroy(publisher_cap);
@@ -159,10 +190,17 @@ fun test_issue_publisher_cap() {
 #[test]
 fun test_destroy_publisher_cap() {
   let ctx = &mut tx_context::dummy();
-  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication_for_testing(ctx, b"ArcSys Blog".to_string());
+  let mut registry = publication::new_registry_for_testing(ctx);
+  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication(
+    &mut registry,
+    ctx,
+    b"ArcSys Blog".to_string(),
+    b"arcsys-blog".to_string(),
+  );
 
   publication::destroy_publisher_cap(&mut publication_obj, publisher_cap, ctx);
 
+  unit_test::destroy(registry);
   unit_test::destroy(publication_obj);
   unit_test::destroy(owner_cap);
 }
@@ -170,13 +208,19 @@ fun test_destroy_publisher_cap() {
 #[test, expected_failure(abort_code = publication::EPublisherCapWrongHolder)]
 fun test_wrong_holder_cannot_use_publisher_cap() {
   let ctx = &mut tx_context::dummy();
-  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication_for_testing(ctx, b"ArcSys Blog".to_string());
+  let mut registry = publication::new_registry_for_testing(ctx);
+  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication(
+    &mut registry,
+    ctx,
+    b"ArcSys Blog".to_string(),
+    b"arcsys-blog".to_string(),
+  );
   let other_holder = @0xB;
   let other_cap = publication::issue_publisher_cap(&mut publication_obj, &owner_cap, other_holder, ctx);
 
-  let collection_obj = collection::new_collection(object::id(&publication_obj), b"articles".to_string(), ctx);
-  publication::add_collection(&mut publication_obj, &other_cap, collection_obj, ctx);
+  publication::create_collection(&mut publication_obj, &other_cap, b"articles".to_string(), ctx);
 
+  unit_test::destroy(registry);
   unit_test::destroy(publication_obj);
   unit_test::destroy(owner_cap);
   unit_test::destroy(publisher_cap);
@@ -186,11 +230,18 @@ fun test_wrong_holder_cannot_use_publisher_cap() {
 #[test, expected_failure(abort_code = publication::EPublisherCapWrongHolder)]
 fun test_wrong_holder_cannot_destroy_publisher_cap() {
   let ctx = &mut tx_context::dummy();
-  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication_for_testing(ctx, b"ArcSys Blog".to_string());
+  let mut registry = publication::new_registry_for_testing(ctx);
+  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication(
+    &mut registry,
+    ctx,
+    b"ArcSys Blog".to_string(),
+    b"arcsys-blog".to_string(),
+  );
   let other_cap = publication::issue_publisher_cap(&mut publication_obj, &owner_cap, @0xB, ctx);
 
   publication::destroy_publisher_cap(&mut publication_obj, other_cap, ctx);
 
+  unit_test::destroy(registry);
   unit_test::destroy(publication_obj);
   unit_test::destroy(owner_cap);
   unit_test::destroy(publisher_cap);
@@ -199,32 +250,45 @@ fun test_wrong_holder_cannot_destroy_publisher_cap() {
 #[test]
 fun test_owner_can_revoke_publisher_cap() {
   let ctx = &mut tx_context::dummy();
-  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication_for_testing(ctx, b"ArcSys Blog".to_string());
+  let mut registry = publication::new_registry_for_testing(ctx);
+  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication(
+    &mut registry,
+    ctx,
+    b"ArcSys Blog".to_string(),
+    b"arcsys-blog".to_string(),
+  );
   let cap = publication::issue_publisher_cap(&mut publication_obj, &owner_cap, ctx.sender(), ctx);
   let cap_id = object::id(&cap);
 
   publication::revoke_publisher_cap(&mut publication_obj, &owner_cap, cap_id);
 
-  assert_eq!(publication::contains_active_publisher_cap(&publication_obj, cap_id), false);
+  assert_eq!(publication::is_publisher_cap_revoked(&publication_obj, cap_id), true);
 
+  unit_test::destroy(registry);
   unit_test::destroy(publication_obj);
   unit_test::destroy(owner_cap);
   unit_test::destroy(publisher_cap);
   unit_test::destroy(cap);
 }
 
-#[test, expected_failure(abort_code = publication::EPublisherCapNotActive)]
+#[test, expected_failure(abort_code = publication::EPublisherCapRevoked)]
 fun test_revoked_cap_cannot_write() {
   let ctx = &mut tx_context::dummy();
-  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication_for_testing(ctx, b"ArcSys Blog".to_string());
+  let mut registry = publication::new_registry_for_testing(ctx);
+  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication(
+    &mut registry,
+    ctx,
+    b"ArcSys Blog".to_string(),
+    b"arcsys-blog".to_string(),
+  );
   let cap = publication::issue_publisher_cap(&mut publication_obj, &owner_cap, ctx.sender(), ctx);
   let cap_id = object::id(&cap);
 
   publication::revoke_publisher_cap(&mut publication_obj, &owner_cap, cap_id);
 
-  let collection_obj = collection::new_collection(object::id(&publication_obj), b"articles".to_string(), ctx);
-  publication::add_collection(&mut publication_obj, &cap, collection_obj, ctx);
+  publication::create_collection(&mut publication_obj, &cap, b"articles".to_string(), ctx);
 
+  unit_test::destroy(registry);
   unit_test::destroy(publication_obj);
   unit_test::destroy(owner_cap);
   unit_test::destroy(publisher_cap);
@@ -234,13 +298,25 @@ fun test_revoked_cap_cannot_write() {
 #[test, expected_failure(abort_code = publication::EUnauthorized)]
 fun test_wrong_owner_cannot_revoke_publisher_cap() {
   let ctx = &mut tx_context::dummy();
-  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication_for_testing(ctx, b"ArcSys Blog".to_string());
-  let (other_publication, other_owner_cap, other_publisher_cap) = publication::new_publication_for_testing(ctx, b"Other".to_string());
+  let mut registry = publication::new_registry_for_testing(ctx);
+  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication(
+    &mut registry,
+    ctx,
+    b"ArcSys Blog".to_string(),
+    b"pub-a".to_string(),
+  );
+  let (other_publication, other_owner_cap, other_publisher_cap) = publication::new_publication(
+    &mut registry,
+    ctx,
+    b"Other".to_string(),
+    b"pub-b".to_string(),
+  );
   let cap = publication::issue_publisher_cap(&mut publication_obj, &owner_cap, ctx.sender(), ctx);
   let cap_id = object::id(&cap);
 
   publication::revoke_publisher_cap(&mut publication_obj, &other_owner_cap, cap_id);
 
+  unit_test::destroy(registry);
   unit_test::destroy(publication_obj);
   unit_test::destroy(owner_cap);
   unit_test::destroy(publisher_cap);
@@ -250,30 +326,47 @@ fun test_wrong_owner_cannot_revoke_publisher_cap() {
   unit_test::destroy(cap);
 }
 
-#[test, expected_failure(abort_code = publication::EPublisherCapNotActive)]
-fun test_revoke_nonexistent_cap_fails() {
+#[test, expected_failure(abort_code = publication::EPublisherCapRevoked)]
+fun test_double_revoke_fails() {
   let ctx = &mut tx_context::dummy();
-  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication_for_testing(ctx, b"ArcSys Blog".to_string());
-  let fake_cap = object::new(ctx);
+  let mut registry = publication::new_registry_for_testing(ctx);
+  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication(
+    &mut registry,
+    ctx,
+    b"ArcSys Blog".to_string(),
+    b"arcsys-blog".to_string(),
+  );
+  let cap = publication::issue_publisher_cap(&mut publication_obj, &owner_cap, ctx.sender(), ctx);
+  let cap_id = object::id(&cap);
 
-  publication::revoke_publisher_cap(&mut publication_obj, &owner_cap, fake_cap.to_inner());
+  publication::revoke_publisher_cap(&mut publication_obj, &owner_cap, cap_id);
+  // Second revoke of the same cap must fail.
+  publication::revoke_publisher_cap(&mut publication_obj, &owner_cap, cap_id);
 
-  unit_test::destroy(fake_cap);
+  unit_test::destroy(registry);
   unit_test::destroy(publication_obj);
   unit_test::destroy(owner_cap);
   unit_test::destroy(publisher_cap);
+  unit_test::destroy(cap);
 }
 
 #[test]
 fun test_destroy_revoked_cap_succeeds() {
   let ctx = &mut tx_context::dummy();
-  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication_for_testing(ctx, b"ArcSys Blog".to_string());
+  let mut registry = publication::new_registry_for_testing(ctx);
+  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication(
+    &mut registry,
+    ctx,
+    b"ArcSys Blog".to_string(),
+    b"arcsys-blog".to_string(),
+  );
   let cap = publication::issue_publisher_cap(&mut publication_obj, &owner_cap, ctx.sender(), ctx);
   let cap_id = object::id(&cap);
 
   publication::revoke_publisher_cap(&mut publication_obj, &owner_cap, cap_id);
   publication::destroy_publisher_cap(&mut publication_obj, cap, ctx);
 
+  unit_test::destroy(registry);
   unit_test::destroy(publication_obj);
   unit_test::destroy(owner_cap);
   unit_test::destroy(publisher_cap);
@@ -282,16 +375,21 @@ fun test_destroy_revoked_cap_succeeds() {
 #[test]
 fun test_add_collection() {
   let ctx = &mut tx_context::dummy();
-  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication_for_testing(ctx, b"ArcSys Blog".to_string());
+  let mut registry = publication::new_registry_for_testing(ctx);
+  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication(
+    &mut registry,
+    ctx,
+    b"ArcSys Blog".to_string(),
+    b"arcsys-blog".to_string(),
+  );
 
   let collection_name = b"articles".to_string();
-  let collection_obj = collection::new_collection(object::id(&publication_obj), collection_name, ctx);
-
-  publication::add_collection(&mut publication_obj, &publisher_cap, collection_obj, ctx);
+  publication::create_collection(&mut publication_obj, &publisher_cap, collection_name, ctx);
 
   assert_eq!(publication::collections_length(&publication_obj), 1);
   assert_eq!(publication::contains_collection(&publication_obj, collection_name), true);
 
+  unit_test::destroy(registry);
   unit_test::destroy(publication_obj);
   unit_test::destroy(owner_cap);
   unit_test::destroy(publisher_cap);
@@ -300,29 +398,40 @@ fun test_add_collection() {
 #[test]
 fun test_create_collection() {
   let ctx = &mut tx_context::dummy();
-  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication_for_testing(ctx, b"ArcSys Blog".to_string());
+  let mut registry = publication::new_registry_for_testing(ctx);
+  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication(
+    &mut registry,
+    ctx,
+    b"ArcSys Blog".to_string(),
+    b"arcsys-blog".to_string(),
+  );
 
   publication::create_collection(&mut publication_obj, &publisher_cap, b"articles".to_string(), ctx);
 
   assert_eq!(publication::collections_length(&publication_obj), 1);
   assert_eq!(publication::contains_collection(&publication_obj, b"articles".to_string()), true);
 
+  unit_test::destroy(registry);
   unit_test::destroy(publication_obj);
   unit_test::destroy(owner_cap);
   unit_test::destroy(publisher_cap);
 }
 
 #[test, expected_failure(abort_code = publication::ECollectionAlreadyExists)]
-fun test_add_duplicate_collection() {
+fun test_create_duplicate_collection() {
   let ctx = &mut tx_context::dummy();
-  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication_for_testing(ctx, b"ArcSys Blog".to_string());
+  let mut registry = publication::new_registry_for_testing(ctx);
+  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication(
+    &mut registry,
+    ctx,
+    b"ArcSys Blog".to_string(),
+    b"arcsys-blog".to_string(),
+  );
 
-  let collection_obj = collection::new_collection(object::id(&publication_obj), b"articles".to_string(), ctx);
-  let duplicate = collection::new_collection(object::id(&publication_obj), b"articles".to_string(), ctx);
+  publication::create_collection(&mut publication_obj, &publisher_cap, b"articles".to_string(), ctx);
+  publication::create_collection(&mut publication_obj, &publisher_cap, b"articles".to_string(), ctx);
 
-  publication::add_collection(&mut publication_obj, &publisher_cap, collection_obj, ctx);
-  publication::add_collection(&mut publication_obj, &publisher_cap, duplicate, ctx);
-
+  unit_test::destroy(registry);
   unit_test::destroy(publication_obj);
   unit_test::destroy(owner_cap);
   unit_test::destroy(publisher_cap);
@@ -331,34 +440,44 @@ fun test_add_duplicate_collection() {
 #[test]
 fun test_delete_collection() {
   let ctx = &mut tx_context::dummy();
-  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication_for_testing(ctx, b"ArcSys Blog".to_string());
+  let mut registry = publication::new_registry_for_testing(ctx);
+  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication(
+    &mut registry,
+    ctx,
+    b"ArcSys Blog".to_string(),
+    b"arcsys-blog".to_string(),
+  );
 
   let collection_name = b"articles".to_string();
-  let collection_obj = collection::new_collection(object::id(&publication_obj), collection_name, ctx);
-
-  publication::add_collection(&mut publication_obj, &publisher_cap, collection_obj, ctx);
+  publication::create_collection(&mut publication_obj, &publisher_cap, collection_name, ctx);
   assert_eq!(publication::collections_length(&publication_obj), 1);
 
   publication::delete_collection(&mut publication_obj, &publisher_cap, collection_name, ctx);
   assert_eq!(publication::collections_length(&publication_obj), 0);
 
+  unit_test::destroy(registry);
   unit_test::destroy(publication_obj);
   unit_test::destroy(owner_cap);
   unit_test::destroy(publisher_cap);
 }
 
 #[test]
-fun test_publisher_can_add_collection() {
+fun test_publisher_can_create_collection() {
   let ctx = &mut tx_context::dummy();
-  let (mut publication_obj, owner_cap, root_publisher_cap) = publication::new_publication_for_testing(ctx, b"ArcSys Blog".to_string());
+  let mut registry = publication::new_registry_for_testing(ctx);
+  let (mut publication_obj, owner_cap, root_publisher_cap) = publication::new_publication(
+    &mut registry,
+    ctx,
+    b"ArcSys Blog".to_string(),
+    b"arcsys-blog".to_string(),
+  );
 
   let publisher_cap = publication::issue_publisher_cap(&mut publication_obj, &owner_cap, ctx.sender(), ctx);
-  let collection_obj = collection::new_collection(object::id(&publication_obj), b"articles".to_string(), ctx);
-
-  publication::add_collection(&mut publication_obj, &publisher_cap, collection_obj, ctx);
+  publication::create_collection(&mut publication_obj, &publisher_cap, b"articles".to_string(), ctx);
 
   assert_eq!(publication::collections_length(&publication_obj), 1);
 
+  unit_test::destroy(registry);
   unit_test::destroy(publication_obj);
   unit_test::destroy(owner_cap);
   unit_test::destroy(root_publisher_cap);
@@ -366,15 +485,25 @@ fun test_publisher_can_add_collection() {
 }
 
 #[test, expected_failure(abort_code = publication::EUnauthorized)]
-fun test_unauthorized_add_collection() {
+fun test_unauthorized_create_collection() {
   let ctx = &mut tx_context::dummy();
-  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication_for_testing(ctx, b"ArcSys Blog".to_string());
+  let mut registry = publication::new_registry_for_testing(ctx);
+  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication(
+    &mut registry,
+    ctx,
+    b"ArcSys Blog".to_string(),
+    b"pub-a".to_string(),
+  );
 
-  let (other_pub, other_owner_cap, other_publisher_cap) = publication::new_publication_for_testing(ctx, b"Other".to_string());
-  let collection_obj = collection::new_collection(object::id(&publication_obj), b"articles".to_string(), ctx);
+  let (other_pub, other_owner_cap, other_publisher_cap) = publication::new_publication(
+    &mut registry,
+    ctx,
+    b"Other".to_string(),
+    b"pub-b".to_string(),
+  );
+  publication::create_collection(&mut publication_obj, &other_publisher_cap, b"articles".to_string(), ctx);
 
-  publication::add_collection(&mut publication_obj, &other_publisher_cap, collection_obj, ctx);
-
+  unit_test::destroy(registry);
   unit_test::destroy(publication_obj);
   unit_test::destroy(owner_cap);
   unit_test::destroy(publisher_cap);
@@ -383,38 +512,35 @@ fun test_unauthorized_add_collection() {
   unit_test::destroy(other_publisher_cap);
 }
 
-#[test, expected_failure(abort_code = publication::ECollectionPublicationMismatch)]
-fun test_add_collection_with_mismatched_publication_id() {
-  let ctx = &mut tx_context::dummy();
-  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication_for_testing(ctx, b"ArcSys Blog".to_string());
-  let (other_publication, other_owner_cap, other_publisher_cap) = publication::new_publication_for_testing(ctx, b"Other".to_string());
-
-  let collection_obj = collection::new_collection(object::id(&other_publication), b"articles".to_string(), ctx);
-
-  publication::add_collection(&mut publication_obj, &publisher_cap, collection_obj, ctx);
-
-  unit_test::destroy(publication_obj);
-  unit_test::destroy(owner_cap);
-  unit_test::destroy(publisher_cap);
-  unit_test::destroy(other_publication);
-  unit_test::destroy(other_owner_cap);
-  unit_test::destroy(other_publisher_cap);
-}
-
 #[test, expected_failure(abort_code = publication::EEntryAuthorMismatch)]
 fun test_add_entry_to_collection_with_mismatched_author_fails() {
   let ctx = &mut tx_context::dummy();
-  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication_for_testing(ctx, b"ArcSys Blog".to_string());
+  let mut registry = publication::new_registry_for_testing(ctx);
+  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication(
+    &mut registry,
+    ctx,
+    b"ArcSys Blog".to_string(),
+    b"arcsys-blog".to_string(),
+  );
 
   let collection_name = b"home_page".to_string();
   publication::create_collection(&mut publication_obj, &publisher_cap, collection_name, ctx);
 
   let mock_blob = object::new(ctx);
-  let entry_obj = entry::new_entry(b"hero".to_string(), b"application/json".to_string(), mock_blob.to_inner(), false, @0xB);
+  let entry_obj = entry::new_entry(
+    b"hero".to_string(),
+    b"application/json".to_string(),
+    mock_blob.to_inner(),
+    false,
+    @0xB,
+    entry::access_policy_public(),
+    option::none(),
+  );
 
   let _entry_id = publication::add_entry_to_collection(&mut publication_obj, &publisher_cap, collection_name, entry_obj, ctx);
 
   unit_test::destroy(mock_blob);
+  unit_test::destroy(registry);
   unit_test::destroy(publication_obj);
   unit_test::destroy(owner_cap);
   unit_test::destroy(publisher_cap);
@@ -423,20 +549,34 @@ fun test_add_entry_to_collection_with_mismatched_author_fails() {
 #[test]
 fun test_add_entry_to_collection() {
   let ctx = &mut tx_context::dummy();
-  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication_for_testing(ctx, b"ArcSys Blog".to_string());
+  let mut registry = publication::new_registry_for_testing(ctx);
+  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication(
+    &mut registry,
+    ctx,
+    b"ArcSys Blog".to_string(),
+    b"arcsys-blog".to_string(),
+  );
 
   let collection_name = b"articles".to_string();
-  let collection_obj = collection::new_collection(object::id(&publication_obj), collection_name, ctx);
-  publication::add_collection(&mut publication_obj, &publisher_cap, collection_obj, ctx);
+  publication::create_collection(&mut publication_obj, &publisher_cap, collection_name, ctx);
 
   let mock_blob = object::new(ctx);
-  let entry_obj = entry::new_entry(b"First Post".to_string(), b"application/json".to_string(), mock_blob.to_inner(), false, ctx.sender());
+  let entry_obj = entry::new_entry(
+    b"First Post".to_string(),
+    b"application/json".to_string(),
+    mock_blob.to_inner(),
+    false,
+    ctx.sender(),
+    entry::access_policy_public(),
+    option::none(),
+  );
   let entry_id = publication::add_entry_to_collection(&mut publication_obj, &publisher_cap, collection_name, entry_obj, ctx);
 
   assert_eq!(entry_id, 0);
   assert_eq!(publication::collection_entries_length(&publication_obj, collection_name), 1);
 
   unit_test::destroy(mock_blob);
+  unit_test::destroy(registry);
   unit_test::destroy(publication_obj);
   unit_test::destroy(owner_cap);
   unit_test::destroy(publisher_cap);
@@ -445,14 +585,27 @@ fun test_add_entry_to_collection() {
 #[test]
 fun test_delete_entry_from_collection() {
   let ctx = &mut tx_context::dummy();
-  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication_for_testing(ctx, b"ArcSys Blog".to_string());
+  let mut registry = publication::new_registry_for_testing(ctx);
+  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication(
+    &mut registry,
+    ctx,
+    b"ArcSys Blog".to_string(),
+    b"arcsys-blog".to_string(),
+  );
 
   let collection_name = b"articles".to_string();
-  let collection_obj = collection::new_collection(object::id(&publication_obj), collection_name, ctx);
-  publication::add_collection(&mut publication_obj, &publisher_cap, collection_obj, ctx);
+  publication::create_collection(&mut publication_obj, &publisher_cap, collection_name, ctx);
 
   let mock_blob = object::new(ctx);
-  let entry_obj = entry::new_entry(b"First Post".to_string(), b"application/json".to_string(), mock_blob.to_inner(), false, ctx.sender());
+  let entry_obj = entry::new_entry(
+    b"First Post".to_string(),
+    b"application/json".to_string(),
+    mock_blob.to_inner(),
+    false,
+    ctx.sender(),
+    entry::access_policy_public(),
+    option::none(),
+  );
   let entry_id = publication::add_entry_to_collection(&mut publication_obj, &publisher_cap, collection_name, entry_obj, ctx);
 
   publication::delete_entry_from_collection(&mut publication_obj, &publisher_cap, collection_name, entry_id, ctx);
@@ -460,6 +613,7 @@ fun test_delete_entry_from_collection() {
   assert_eq!(publication::collection_entries_length(&publication_obj, collection_name), 0);
 
   unit_test::destroy(mock_blob);
+  unit_test::destroy(registry);
   unit_test::destroy(publication_obj);
   unit_test::destroy(owner_cap);
   unit_test::destroy(publisher_cap);
@@ -468,11 +622,16 @@ fun test_delete_entry_from_collection() {
 #[test]
 fun test_delete_then_add_entry_to_collection_uses_monotonic_entry_id() {
   let ctx = &mut tx_context::dummy();
-  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication_for_testing(ctx, b"ArcSys Blog".to_string());
+  let mut registry = publication::new_registry_for_testing(ctx);
+  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication(
+    &mut registry,
+    ctx,
+    b"ArcSys Blog".to_string(),
+    b"arcsys-blog".to_string(),
+  );
 
   let collection_name = b"articles".to_string();
-  let collection_obj = collection::new_collection(object::id(&publication_obj), collection_name, ctx);
-  publication::add_collection(&mut publication_obj, &publisher_cap, collection_obj, ctx);
+  publication::create_collection(&mut publication_obj, &publisher_cap, collection_name, ctx);
 
   let blob_0 = object::new(ctx);
   let blob_1 = object::new(ctx);
@@ -483,21 +642,45 @@ fun test_delete_then_add_entry_to_collection_uses_monotonic_entry_id() {
     &mut publication_obj,
     &publisher_cap,
     collection_name,
-    entry::new_entry(b"a".to_string(), b"application/json".to_string(), blob_0.to_inner(), false, ctx.sender()),
+    entry::new_entry(
+      b"a".to_string(),
+      b"application/json".to_string(),
+      blob_0.to_inner(),
+      false,
+      ctx.sender(),
+      entry::access_policy_public(),
+      option::none(),
+    ),
     ctx,
   );
   let second_id = publication::add_entry_to_collection(
     &mut publication_obj,
     &publisher_cap,
     collection_name,
-    entry::new_entry(b"b".to_string(), b"application/json".to_string(), blob_1.to_inner(), false, ctx.sender()),
+    entry::new_entry(
+      b"b".to_string(),
+      b"application/json".to_string(),
+      blob_1.to_inner(),
+      false,
+      ctx.sender(),
+      entry::access_policy_public(),
+      option::none(),
+    ),
     ctx,
   );
   let third_id = publication::add_entry_to_collection(
     &mut publication_obj,
     &publisher_cap,
     collection_name,
-    entry::new_entry(b"c".to_string(), b"application/json".to_string(), blob_2.to_inner(), false, ctx.sender()),
+    entry::new_entry(
+      b"c".to_string(),
+      b"application/json".to_string(),
+      blob_2.to_inner(),
+      false,
+      ctx.sender(),
+      entry::access_policy_public(),
+      option::none(),
+    ),
     ctx,
   );
 
@@ -507,7 +690,15 @@ fun test_delete_then_add_entry_to_collection_uses_monotonic_entry_id() {
     &mut publication_obj,
     &publisher_cap,
     collection_name,
-    entry::new_entry(b"d".to_string(), b"application/json".to_string(), blob_3.to_inner(), false, ctx.sender()),
+    entry::new_entry(
+      b"d".to_string(),
+      b"application/json".to_string(),
+      blob_3.to_inner(),
+      false,
+      ctx.sender(),
+      entry::access_policy_public(),
+      option::none(),
+    ),
     ctx,
   );
 
@@ -521,6 +712,7 @@ fun test_delete_then_add_entry_to_collection_uses_monotonic_entry_id() {
   unit_test::destroy(blob_1);
   unit_test::destroy(blob_2);
   unit_test::destroy(blob_3);
+  unit_test::destroy(registry);
   unit_test::destroy(publication_obj);
   unit_test::destroy(owner_cap);
   unit_test::destroy(publisher_cap);
@@ -529,11 +721,16 @@ fun test_delete_then_add_entry_to_collection_uses_monotonic_entry_id() {
 #[test]
 fun test_collection_entry_draft_and_publish_heads() {
   let ctx = &mut tx_context::dummy();
-  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication_for_testing(ctx, b"ArcSys Blog".to_string());
+  let mut registry = publication::new_registry_for_testing(ctx);
+  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication(
+    &mut registry,
+    ctx,
+    b"ArcSys Blog".to_string(),
+    b"arcsys-blog".to_string(),
+  );
 
   let collection_name = b"articles".to_string();
-  let collection_obj = collection::new_collection(object::id(&publication_obj), collection_name, ctx);
-  publication::add_collection(&mut publication_obj, &publisher_cap, collection_obj, ctx);
+  publication::create_collection(&mut publication_obj, &publisher_cap, collection_name, ctx);
 
   let blob_0 = object::new(ctx);
   let blob_1 = object::new(ctx);
@@ -543,7 +740,15 @@ fun test_collection_entry_draft_and_publish_heads() {
     &mut publication_obj,
     &publisher_cap,
     collection_name,
-    entry::new_entry(b"draft".to_string(), b"application/json".to_string(), blob_0.to_inner(), true, ctx.sender()),
+    entry::new_entry(
+      b"draft".to_string(),
+      b"application/json".to_string(),
+      blob_0.to_inner(),
+      true,
+      ctx.sender(),
+      entry::access_policy_publisher(),
+      option::some(b"draft-seal-0"),
+    ),
     ctx,
   );
 
@@ -555,6 +760,8 @@ fun test_collection_entry_draft_and_publish_heads() {
     b"application/json".to_string(),
     blob_1.to_inner(),
     true,
+    entry::access_policy_publisher(),
+    option::some(b"draft-seal-1"),
     ctx,
   );
 
@@ -572,11 +779,121 @@ fun test_collection_entry_draft_and_publish_heads() {
   assert_eq!(publication::collection_entry_draft_head(&mut publication_obj, collection_name, entry_id), option::some(draft_rev));
   assert_eq!(publication::collection_entry_public_head(&mut publication_obj, collection_name, entry_id), option::some(public_rev));
   assert_eq!(publication::collection_entry_encrypted(&mut publication_obj, collection_name, entry_id), false);
+  assert_eq!(publication::collection_entry_access_policy(&mut publication_obj, collection_name, entry_id), entry::access_policy_public());
+  assert_eq!(publication::collection_entry_has_seal_id(&mut publication_obj, collection_name, entry_id), false);
 
   unit_test::destroy(blob_0);
   unit_test::destroy(blob_1);
   unit_test::destroy(blob_2);
+  unit_test::destroy(registry);
   unit_test::destroy(publication_obj);
   unit_test::destroy(owner_cap);
   unit_test::destroy(publisher_cap);
+}
+
+#[test]
+fun test_seal_approve_publisher_succeeds_for_active_holder() {
+  let ctx = &mut tx_context::dummy();
+  let mut registry = publication::new_registry_for_testing(ctx);
+  let (publication_obj, owner_cap, publisher_cap) = publication::new_publication(
+    &mut registry,
+    ctx,
+    b"ArcSys Blog".to_string(),
+    b"arcsys-blog".to_string(),
+  );
+  let id = publication::publisher_seal_id_for_testing(&publication_obj, b"nonce");
+
+  publication::seal_approve_publisher_for_testing(id, &publication_obj, &publisher_cap, ctx);
+
+  unit_test::destroy(registry);
+  unit_test::destroy(publication_obj);
+  unit_test::destroy(owner_cap);
+  unit_test::destroy(publisher_cap);
+}
+
+#[test, expected_failure(abort_code = publication::ESealInvalidId)]
+fun test_seal_approve_publisher_rejects_invalid_id_prefix() {
+  let ctx = &mut tx_context::dummy();
+  let mut registry = publication::new_registry_for_testing(ctx);
+  let (publication_obj, owner_cap, publisher_cap) = publication::new_publication(
+    &mut registry,
+    ctx,
+    b"ArcSys Blog".to_string(),
+    b"arcsys-blog".to_string(),
+  );
+
+  publication::seal_approve_publisher_for_testing(b"bad", &publication_obj, &publisher_cap, ctx);
+
+  unit_test::destroy(registry);
+  unit_test::destroy(publication_obj);
+  unit_test::destroy(owner_cap);
+  unit_test::destroy(publisher_cap);
+}
+
+#[test, expected_failure(abort_code = publication::ESealWrongPolicyTag)]
+fun test_seal_approve_publisher_rejects_wrong_policy_tag() {
+  let ctx = &mut tx_context::dummy();
+  let mut registry = publication::new_registry_for_testing(ctx);
+  let (publication_obj, owner_cap, publisher_cap) = publication::new_publication(
+    &mut registry,
+    ctx,
+    b"ArcSys Blog".to_string(),
+    b"arcsys-blog".to_string(),
+  );
+  let mut id = object::id(&publication_obj).to_bytes();
+  vector::push_back(&mut id, 2);
+  vector::push_back(&mut id, 9);
+
+  publication::seal_approve_publisher_for_testing(id, &publication_obj, &publisher_cap, ctx);
+
+  unit_test::destroy(registry);
+  unit_test::destroy(publication_obj);
+  unit_test::destroy(owner_cap);
+  unit_test::destroy(publisher_cap);
+}
+
+#[test, expected_failure(abort_code = publication::EPublisherCapWrongHolder)]
+fun test_seal_approve_publisher_rejects_wrong_holder() {
+  let ctx = &mut tx_context::dummy();
+  let mut registry = publication::new_registry_for_testing(ctx);
+  let (mut publication_obj, owner_cap, root_publisher_cap) = publication::new_publication(
+    &mut registry,
+    ctx,
+    b"ArcSys Blog".to_string(),
+    b"arcsys-blog".to_string(),
+  );
+  let holder_cap = publication::issue_publisher_cap(&mut publication_obj, &owner_cap, @0xB, ctx);
+  let id = publication::publisher_seal_id_for_testing(&publication_obj, b"nonce");
+
+  publication::seal_approve_publisher_for_testing(id, &publication_obj, &holder_cap, ctx);
+
+  unit_test::destroy(registry);
+  unit_test::destroy(publication_obj);
+  unit_test::destroy(owner_cap);
+  unit_test::destroy(root_publisher_cap);
+  unit_test::destroy(holder_cap);
+}
+
+#[test, expected_failure(abort_code = publication::EPublisherCapRevoked)]
+fun test_seal_approve_publisher_rejects_revoked_cap() {
+  let ctx = &mut tx_context::dummy();
+  let mut registry = publication::new_registry_for_testing(ctx);
+  let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication(
+    &mut registry,
+    ctx,
+    b"ArcSys Blog".to_string(),
+    b"arcsys-blog".to_string(),
+  );
+  let cap = publication::issue_publisher_cap(&mut publication_obj, &owner_cap, ctx.sender(), ctx);
+  let cap_id = object::id(&cap);
+  let id = publication::publisher_seal_id_for_testing(&publication_obj, b"nonce");
+
+  publication::revoke_publisher_cap(&mut publication_obj, &owner_cap, cap_id);
+  publication::seal_approve_publisher_for_testing(id, &publication_obj, &cap, ctx);
+
+  unit_test::destroy(registry);
+  unit_test::destroy(publication_obj);
+  unit_test::destroy(owner_cap);
+  unit_test::destroy(publisher_cap);
+  unit_test::destroy(cap);
 }
