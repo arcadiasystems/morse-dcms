@@ -52,8 +52,9 @@ morse/
 
 ### Prerequisites
 
-- [Sui CLI](https://docs.sui.io/guides/developer/getting-started/sui-install) — for building and deploying Move contracts
-- [Bun](https://bun.sh/) v1.2+ — for the CLI and indexer
+- [Sui CLI](https://docs.sui.io/guides/developer/getting-started/sui-install) - for building and deploying Move contracts
+- [Bun](https://bun.sh/) v1.2+ - for the CLI and indexer
+- [Task](https://taskfile.dev/) - Task is a modern task runner
 
 ### Move Contracts
 
