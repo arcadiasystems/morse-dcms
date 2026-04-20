@@ -1,18 +1,41 @@
 {
-  "name": "morse-sdk",
-  "version": "0.0.1",
-  "type": "module",
-  "private": true,
-  "exports": {
-    ".": "./index.ts"
-  },
-  "devDependencies": {
-    "@types/bun": "latest"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
-  },
-  "dependencies": {
-    "@mysten/sui": "^2.4.0"
-  }
+	"name": "morse-sdk",
+	"version": "0.0.0",
+	"description": "TypeScript SDK for Morse dCMS on the Sui blockchain.",
+	"license": "MIT",
+	"type": "module",
+	"private": true,
+	"sideEffects": false,
+	"files": [
+		"dist",
+		"README.md",
+		"LICENSE"
+	],
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		}
+	},
+	"scripts": {
+		"prebuild": "rm -rf dist",
+		"build": "tsc -p tsconfig.build.json",
+		"typecheck": "tsc --noEmit",
+		"lint": "biome check .",
+		"lint:fix": "biome check --write .",
+		"test": "bun test"
+	},
+	"engines": {
+		"bun": ">=1.2.0"
+	},
+	"peerDependencies": {
+		"@mysten/sui": "^2.4.0"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.4.7",
+		"@types/bun": "latest",
+		"typescript": "^5.6.0"
+	}
 }

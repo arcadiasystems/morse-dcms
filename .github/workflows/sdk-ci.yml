@@ -1,0 +1,36 @@
+name: sdk-ci
+
+on:
+  pull_request:
+    paths:
+      - "morse-sdk/**"
+      - ".github/workflows/sdk-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "morse-sdk/**"
+      - ".github/workflows/sdk-ci.yml"
+
+jobs:
+  ci:
+    name: morse-sdk
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install (workspace root)
+        run: bun install --frozen-lockfile
+      - name: Lint
+        working-directory: morse-sdk
+        run: bun run lint
+      - name: Typecheck
+        working-directory: morse-sdk
+        run: bun run typecheck
+      - name: Test
+        working-directory: morse-sdk
+        run: bun run test
+      - name: Build
+        working-directory: morse-sdk
+        run: bun run build
