@@ -1,0 +1,242 @@
+/**
+ * Error hierarchy. All errors extend `MorseError`; narrow subclasses via `instanceof`.
+ */
+
+// Base
+
+/** Abstract base for every error thrown by the SDK. */
+export abstract class MorseError extends Error {
+	constructor(message: string, options?: { cause?: unknown }) {
+		super(message, options);
+		this.name = new.target.name;
+	}
+}
+
+// Validation
+
+/** Client-side precondition failed (malformed ID, invalid enum, etc). */
+export class ValidationError extends MorseError {
+	/** Name of the field or parameter that failed validation. */
+	readonly field: string;
+
+	constructor(message: string, field: string, options?: { cause?: unknown }) {
+		super(message, options);
+		this.field = field;
+	}
+}
+
+// Not found
+
+export type NotFoundResource =
+	| "publication"
+	| "collection"
+	| "entry"
+	| "revision"
+	| "publisher-cap"
+	| "owner-cap"
+	| "registry";
+
+/** Resource not found on-chain. */
+export class NotFoundError extends MorseError {
+	readonly resource: NotFoundResource;
+	readonly identifier: string;
+
+	constructor(
+		resource: NotFoundResource,
+		identifier: string,
+		options?: { cause?: unknown },
+	) {
+		super(`${resource} not found: ${identifier}`, options);
+		this.resource = resource;
+		this.identifier = identifier;
+	}
+}
+
+// Unauthorized
+
+/** Authorization check failed client-side, before the transaction was submitted. */
+export class UnauthorizedError extends MorseError {}
+
+// Contract abort
+
+/** Move module whose abort codes the SDK knows about. */
+export type AbortModule = "publication" | "collection" | "entry";
+
+/** One row of the abort-code table. */
+export interface AbortEntry {
+	readonly name: string;
+	readonly description: string;
+}
+
+/**
+ * Move abort codes mirrored from `morse-contracts`. Structure: `ABORT_CODES[module][code]`.
+ * New abort constants in the Move package must be added here, or they surface as `UnknownAbort`.
+ */
+export const ABORT_CODES: {
+	readonly [M in AbortModule]: { readonly [code: number]: AbortEntry };
+} = {
+	publication: {
+		0: {
+			name: "ECollectionAlreadyExists",
+			description:
+				"A collection with this name already exists in the publication.",
+		},
+		2: {
+			name: "EUnauthorized",
+			description: "The capability does not belong to this publication.",
+		},
+		4: {
+			name: "EPublisherCapWrongHolder",
+			description:
+				"The sender is not the approved holder for this PublisherCap.",
+		},
+		5: {
+			name: "EPublisherCapRevoked",
+			description:
+				"The PublisherCap has been revoked and can no longer be used.",
+		},
+		6: {
+			name: "ESlugAlreadyExists",
+			description: "A publication with this slug already exists.",
+		},
+		7: {
+			name: "ESlugEmpty",
+			description: "Slug cannot be empty.",
+		},
+		8: {
+			name: "ESlugTooLong",
+			description: "Slug exceeds the maximum allowed length.",
+		},
+		9: {
+			name: "ESlugInvalidChar",
+			description:
+				"Slug contains characters outside the allowed set (lowercase alphanumeric and hyphen).",
+		},
+		10: {
+			name: "ESlugInvalidEdgeHyphen",
+			description: "Slug must not start or end with a hyphen.",
+		},
+		12: {
+			name: "ESealInvalidId",
+			description:
+				"Provided Seal identity does not match this publication namespace.",
+		},
+		13: {
+			name: "ESealWrongPolicyTag",
+			description: "Provided Seal identity has an unsupported policy tag.",
+		},
+	},
+	collection: {
+		0: {
+			name: "EEntryNotFound",
+			description: "No entry exists for the requested entry_id.",
+		},
+		1: {
+			name: "EInvalidStorageMode",
+			description:
+				"Storage mode must be STORAGE_MODE_BLOB (0) or STORAGE_MODE_QUILT (1).",
+		},
+	},
+	entry: {
+		0: {
+			name: "ENameEmpty",
+			description: "Entry name cannot be empty.",
+		},
+		1: {
+			name: "EContentTypeEmpty",
+			description: "Content type cannot be empty.",
+		},
+		2: {
+			name: "ENameTooLong",
+			description: "Entry name exceeds the maximum allowed length.",
+		},
+		3: {
+			name: "EContentTypeTooLong",
+			description: "Content type exceeds the maximum allowed length.",
+		},
+		4: {
+			name: "ERevisionNotFound",
+			description: "Requested revision does not exist.",
+		},
+		5: {
+			name: "EInvalidAccessPolicy",
+			description:
+				"Access policy is not valid for the selected encryption mode.",
+		},
+		6: {
+			name: "ESealIdRequired",
+			description: "Encrypted revisions require a Seal identity.",
+		},
+		7: {
+			name: "ESealIdNotAllowed",
+			description: "Unencrypted revisions must not include a Seal identity.",
+		},
+		8: {
+			name: "EBlobNotDeletable",
+			description:
+				"Blob must be deletable; non-deletable blobs are rejected by platform policy.",
+		},
+		9: {
+			name: "EQuiltPatchIdRequired",
+			description:
+				"Quilt-mode collections require a QuiltPatchId on every revision.",
+		},
+		10: {
+			name: "EQuiltPatchIdNotAllowed",
+			description: "Blob-mode collections must not include a QuiltPatchId.",
+		},
+		11: {
+			name: "EInvalidQuiltPatchId",
+			description:
+				"QuiltPatchId must be exactly 37 bytes (quilt_blob_id || version || start_index || end_index).",
+		},
+	},
+};
+
+/** Reason value used when a Move abort code is not in the SDK's table. */
+export const UNKNOWN_ABORT_NAME = "UnknownAbort";
+
+/** Move VM aborted during transaction execution. Narrow on `reason` (e.g. "EPublisherCapRevoked"). */
+export class ContractAbortError extends MorseError {
+	readonly module: AbortModule;
+	readonly abortCode: number;
+	readonly reason: string;
+
+	constructor(
+		module: AbortModule,
+		abortCode: number,
+		reason: string,
+		message: string,
+		options?: { cause?: unknown },
+	) {
+		super(message, options);
+		this.module = module;
+		this.abortCode = abortCode;
+		this.reason = reason;
+	}
+
+	/** Build an error by looking up `(module, abortCode)` in the abort-code table. */
+	static fromAbortCode(
+		module: AbortModule,
+		abortCode: number,
+		options?: { cause?: unknown },
+	): ContractAbortError {
+		const entry = ABORT_CODES[module][abortCode];
+		if (entry === undefined) {
+			return new ContractAbortError(
+				module,
+				abortCode,
+				UNKNOWN_ABORT_NAME,
+				`Contract aborted in ${module} with unknown code ${abortCode}. The deployed package may be newer than this SDK.`,
+				options,
+			);
+		}
+		return new ContractAbortError(
+			module,
+			abortCode,
+			entry.name,
+			`Contract aborted: ${module}::${entry.name} (code ${abortCode}). ${entry.description}`,
+			options,
+		);
+	}
+}

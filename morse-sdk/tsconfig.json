@@ -25,5 +25,5 @@
 
 		"noEmit": true
 	},
-	"include": ["src/**/*", "test/**/*"]
+	"include": ["src/**/*"]
 }
