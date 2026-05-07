@@ -8,7 +8,7 @@ import {
 } from "@mysten/sui/transactions";
 
 import { toPublisherCapId } from "../codecs.js";
-import type { NetworkConfig } from "../config.js";
+import type { MorsePackageConfig } from "../config.js";
 import {
 	buildDestroyPublisherCap,
 	buildIssuePublisherCap,
@@ -23,12 +23,6 @@ import type {
 } from "../types.js";
 import type { WalletAdapter } from "../wallets/adapter.js";
 import { findCreatedId } from "./internal.js";
-
-/**
- * Subset of `NetworkConfig` required by cap ops. Caps live on the publication
- * shared object, so registryId is not needed; only the package addresses.
- */
-export type CapConfig = Pick<NetworkConfig, "packageId" | "originalPackageId">;
 
 export interface IssuePublisherCapArgs {
 	readonly publicationId: PublicationId;
@@ -52,7 +46,7 @@ export interface IssuePublisherCapResult {
  */
 export async function issuePublisherCap(
 	adapter: WalletAdapter,
-	config: CapConfig,
+	config: MorsePackageConfig,
 	args: IssuePublisherCapArgs,
 ): Promise<IssuePublisherCapResult> {
 	const tx = new Transaction();
@@ -105,7 +99,7 @@ export interface RevokePublisherCapResult {
  */
 export async function revokePublisherCap(
 	adapter: WalletAdapter,
-	config: CapConfig,
+	config: MorsePackageConfig,
 	args: RevokePublisherCapArgs,
 ): Promise<RevokePublisherCapResult> {
 	const tx = new Transaction();
@@ -145,7 +139,7 @@ export interface DestroyPublisherCapResult {
  */
 export async function destroyPublisherCap(
 	adapter: WalletAdapter,
-	config: CapConfig,
+	config: MorsePackageConfig,
 	args: DestroyPublisherCapArgs,
 ): Promise<DestroyPublisherCapResult> {
 	const tx = new Transaction();

@@ -19,6 +19,9 @@ export {
 } from "./codecs.js";
 export {
 	DEFAULT_RPC_URLS,
+	type MorseConfigOptions,
+	type MorsePackageConfig,
+	morseConfig,
 	Network,
 	type NetworkConfig,
 } from "./config.js";
@@ -26,6 +29,7 @@ export {
 	ABORT_CODES,
 	type AbortEntry,
 	type AbortModule,
+	ConfigurationError,
 	ContractAbortError,
 	MorseError,
 	NotFoundError,
@@ -36,14 +40,19 @@ export {
 	ValidationError,
 } from "./errors.js";
 export {
-	type CapConfig,
+	type CreateCollectionArgs,
+	type CreateCollectionResult,
 	type CreatePublicationArgs,
 	type CreatePublicationResult,
+	createCollection,
 	createPublication,
+	type DeleteCollectionArgs,
+	type DeleteCollectionResult,
 	type DeletePublicationArgs,
 	type DeletePublicationResult,
 	type DestroyPublisherCapArgs,
 	type DestroyPublisherCapResult,
+	deleteCollection,
 	deletePublication,
 	destroyPublisherCap,
 	type IssuePublisherCapArgs,

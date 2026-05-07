@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	ABORT_CODES,
 	type AbortModule,
+	ConfigurationError,
 	ContractAbortError,
 	MorseError,
 	NotFoundError,
@@ -51,6 +52,14 @@ describe("MorseError hierarchy", () => {
 		expect(error.message).toBe("RPC unreachable");
 		expect(error.cause).toBe(root);
 		expect(error.name).toBe("TransportError");
+	});
+
+	test("ConfigurationError extends MorseError", () => {
+		const error = new ConfigurationError("no deployment");
+		expect(error).toBeInstanceOf(ConfigurationError);
+		expect(error).toBeInstanceOf(MorseError);
+		expect(error.message).toBe("no deployment");
+		expect(error.name).toBe("ConfigurationError");
 	});
 
 	test("preserves cause through the Error options", () => {

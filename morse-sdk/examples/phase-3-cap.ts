@@ -1,16 +1,13 @@
 #!/usr/bin/env bun
 /**
- * Phase 3 smoke script: PublisherCap lifecycle (issue, list, read, revoke,
- * destroy) end-to-end against a Sui network.
+ * Phase 3 smoke: PublisherCap lifecycle (issue, list, read, revoke, destroy)
+ * against the canonical testnet deployment.
  *
  * Required env vars:
- *   PRIVATE_KEY - suiprivkey1... bech32 secret key (sui keytool export)
- *   PACKAGE_ID  - current `published-at` address (Move call target)
- *   REGISTRY_ID - deployed PublicationRegistry shared object ID
+ *   PRIVATE_KEY - suiprivkey1... bech32 secret key
  *
- * Optional env vars:
- *   ORIGINAL_PACKAGE_ID - `original-id` from Published.toml; defaults to PACKAGE_ID
- *   SUI_RPC_URL         - defaults to DEFAULT_RPC_URLS.testnet
+ * Optional:
+ *   SUI_RPC_URL - override the testnet RPC URL
  *
  * Run from `morse-sdk/`:
  *   bun run examples/phase-3-cap.ts
@@ -20,49 +17,42 @@ import { SuiGrpcClient } from "@mysten/sui/grpc";
 
 import {
 	createPublication,
-	DEFAULT_RPC_URLS,
 	deletePublication,
 	destroyPublisherCap,
 	issuePublisherCap,
 	KeypairAdapter,
+	morseConfig,
 	NotFoundError,
-	type PackageId,
 	type PublisherCap,
 	type PublisherCapId,
-	type RegistryId,
 	RpcPublicationReader,
 	revokePublisherCap,
-	toPackageId,
-	toRegistryId,
 } from "../src/index.js";
-
-interface Config {
-	readonly packageId: PackageId;
-	readonly originalPackageId: PackageId;
-	readonly registryId: RegistryId;
-}
+import { done, formatMist, readEnv, step } from "./utils.js";
 
 async function main(): Promise<void> {
 	const privateKey = readEnv("PRIVATE_KEY");
-	const packageId = toPackageId(readEnv("PACKAGE_ID"));
-	const originalPackageIdRaw = process.env.ORIGINAL_PACKAGE_ID;
-	const originalPackageId = originalPackageIdRaw
-		? toPackageId(originalPackageIdRaw)
-		: packageId;
-	const registryId = toRegistryId(readEnv("REGISTRY_ID"));
-	const rpcUrl = process.env.SUI_RPC_URL ?? DEFAULT_RPC_URLS.testnet;
+	const config = morseConfig({
+		network: "testnet",
+		...(process.env.SUI_RPC_URL ? { rpcUrl: process.env.SUI_RPC_URL } : {}),
+	});
 	const slug = `morse-cap-smoke-${Date.now()}`;
 
-	step(1, 7, `Connecting to ${rpcUrl}...`);
-	const client = new SuiGrpcClient({ network: "testnet", baseUrl: rpcUrl });
+	step(1, 7, `Connecting to ${config.rpcUrl}...`);
+	const client = new SuiGrpcClient({
+		network: "testnet",
+		baseUrl: config.rpcUrl,
+	});
 	done("connected");
 
 	step(2, 7, "Loading wallet adapter from PRIVATE_KEY...");
 	const adapter = KeypairAdapter.fromSecretKey(privateKey, client);
 	done(`address ${adapter.address}`);
 
-	const reader = new RpcPublicationReader(client, originalPackageId);
-	const config: Config = { packageId, originalPackageId, registryId };
+	const reader = new RpcPublicationReader(
+		client,
+		config.originalPackageId ?? config.packageId,
+	);
 
 	step(3, 7, `Creating fresh publication "${slug}" for cap testing...`);
 	const created = await createPublication(adapter, config, {
@@ -165,33 +155,6 @@ function assertOwnsCap(
 			`New cap ${expected} not present in owned list (page had ${owned.length} entries)`,
 		);
 	}
-}
-
-function step(index: number, total: number, message: string): void {
-	console.log(`[${index}/${total}] ${message}`);
-}
-
-function done(message: string): void {
-	console.log(`        ${message}`);
-}
-
-function readEnv(name: string): string {
-	const value = process.env[name];
-	if (!value) {
-		console.error(`Missing required env var: ${name}`);
-		process.exit(1);
-	}
-	return value;
-}
-
-function formatMist(mist: bigint): string {
-	const negative = mist < 0n;
-	const abs = negative ? -mist : mist;
-	const whole = abs / 1_000_000_000n;
-	const frac = abs % 1_000_000_000n;
-	const fracStr = frac.toString().padStart(9, "0").replace(/0+$/, "");
-	const value = fracStr.length > 0 ? `${whole}.${fracStr}` : `${whole}`;
-	return `${negative ? "-" : ""}${value} SUI`;
 }
 
 main().catch((error: unknown) => {

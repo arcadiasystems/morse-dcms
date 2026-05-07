@@ -4,7 +4,7 @@
  * signing to a user-controlled wallet.
  */
 
-import type { SuiClientTypes } from "@mysten/sui/client";
+import { SimulationError, type SuiClientTypes } from "@mysten/sui/client";
 import type { Signer } from "@mysten/sui/cryptography";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import type { Transaction } from "@mysten/sui/transactions";
@@ -114,8 +114,33 @@ async function callClient<T>(
 	try {
 		return await call();
 	} catch (cause) {
+		const mapped = tryMapSimulationAbort(cause);
+		if (mapped) {
+			throw mapped;
+		}
 		throw new TransportError(`${operation} failed`, { cause });
 	}
+}
+
+/**
+ * The Sui gRPC client throws `SimulationError` when the transaction's pre-submit
+ * dry-run hits a Move abort. The error carries an `executionError` with a
+ * structured `MoveAbort`. Detect that and map to `ContractAbortError`; return
+ * `null` for any other failure so the caller falls back to `TransportError`.
+ */
+function tryMapSimulationAbort(cause: unknown): ContractAbortError | null {
+	if (!(cause instanceof SimulationError)) {
+		return null;
+	}
+	const executionError = cause.executionError;
+	if (!executionError) {
+		return null;
+	}
+	const moveAbort = executionError.MoveAbort;
+	if (!moveAbort) {
+		return null;
+	}
+	return mapMoveAbortToContractAbortError(moveAbort);
 }
 
 function parseReceipt(final: TxResult): TxReceipt {
@@ -193,14 +218,9 @@ function mapFailedTransaction(
 	if (status && !status.success) {
 		const moveAbort = status.error.MoveAbort;
 		if (moveAbort) {
-			const moduleName = moveAbort.location?.module;
-			const code = Number(moveAbort.abortCode);
-			if (
-				moduleName !== undefined &&
-				isKnownAbortModule(moduleName) &&
-				Number.isFinite(code)
-			) {
-				return ContractAbortError.fromAbortCode(moduleName, code);
+			const mapped = mapMoveAbortToContractAbortError(moveAbort);
+			if (mapped) {
+				return mapped;
 			}
 		}
 		return new TransportError(
@@ -208,6 +228,27 @@ function mapFailedTransaction(
 		);
 	}
 	return new TransportError("Transaction failed without effects status");
+}
+
+/**
+ * Map a `MoveAbort` proto shape (from either a SimulationError's
+ * `executionError` or a FailedTransaction's `effects.status.error`) to a
+ * `ContractAbortError`, or `null` if the module is not one this SDK recognizes
+ * or the abort code is malformed. Callers fall back to `TransportError` on `null`.
+ */
+function mapMoveAbortToContractAbortError(
+	moveAbort: SuiClientTypes.MoveAbort,
+): ContractAbortError | null {
+	const moduleName = moveAbort.location?.module;
+	const code = Number(moveAbort.abortCode);
+	if (
+		moduleName !== undefined &&
+		isKnownAbortModule(moduleName) &&
+		Number.isFinite(code)
+	) {
+		return ContractAbortError.fromAbortCode(moduleName, code);
+	}
+	return null;
 }
 
 function isKnownAbortModule(name: string): name is AbortModule {

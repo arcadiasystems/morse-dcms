@@ -1,7 +1,10 @@
 /**
- * Network configuration types and defaults.
+ * Network configuration types, defaults, and the `morseConfig` factory that
+ * hides deployed package addresses from consumers using known networks.
  */
 
+import { toPackageId, toRegistryId } from "./codecs.js";
+import { ConfigurationError } from "./errors.js";
 import type { PackageId, RegistryId } from "./types.js";
 
 // Network
@@ -43,4 +46,90 @@ export interface NetworkConfig {
 	readonly packageId: PackageId;
 	readonly originalPackageId?: PackageId;
 	readonly registryId: RegistryId;
+}
+
+/**
+ * Subset of `NetworkConfig` used by ops that touch only the package (cap and
+ * collection ops). Excludes `registryId`, which only registry-aware ops
+ * (publication creation/deletion) need.
+ */
+export type MorsePackageConfig = Pick<
+	NetworkConfig,
+	"packageId" | "originalPackageId"
+>;
+
+// morseConfig factory
+
+/**
+ * Canonical Morse deployment addresses per network. Updated on every contract
+ * redeploy during active development; expected to stabilize after Phase 7
+ * when the contracts are frozen for v0.1.0.
+ */
+const KNOWN_DEPLOYMENTS: Partial<
+	Record<
+		Network,
+		{
+			readonly packageId: PackageId;
+			readonly originalPackageId: PackageId;
+			readonly registryId: RegistryId;
+		}
+	>
+> = {
+	testnet: {
+		packageId: toPackageId(
+			"0x805cb29a52734bd794f05bc2c1d6ff74d1d6c0b5b279406e6564ec8bc3ece81a",
+		),
+		originalPackageId: toPackageId(
+			"0x35b5e28d27f5acf23fe6181815b4603ec9b560d52c4edab8fdf0e331efc42c31",
+		),
+		registryId: toRegistryId(
+			"0xdd3e471ccb66ee71eac1add0f47491d1a556a4dc51db4437a3f3450ed907049f",
+		),
+	},
+};
+
+/**
+ * Options for `morseConfig`. `network` is required; address fields are
+ * optional and override the canonical deployment when supplied. Use them
+ * for forks or local deployments.
+ */
+export interface MorseConfigOptions {
+	readonly network: Network;
+	readonly rpcUrl?: string;
+	readonly packageId?: PackageId;
+	readonly originalPackageId?: PackageId;
+	readonly registryId?: RegistryId;
+}
+
+/**
+ * Build a `NetworkConfig` pointing at the canonical Morse deployment for the
+ * chosen network, with optional per-field overrides for forks and local nodes.
+ * @throws {ConfigurationError} If the chosen network has no canonical deployment
+ *   and `packageId` and `registryId` are not supplied as overrides.
+ */
+export function morseConfig(options: MorseConfigOptions): NetworkConfig {
+	const deployment = KNOWN_DEPLOYMENTS[options.network];
+	const packageId = options.packageId ?? deployment?.packageId;
+	const originalPackageId =
+		options.originalPackageId ?? deployment?.originalPackageId;
+	const registryId = options.registryId ?? deployment?.registryId;
+
+	if (!packageId || !registryId) {
+		if (options.network === "mainnet") {
+			throw new ConfigurationError(
+				"Morse is not yet deployed on mainnet. Use { network: 'testnet' } or supply packageId, originalPackageId, and registryId for a custom deployment.",
+			);
+		}
+		throw new ConfigurationError(
+			`No canonical Morse deployment for network "${options.network}". Supply packageId, originalPackageId, and registryId for a custom deployment.`,
+		);
+	}
+
+	return {
+		network: options.network,
+		rpcUrl: options.rpcUrl ?? DEFAULT_RPC_URLS[options.network],
+		packageId,
+		registryId,
+		...(originalPackageId === undefined ? {} : { originalPackageId }),
+	};
 }

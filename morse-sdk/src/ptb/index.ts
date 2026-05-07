@@ -12,6 +12,12 @@ export {
 	buildRevokePublisherCap,
 } from "./cap.js";
 export {
+	type BuildCreateCollectionArgs,
+	type BuildDeleteCollectionArgs,
+	buildCreateCollection,
+	buildDeleteCollection,
+} from "./collection.js";
+export {
 	type BuildCreatePublicationArgs,
 	type BuildDeletePublicationArgs,
 	type BuildSharePublicationArgs,

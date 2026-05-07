@@ -9,7 +9,7 @@ import {
 } from "@mysten/sui/transactions";
 
 import { toOwnerCapId, toPublicationId, toPublisherCapId } from "../codecs.js";
-import type { NetworkConfig } from "../config.js";
+import type { MorsePackageConfig, NetworkConfig } from "../config.js";
 import { ValidationError } from "../errors.js";
 import {
 	buildCreatePublication,
@@ -28,11 +28,9 @@ import type {
 import type { WalletAdapter } from "../wallets/adapter.js";
 import { findCreatedId } from "./internal.js";
 
-/** Subset of `NetworkConfig` required to address the deployed contract. */
-export type PublicationConfig = Pick<
-	NetworkConfig,
-	"packageId" | "originalPackageId" | "registryId"
->;
+/** Subset of `NetworkConfig` required by publication ops; adds `registryId` to `MorsePackageConfig`. */
+export type PublicationConfig = MorsePackageConfig &
+	Pick<NetworkConfig, "registryId">;
 
 const MAX_SLUG_LENGTH = 64;
 const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;

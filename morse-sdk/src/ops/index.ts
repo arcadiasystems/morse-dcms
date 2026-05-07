@@ -3,7 +3,6 @@
  */
 
 export {
-	type CapConfig,
 	type DestroyPublisherCapArgs,
 	type DestroyPublisherCapResult,
 	destroyPublisherCap,
@@ -14,6 +13,14 @@ export {
 	type RevokePublisherCapResult,
 	revokePublisherCap,
 } from "./cap.js";
+export {
+	type CreateCollectionArgs,
+	type CreateCollectionResult,
+	createCollection,
+	type DeleteCollectionArgs,
+	type DeleteCollectionResult,
+	deleteCollection,
+} from "./collection.js";
 export {
 	type CreatePublicationArgs,
 	type CreatePublicationResult,

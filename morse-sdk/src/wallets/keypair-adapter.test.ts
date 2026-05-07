@@ -1,5 +1,6 @@
 import { describe, expect, mock, test } from "bun:test";
 
+import { SimulationError } from "@mysten/sui/client";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
 
@@ -157,6 +158,63 @@ describe("KeypairAdapter", () => {
 						},
 					},
 				})),
+			}),
+		);
+		await expect(
+			adapter.signAndExecuteTransaction(new Transaction()),
+		).rejects.toThrow(TransportError);
+	});
+
+	test("maps a SimulationError with MoveAbort to ContractAbortError", async () => {
+		const simError = new SimulationError("Transaction resolution failed", {
+			executionError: {
+				$kind: "MoveAbort",
+				message: "MoveAbort in 1st command, abort code: 0",
+				MoveAbort: {
+					abortCode: "0",
+					location: { module: "publication" },
+				},
+			},
+		});
+		const adapter = new KeypairAdapter(
+			makeKeypair(),
+			makeExecutor({
+				signAndExecuteTransaction: mock(async () => {
+					throw simError;
+				}),
+			}),
+		);
+		await expect(
+			adapter.signAndExecuteTransaction(new Transaction()),
+		).rejects.toThrow(ContractAbortError);
+		try {
+			await adapter.signAndExecuteTransaction(new Transaction());
+		} catch (error) {
+			expect(error).toBeInstanceOf(ContractAbortError);
+			const abort = error as ContractAbortError;
+			expect(abort.module).toBe("publication");
+			expect(abort.abortCode).toBe(0);
+			expect(abort.reason).toBe("ECollectionAlreadyExists");
+		}
+	});
+
+	test("falls through to TransportError for SimulationError with unknown module abort", async () => {
+		const simError = new SimulationError("Transaction resolution failed", {
+			executionError: {
+				$kind: "MoveAbort",
+				message: "MoveAbort from unknown module",
+				MoveAbort: {
+					abortCode: "0",
+					location: { module: "stdlib" },
+				},
+			},
+		});
+		const adapter = new KeypairAdapter(
+			makeKeypair(),
+			makeExecutor({
+				signAndExecuteTransaction: mock(async () => {
+					throw simError;
+				}),
 			}),
 		);
 		await expect(

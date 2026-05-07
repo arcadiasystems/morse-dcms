@@ -62,6 +62,11 @@ export class UnauthorizedError extends MorseError {}
 /** RPC transport, network, or response-parsing failure. Distinct from contract aborts. */
 export class TransportError extends MorseError {}
 
+// Configuration
+
+/** SDK configuration gap (e.g. asking for a network with no canonical deployment). */
+export class ConfigurationError extends MorseError {}
+
 // Contract abort
 
 /** Move module whose abort codes the SDK knows about. */
