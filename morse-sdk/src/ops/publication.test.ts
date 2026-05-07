@@ -75,6 +75,7 @@ function makeAdapter(
 	return {
 		address,
 		signAndExecuteTransaction: mock(async () => receipt),
+		simulateTransaction: mock(async () => []),
 	};
 }
 
@@ -87,6 +88,7 @@ function makeFailingAdapter(
 		signAndExecuteTransaction: mock(async () => {
 			throw error;
 		}),
+		simulateTransaction: mock(async () => []),
 	};
 }
 
@@ -104,6 +106,13 @@ function makeReader(publication: Publication): PublicationReader {
 			results: [],
 			nextCursor: null,
 		})),
+		getEntry: mock(async () => {
+			throw new Error("not used in publication tests");
+		}),
+		getRevision: mock(async () => {
+			throw new Error("not used in publication tests");
+		}),
+		listEntries: mock(async () => ({ results: [], nextCursor: null })),
 	};
 }
 
@@ -273,6 +282,13 @@ describe("deletePublication", () => {
 				results: [],
 				nextCursor: null,
 			})),
+			getEntry: mock(async () => {
+				throw new Error("not used in publication tests");
+			}),
+			getRevision: mock(async () => {
+				throw new Error("not used in publication tests");
+			}),
+			listEntries: mock(async () => ({ results: [], nextCursor: null })),
 		};
 		const adapter = makeAdapter({
 			digest: "x",

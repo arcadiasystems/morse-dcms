@@ -41,6 +41,7 @@ function makeAdapter(): WalletAdapter {
 			createdObjects: [],
 			deletedObjects: [],
 		})),
+		simulateTransaction: mock(async () => []),
 	};
 }
 
@@ -74,6 +75,7 @@ describe("createCollection", () => {
 			signAndExecuteTransaction: mock(async () => {
 				throw ContractAbortError.fromAbortCode("publication", 0);
 			}),
+			simulateTransaction: mock(async () => []),
 		};
 		await expect(
 			createCollection(adapter, CONFIG, {
@@ -104,6 +106,7 @@ describe("deleteCollection", () => {
 			signAndExecuteTransaction: mock(async () => {
 				throw ContractAbortError.fromAbortCode("publication", 5);
 			}),
+			simulateTransaction: mock(async () => []),
 		};
 		await expect(
 			deleteCollection(adapter, CONFIG, {

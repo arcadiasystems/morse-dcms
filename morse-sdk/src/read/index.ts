@@ -3,6 +3,8 @@
  */
 
 export {
+	type EntryListPage,
+	type ListEntriesOptions,
 	type ListPublicationsOptions,
 	type ListPublisherCapsOptions,
 	type OwnedPublication,

@@ -7,25 +7,32 @@ import type { SuiClientTypes } from "@mysten/sui/client";
 
 import type { ObjectReader } from "../clients.js";
 import {
+	accessPolicyFromU8,
 	storageModeFromU8,
+	toBlobObjectId,
 	toOwnerCapId,
 	toPublicationId,
 	toPublisherCapId,
+	toQuiltPatchId,
 	toSuiAddress,
 	toSuiObjectId,
 } from "../codecs.js";
 import { NotFoundError, TransportError, ValidationError } from "../errors.js";
 import type {
+	BlobRef,
 	Collection,
+	Entry,
 	OwnerCapId,
 	PackageId,
 	Publication,
 	PublicationId,
 	PublisherCap,
 	PublisherCapId,
+	Revision,
 	SuiAddress,
 	SuiObjectId,
 } from "../types.js";
+import { EntryBcs, EntryIdBcs } from "./entry-bcs.js";
 
 const DEFAULT_PAGE_LIMIT = 50;
 
@@ -56,6 +63,23 @@ export interface PublisherCapListPage {
 
 /** Options for `listPublisherCapsOwnedBy`. */
 export interface ListPublisherCapsOptions {
+	readonly limit?: number;
+	readonly cursor?: string;
+	readonly signal?: AbortSignal;
+}
+
+/** Result of a single page of `listEntries`. */
+export interface EntryListPage {
+	readonly results: readonly Entry[];
+	readonly nextCursor: string | null;
+}
+
+/**
+ * Options for `listEntries`. Order is the dynamic-field object-store order, not
+ * insertion order; sort by `entry.id` for chronological order. By default
+ * `limit` is `DEFAULT_PAGE_LIMIT` and the cursor is opaque to consumers.
+ */
+export interface ListEntriesOptions {
 	readonly limit?: number;
 	readonly cursor?: string;
 	readonly signal?: AbortSignal;
@@ -102,6 +126,50 @@ export interface PublicationReader {
 		address: SuiAddress,
 		options?: ListPublisherCapsOptions,
 	): Promise<PublisherCapListPage>;
+
+	/**
+	 * Fetch a single entry by collection name and entry id.
+	 * @throws {NotFoundError} If the collection or entry does not exist.
+	 * @throws {ValidationError} If the on-chain bytes do not match the BCS schema.
+	 * @throws {TransportError} On RPC failure.
+	 */
+	getEntry(
+		publicationId: PublicationId,
+		collectionName: string,
+		entryId: number,
+		signal?: AbortSignal,
+	): Promise<Entry>;
+
+	/**
+	 * Fetch a single revision by collection name, entry id, and revision id.
+	 * @throws {NotFoundError} If the collection, entry, or revision does not exist.
+	 * @throws {ValidationError} If the on-chain bytes do not match the BCS schema.
+	 * @throws {TransportError} On RPC failure.
+	 */
+	getRevision(
+		publicationId: PublicationId,
+		collectionName: string,
+		entryId: number,
+		revisionId: number,
+		signal?: AbortSignal,
+	): Promise<Revision>;
+
+	/**
+	 * Page through entries in a collection.
+	 *
+	 * Order is the dynamic-field object-store order, not chronological. Each
+	 * `Entry.id` carries the stable monotonic ID assigned at insertion; sort
+	 * by it client-side if you need chronological order.
+	 *
+	 * @throws {NotFoundError} If the collection does not exist.
+	 * @throws {ValidationError} If the on-chain bytes do not match the BCS schema.
+	 * @throws {TransportError} On RPC failure.
+	 */
+	listEntries(
+		publicationId: PublicationId,
+		collectionName: string,
+		options?: ListEntriesOptions,
+	): Promise<EntryListPage>;
 }
 
 /** RPC-backed `PublicationReader` using a Sui client. */
@@ -214,6 +282,108 @@ export class RpcPublicationReader implements PublicationReader {
 		);
 		const results = response.objects.map((object) => parsePublisherCap(object));
 		return { results, nextCursor: response.cursor };
+	}
+
+	async getEntry(
+		publicationId: PublicationId,
+		collectionName: string,
+		entryId: number,
+		signal?: AbortSignal,
+	): Promise<Entry> {
+		const tableId = await this.entriesTableId(
+			publicationId,
+			collectionName,
+			signal,
+		);
+		const nameBcs = EntryIdBcs.serialize(entryId).toBytes();
+		let response: SuiClientTypes.GetDynamicFieldResponse;
+		try {
+			response = await this.callClient("getDynamicField", () =>
+				this.client.getDynamicField({
+					parentId: tableId,
+					name: { type: "u64", bcs: nameBcs },
+					...(signal === undefined ? {} : { signal }),
+				}),
+			);
+		} catch (error) {
+			if (
+				error instanceof TransportError &&
+				isDynamicFieldNotFoundError(error.cause)
+			) {
+				throw new NotFoundError("entry", `${collectionName}:${entryId}`, {
+					cause: error.cause,
+				});
+			}
+			throw error;
+		}
+		return parseEntry(response.dynamicField.value.bcs, entryId);
+	}
+
+	async getRevision(
+		publicationId: PublicationId,
+		collectionName: string,
+		entryId: number,
+		revisionId: number,
+		signal?: AbortSignal,
+	): Promise<Revision> {
+		const entry = await this.getEntry(
+			publicationId,
+			collectionName,
+			entryId,
+			signal,
+		);
+		const revision = entry.revisions[revisionId];
+		if (!revision) {
+			throw new NotFoundError(
+				"revision",
+				`${collectionName}:${entryId}:${revisionId}`,
+			);
+		}
+		return revision;
+	}
+
+	async listEntries(
+		publicationId: PublicationId,
+		collectionName: string,
+		options: ListEntriesOptions = {},
+	): Promise<EntryListPage> {
+		const { limit = DEFAULT_PAGE_LIMIT, cursor, signal } = options;
+		const tableId = await this.entriesTableId(
+			publicationId,
+			collectionName,
+			signal,
+		);
+		const response = await this.callClient("listDynamicFields", () =>
+			this.client.listDynamicFields({
+				parentId: tableId,
+				limit,
+				cursor: cursor ?? null,
+				include: { value: true },
+				...(signal === undefined ? {} : { signal }),
+			}),
+		);
+		const results = response.dynamicFields.map((field) =>
+			parseDynamicEntry(field),
+		);
+		return { results, nextCursor: response.cursor };
+	}
+
+	private async entriesTableId(
+		publicationId: PublicationId,
+		collectionName: string,
+		signal?: AbortSignal,
+	): Promise<SuiObjectId> {
+		const publication = await this.getPublication(publicationId, signal);
+		const collection = publication.collections.find(
+			(c) => c.name === collectionName,
+		);
+		if (!collection) {
+			throw new NotFoundError(
+				"collection",
+				`${publicationId}:${collectionName}`,
+			);
+		}
+		return collection.entriesTableId;
 	}
 
 	private async callClient<T>(
@@ -419,6 +589,109 @@ function isObjectNotFoundError(cause: unknown, objectId: string): boolean {
 		return false;
 	}
 	return cause.message === `Object ${objectId} not found`;
+}
+
+function parseEntry(bcs: Uint8Array, entryId: number): Entry {
+	let parsed: ReturnType<typeof EntryBcs.parse>;
+	try {
+		parsed = EntryBcs.parse(bcs);
+	} catch (cause) {
+		throw new ValidationError(
+			`Failed to decode Entry BCS for id ${entryId}: ${cause instanceof Error ? cause.message : String(cause)}`,
+			"entry.bcs",
+			{ cause },
+		);
+	}
+	return {
+		id: entryId,
+		name: parsed.name,
+		revisions: parsed.revisions.map((r, i) => convertRevision(r, i)),
+		draftHead:
+			parsed.draft_head === null ? null : safeIntFromBig(parsed.draft_head),
+		publicHead:
+			parsed.public_head === null ? null : safeIntFromBig(parsed.public_head),
+	};
+}
+
+function parseDynamicEntry(
+	field: SuiClientTypes.DynamicFieldEntry & {
+		value?: SuiClientTypes.DynamicFieldValue;
+	},
+): Entry {
+	if (!field.value) {
+		throw new ValidationError(
+			`Dynamic field ${field.fieldId} returned without value despite include.value=true`,
+			"dynamicField.value",
+		);
+	}
+	let id: string;
+	try {
+		id = EntryIdBcs.parse(field.name.bcs);
+	} catch (cause) {
+		throw new ValidationError(
+			`Failed to decode entry id from dynamic-field name`,
+			"dynamicField.name",
+			{ cause },
+		);
+	}
+	const numericId = safeIntFromString(id);
+	return parseEntry(field.value.bcs, numericId);
+}
+
+function convertRevision(
+	parsed: ReturnType<typeof EntryBcs.parse>["revisions"][number],
+	index: number,
+): Revision {
+	return {
+		id: index,
+		blobRef: convertBlobRef(parsed.blob_ref),
+		contentType: parsed.content_type,
+		encrypted: parsed.encrypted,
+		accessPolicy: accessPolicyFromU8(parsed.access_policy),
+		sealId: parsed.seal_id === null ? null : new Uint8Array(parsed.seal_id),
+		author: toSuiAddress(parsed.author),
+	};
+}
+
+function convertBlobRef(
+	parsed: ReturnType<typeof EntryBcs.parse>["revisions"][number]["blob_ref"],
+): BlobRef {
+	if (parsed.$kind === "Blob") {
+		return { kind: "blob", blobObjectId: toBlobObjectId(parsed.Blob) };
+	}
+	return {
+		kind: "quilt",
+		patchId: toQuiltPatchId(new Uint8Array(parsed.QuiltPatch)),
+	};
+}
+
+function safeIntFromBig(value: string): number {
+	const asNumber = Number(value);
+	if (!Number.isSafeInteger(asNumber) || asNumber < 0) {
+		throw new ValidationError(
+			`u64 value ${value} exceeds Number.MAX_SAFE_INTEGER`,
+			"u64",
+		);
+	}
+	return asNumber;
+}
+
+function safeIntFromString(value: string): number {
+	return safeIntFromBig(value);
+}
+
+/**
+ * Match the Sui gRPC core's "Object 0x... not found" message format. The
+ * dynamic-field RPC routes through batch-getObjects under the hood and
+ * surfaces the same shape. Loose substring matches misclassify transport
+ * failures (e.g. "service unavailable: connection not found") as missing
+ * objects.
+ */
+function isDynamicFieldNotFoundError(cause: unknown): boolean {
+	if (!(cause instanceof Error)) {
+		return false;
+	}
+	return /^Object 0x[0-9a-f]+ not found$/i.test(cause.message);
 }
 
 function parseTableId(value: unknown, field: string): SuiObjectId {

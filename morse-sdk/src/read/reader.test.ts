@@ -28,6 +28,7 @@ interface MockReaderOverrides {
 	getObject?: (...args: unknown[]) => Promise<unknown>;
 	listOwnedObjects?: (...args: unknown[]) => Promise<unknown>;
 	listDynamicFields?: (...args: unknown[]) => Promise<unknown>;
+	getDynamicField?: (...args: unknown[]) => Promise<unknown>;
 }
 
 function makeReader(overrides: MockReaderOverrides = {}): ObjectReader {
@@ -43,6 +44,11 @@ function makeReader(overrides: MockReaderOverrides = {}): ObjectReader {
 				hasNextPage: false,
 				cursor: null,
 			})),
+		getDynamicField:
+			overrides.getDynamicField ??
+			mock(async () => {
+				throw new Error("getDynamicField not stubbed");
+			}),
 	} as unknown as ObjectReader;
 }
 
@@ -416,5 +422,327 @@ describe("RpcPublicationReader.listPublisherCapsOwnedBy", () => {
 		>;
 		const args = calls[0]?.[0] ?? {};
 		expect(args["type"]).toBe(`${PACKAGE_ID}::publication::PublisherCap`);
+	});
+});
+
+// Entry / revision reads
+
+const BLOB_OBJECT_ID =
+	"0x000000000000000000000000000000000000000000000000000000000000beef";
+const AUTHOR =
+	"0x0000000000000000000000000000000000000000000000000000000000000111";
+
+function buildEntryBcs(opts: {
+	name: string;
+	revisionContentTypes: string[];
+	draftHead: number | null;
+	publicHead: number | null;
+}): Uint8Array {
+	const { EntryBcs } =
+		require("./entry-bcs.js") as typeof import("./entry-bcs.js");
+	return EntryBcs.serialize({
+		name: opts.name,
+		revisions: opts.revisionContentTypes.map((ct) => ({
+			blob_ref: { Blob: BLOB_OBJECT_ID },
+			content_type: ct,
+			encrypted: false,
+			access_policy: 0,
+			seal_id: null,
+			author: AUTHOR,
+		})),
+		draft_head: opts.draftHead,
+		public_head: opts.publicHead,
+	}).toBytes();
+}
+
+function buildEntryIdName(entryId: number): { type: string; bcs: Uint8Array } {
+	const { EntryIdBcs } =
+		require("./entry-bcs.js") as typeof import("./entry-bcs.js");
+	return { type: "u64", bcs: EntryIdBcs.serialize(entryId).toBytes() };
+}
+
+describe("RpcPublicationReader.getEntry", () => {
+	test("decodes a single entry by id", async () => {
+		const entryBytes = buildEntryBcs({
+			name: "first-post",
+			revisionContentTypes: ["text/markdown"],
+			draftHead: null,
+			publicHead: 0,
+		});
+		const reader = new RpcPublicationReader(
+			makeReader({
+				getObject: mock(async () =>
+					publicationObject(happyPathPublicationJson()),
+				),
+				getDynamicField: mock(async () => ({
+					dynamicField: {
+						fieldId: "0xfield",
+						type: "...::dynamic_field::Field",
+						name: buildEntryIdName(0),
+						valueType: "...::entry::Entry",
+						value: { type: "...::entry::Entry", bcs: entryBytes },
+						version: "1",
+						digest: "abc",
+						previousTransaction: null,
+						$kind: "DynamicField",
+					},
+				})),
+			}),
+			PACKAGE_ID,
+		);
+		const entry = await reader.getEntry(PUBLICATION_ID, "blog", 0);
+		expect(entry.id).toBe(0);
+		expect(entry.name).toBe("first-post");
+		expect(entry.revisions).toHaveLength(1);
+		expect(entry.revisions[0]?.contentType).toBe("text/markdown");
+		expect(entry.revisions[0]?.blobRef.kind).toBe("blob");
+		expect(entry.draftHead).toBeNull();
+		expect(entry.publicHead).toBe(0);
+	});
+
+	test("throws NotFoundError when collection name is missing", async () => {
+		const reader = new RpcPublicationReader(
+			makeReader({
+				getObject: mock(async () =>
+					publicationObject(happyPathPublicationJson()),
+				),
+			}),
+			PACKAGE_ID,
+		);
+		await expect(
+			reader.getEntry(PUBLICATION_ID, "no-such-collection", 0),
+		).rejects.toBeInstanceOf(NotFoundError);
+	});
+
+	test("throws ValidationError on malformed BCS", async () => {
+		const reader = new RpcPublicationReader(
+			makeReader({
+				getObject: mock(async () =>
+					publicationObject(happyPathPublicationJson()),
+				),
+				getDynamicField: mock(async () => ({
+					dynamicField: {
+						fieldId: "0xfield",
+						type: "...",
+						name: buildEntryIdName(0),
+						valueType: "...",
+						value: { type: "...", bcs: new Uint8Array([0xff, 0xff]) },
+						version: "1",
+						digest: "abc",
+						previousTransaction: null,
+						$kind: "DynamicField",
+					},
+				})),
+			}),
+			PACKAGE_ID,
+		);
+		await expect(
+			reader.getEntry(PUBLICATION_ID, "blog", 0),
+		).rejects.toBeInstanceOf(ValidationError);
+	});
+
+	test("maps RPC not-found to NotFoundError", async () => {
+		const reader = new RpcPublicationReader(
+			makeReader({
+				getObject: mock(async () =>
+					publicationObject(happyPathPublicationJson()),
+				),
+				getDynamicField: mock(async () => {
+					throw new Error(
+						"Object 0x000000000000000000000000000000000000000000000000000000000000ffff not found",
+					);
+				}),
+			}),
+			PACKAGE_ID,
+		);
+		await expect(
+			reader.getEntry(PUBLICATION_ID, "blog", 99),
+		).rejects.toBeInstanceOf(NotFoundError);
+	});
+
+	test("does not misclassify a transport failure as NotFoundError", async () => {
+		const reader = new RpcPublicationReader(
+			makeReader({
+				getObject: mock(async () =>
+					publicationObject(happyPathPublicationJson()),
+				),
+				getDynamicField: mock(async () => {
+					throw new Error("service unavailable: connection not found");
+				}),
+			}),
+			PACKAGE_ID,
+		);
+		await expect(
+			reader.getEntry(PUBLICATION_ID, "blog", 99),
+		).rejects.toBeInstanceOf(TransportError);
+	});
+});
+
+describe("RpcPublicationReader.getRevision", () => {
+	test("returns a revision by index", async () => {
+		const entryBytes = buildEntryBcs({
+			name: "post",
+			revisionContentTypes: ["text/markdown", "text/html"],
+			draftHead: 1,
+			publicHead: 0,
+		});
+		const reader = new RpcPublicationReader(
+			makeReader({
+				getObject: mock(async () =>
+					publicationObject(happyPathPublicationJson()),
+				),
+				getDynamicField: mock(async () => ({
+					dynamicField: {
+						fieldId: "0xfield",
+						type: "...",
+						name: buildEntryIdName(0),
+						valueType: "...",
+						value: { type: "...", bcs: entryBytes },
+						version: "1",
+						digest: "abc",
+						previousTransaction: null,
+						$kind: "DynamicField",
+					},
+				})),
+			}),
+			PACKAGE_ID,
+		);
+		const revision = await reader.getRevision(PUBLICATION_ID, "blog", 0, 1);
+		expect(revision.id).toBe(1);
+		expect(revision.contentType).toBe("text/html");
+	});
+
+	test("throws NotFoundError when revisionId is out of range", async () => {
+		const entryBytes = buildEntryBcs({
+			name: "post",
+			revisionContentTypes: ["text/markdown"],
+			draftHead: null,
+			publicHead: 0,
+		});
+		const reader = new RpcPublicationReader(
+			makeReader({
+				getObject: mock(async () =>
+					publicationObject(happyPathPublicationJson()),
+				),
+				getDynamicField: mock(async () => ({
+					dynamicField: {
+						fieldId: "0xfield",
+						type: "...",
+						name: buildEntryIdName(0),
+						valueType: "...",
+						value: { type: "...", bcs: entryBytes },
+						version: "1",
+						digest: "abc",
+						previousTransaction: null,
+						$kind: "DynamicField",
+					},
+				})),
+			}),
+			PACKAGE_ID,
+		);
+		await expect(
+			reader.getRevision(PUBLICATION_ID, "blog", 0, 5),
+		).rejects.toBeInstanceOf(NotFoundError);
+	});
+});
+
+describe("RpcPublicationReader.listEntries", () => {
+	test("decodes a page of entries with values", async () => {
+		const e0 = buildEntryBcs({
+			name: "first",
+			revisionContentTypes: ["text/markdown"],
+			draftHead: null,
+			publicHead: 0,
+		});
+		const e1 = buildEntryBcs({
+			name: "second",
+			revisionContentTypes: ["text/markdown"],
+			draftHead: null,
+			publicHead: 0,
+		});
+		const reader = new RpcPublicationReader(
+			makeReader({
+				getObject: mock(async () =>
+					publicationObject(happyPathPublicationJson()),
+				),
+				listDynamicFields: mock(async () => ({
+					dynamicFields: [
+						{
+							fieldId: "0xfield0",
+							type: "...",
+							name: buildEntryIdName(0),
+							valueType: "...",
+							value: { type: "...", bcs: e0 },
+							$kind: "DynamicField",
+						},
+						{
+							fieldId: "0xfield1",
+							type: "...",
+							name: buildEntryIdName(1),
+							valueType: "...",
+							value: { type: "...", bcs: e1 },
+							$kind: "DynamicField",
+						},
+					],
+					hasNextPage: false,
+					cursor: null,
+				})),
+			}),
+			PACKAGE_ID,
+		);
+		const page = await reader.listEntries(PUBLICATION_ID, "blog");
+		expect(page.results).toHaveLength(2);
+		expect(page.results[0]?.id).toBe(0);
+		expect(page.results[0]?.name).toBe("first");
+		expect(page.results[1]?.id).toBe(1);
+		expect(page.results[1]?.name).toBe("second");
+	});
+
+	test("decodes a quilt-mode entry's BlobRef::QuiltPatch", async () => {
+		const { EntryBcs } =
+			require("./entry-bcs.js") as typeof import("./entry-bcs.js");
+		const patchBytes = new Uint8Array(37).fill(7);
+		const entryBytes = EntryBcs.serialize({
+			name: "img",
+			revisions: [
+				{
+					blob_ref: { QuiltPatch: Array.from(patchBytes) },
+					content_type: "image/png",
+					encrypted: false,
+					access_policy: 0,
+					seal_id: null,
+					author: AUTHOR,
+				},
+			],
+			draft_head: null,
+			public_head: 0,
+		}).toBytes();
+		const reader = new RpcPublicationReader(
+			makeReader({
+				getObject: mock(async () =>
+					publicationObject(happyPathPublicationJson()),
+				),
+				getDynamicField: mock(async () => ({
+					dynamicField: {
+						fieldId: "0xfield",
+						type: "...",
+						name: buildEntryIdName(0),
+						valueType: "...",
+						value: { type: "...", bcs: entryBytes },
+						version: "1",
+						digest: "abc",
+						previousTransaction: null,
+						$kind: "DynamicField",
+					},
+				})),
+			}),
+			PACKAGE_ID,
+		);
+		const entry = await reader.getEntry(PUBLICATION_ID, "files", 0);
+		const ref = entry.revisions[0]?.blobRef;
+		expect(ref?.kind).toBe("quilt");
+		if (ref?.kind === "quilt") {
+			expect(ref.patchId.length).toBe(37);
+		}
 	});
 });

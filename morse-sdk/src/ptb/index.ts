@@ -18,6 +18,18 @@ export {
 	buildDeleteCollection,
 } from "./collection.js";
 export {
+	type BuildAddEntryArgs,
+	type BuildAppendDraftRevisionArgs,
+	type BuildDeleteEntryArgs,
+	type BuildPublishDirectArgs,
+	type BuildPublishFromDraftArgs,
+	buildAddEntry,
+	buildAppendDraftRevision,
+	buildDeleteEntry,
+	buildPublishDirect,
+	buildPublishFromDraft,
+} from "./entry.js";
+export {
 	type BuildCreatePublicationArgs,
 	type BuildDeletePublicationArgs,
 	type BuildSharePublicationArgs,

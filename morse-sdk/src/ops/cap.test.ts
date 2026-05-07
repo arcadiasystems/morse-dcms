@@ -55,6 +55,7 @@ function makeAdapter(receipt: TxReceipt): WalletAdapter {
 	return {
 		address: SENDER,
 		signAndExecuteTransaction: mock(async () => receipt),
+		simulateTransaction: mock(async () => []),
 	};
 }
 

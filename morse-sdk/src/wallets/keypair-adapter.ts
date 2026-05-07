@@ -22,13 +22,19 @@ import type {
 	TxDeletedObject,
 	TxReceipt,
 } from "../types.js";
-import type { WalletAdapter } from "./adapter.js";
+import type { SimulationReturnValues, WalletAdapter } from "./adapter.js";
 
 type TxInclude = { effects: true; objectTypes: true };
 
 type TxResult = SuiClientTypes.TransactionResult<TxInclude>;
 
+type SimInclude = { effects: true; commandResults: true };
+
+type SimResult = SuiClientTypes.SimulateTransactionResult<SimInclude>;
+
 const TX_INCLUDE: TxInclude = { effects: true, objectTypes: true };
+
+const SIM_INCLUDE: SimInclude = { effects: true, commandResults: true };
 
 const KNOWN_ABORT_MODULES: ReadonlySet<AbortModule> = new Set([
 	"publication",
@@ -69,6 +75,27 @@ export class KeypairAdapter implements WalletAdapter {
 		const submitted = await this.submit(tx, signal);
 		const final = await this.waitForFinality(submitted, signal);
 		return parseReceipt(final);
+	}
+
+	async simulateTransaction(
+		tx: Transaction,
+		signal?: AbortSignal,
+	): Promise<SimulationReturnValues> {
+		// `signAndExecuteTransaction` derives the sender from `signer`; the
+		// simulate path does not, so callers would otherwise get a zero-address
+		// sender and the simulator would reject any owned-object references.
+		tx.setSenderIfNotSet(this.address);
+		const result = await callClient("simulateTransaction", () =>
+			this.client.simulateTransaction({
+				transaction: tx,
+				include: SIM_INCLUDE,
+				...(signal === undefined ? {} : { signal }),
+			}),
+		);
+		if (result.$kind === "FailedTransaction") {
+			throw mapFailedTransaction(result.FailedTransaction);
+		}
+		return parseSimulationReturnValues(result);
 	}
 
 	private async submit(
@@ -212,7 +239,7 @@ function collectDeleted(
 }
 
 function mapFailedTransaction(
-	failed: SuiClientTypes.Transaction<TxInclude>,
+	failed: SuiClientTypes.Transaction<{ effects: true }>,
 ): Error {
 	const status = failed.effects?.status;
 	if (status && !status.success) {
@@ -253,4 +280,19 @@ function mapMoveAbortToContractAbortError(
 
 function isKnownAbortModule(name: string): name is AbortModule {
 	return KNOWN_ABORT_MODULES.has(name as AbortModule);
+}
+
+function parseSimulationReturnValues(
+	result: SimResult,
+): SimulationReturnValues {
+	if (result.$kind !== "Transaction") {
+		throw new TransportError("Simulate did not return a Transaction result");
+	}
+	const commandResults = result.commandResults;
+	if (!commandResults) {
+		throw new TransportError(
+			"Simulation result missing commandResults despite include flag",
+		);
+	}
+	return commandResults.map((cmd) => cmd.returnValues.map((rv) => rv.bcs));
 }

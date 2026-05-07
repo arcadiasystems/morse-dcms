@@ -10,7 +10,7 @@ import type { SuiGrpcClient } from "@mysten/sui/grpc";
 /** RPC methods for single-object reads, ownership lookup, and dynamic fields. */
 export type ObjectReader = Pick<
 	SuiGrpcClient,
-	"getObject" | "listOwnedObjects" | "listDynamicFields"
+	"getObject" | "listOwnedObjects" | "listDynamicFields" | "getDynamicField"
 >;
 
 /** Batch `getObjects`, used when resolving many IDs at once. */
@@ -21,5 +21,5 @@ export type BatchObjectReader = Pick<SuiGrpcClient, "getObjects">;
 /** RPC methods needed to sign, submit, and await a transaction. */
 export type TransactionExecutor = Pick<
 	SuiGrpcClient,
-	"signAndExecuteTransaction" | "waitForTransaction"
+	"signAndExecuteTransaction" | "waitForTransaction" | "simulateTransaction"
 >;

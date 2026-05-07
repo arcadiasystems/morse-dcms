@@ -22,6 +22,21 @@ export {
 	deleteCollection,
 } from "./collection.js";
 export {
+	type AddEntryArgs,
+	type AddEntryResult,
+	type AppendDraftRevisionArgs,
+	addEntry,
+	appendDraftRevision,
+	type DeleteEntryArgs,
+	type DeleteEntryResult,
+	deleteEntry,
+	type PublishDirectArgs,
+	type PublishFromDraftArgs,
+	publishDirect,
+	publishFromDraft,
+	type RevisionAppendResult,
+} from "./entry.js";
+export {
 	type CreatePublicationArgs,
 	type CreatePublicationResult,
 	createPublication,

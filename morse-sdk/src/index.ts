@@ -42,6 +42,11 @@ export {
 	ValidationError,
 } from "./errors.js";
 export {
+	type AddEntryArgs,
+	type AddEntryResult,
+	type AppendDraftRevisionArgs,
+	addEntry,
+	appendDraftRevision,
 	type CreateCollectionArgs,
 	type CreateCollectionResult,
 	type CreatePublicationArgs,
@@ -50,17 +55,25 @@ export {
 	createPublication,
 	type DeleteCollectionArgs,
 	type DeleteCollectionResult,
+	type DeleteEntryArgs,
+	type DeleteEntryResult,
 	type DeletePublicationArgs,
 	type DeletePublicationResult,
 	type DestroyPublisherCapArgs,
 	type DestroyPublisherCapResult,
 	deleteCollection,
+	deleteEntry,
 	deletePublication,
 	destroyPublisherCap,
 	type IssuePublisherCapArgs,
 	type IssuePublisherCapResult,
 	issuePublisherCap,
 	type PublicationConfig,
+	type PublishDirectArgs,
+	type PublishFromDraftArgs,
+	publishDirect,
+	publishFromDraft,
+	type RevisionAppendResult,
 	type RevokePublisherCapArgs,
 	type RevokePublisherCapResult,
 	revokePublisherCap,
@@ -69,10 +82,14 @@ export {
 	transferOwnership,
 } from "./ops/index.js";
 export {
+	type EntryListPage,
+	type ListEntriesOptions,
 	type ListPublicationsOptions,
+	type ListPublisherCapsOptions,
 	type OwnedPublication,
 	type PublicationListPage,
 	type PublicationReader,
+	type PublisherCapListPage,
 	RpcPublicationReader,
 } from "./read/index.js";
 export {
@@ -101,7 +118,11 @@ export {
 	type TxReceipt,
 	type WalrusBlobId,
 } from "./types.js";
-export { KeypairAdapter, type WalletAdapter } from "./wallets/index.js";
+export {
+	KeypairAdapter,
+	type SimulationReturnValues,
+	type WalletAdapter,
+} from "./wallets/index.js";
 export {
 	DefaultWalrusWriteAdapter,
 	type DefaultWalrusWriteAdapterOptions,
