@@ -15,7 +15,10 @@ export interface WalletAdapter {
 	/**
 	 * Sign, submit, and await finality.
 	 * @throws {ContractAbortError} On Move abort.
-	 * @throws {MorseError} On other failures.
+	 * @throws {TransportError} On RPC, network, or response-parsing failure.
 	 */
-	signAndExecuteTransaction(tx: Transaction): Promise<TxReceipt>;
+	signAndExecuteTransaction(
+		tx: Transaction,
+		signal?: AbortSignal,
+	): Promise<TxReceipt>;
 }

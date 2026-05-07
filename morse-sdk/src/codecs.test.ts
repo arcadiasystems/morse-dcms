@@ -12,6 +12,7 @@ import {
 	toPublisherCapId,
 	toRegistryId,
 	toSuiAddress,
+	toSuiObjectId,
 } from "./codecs.js";
 import { ValidationError } from "./errors.js";
 import { AccessPolicy, StorageMode } from "./types.js";
@@ -37,6 +38,7 @@ describe("ID constructors", () => {
 		},
 		{ name: "toBlobObjectId", fn: toBlobObjectId, field: "BlobObjectId" },
 		{ name: "toSuiAddress", fn: toSuiAddress, field: "SuiAddress" },
+		{ name: "toSuiObjectId", fn: toSuiObjectId, field: "SuiObjectId" },
 	];
 
 	for (const { name, fn, field } of constructors) {

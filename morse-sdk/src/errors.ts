@@ -57,6 +57,11 @@ export class NotFoundError extends MorseError {
 /** Authorization check failed client-side, before the transaction was submitted. */
 export class UnauthorizedError extends MorseError {}
 
+// Transport
+
+/** RPC transport, network, or response-parsing failure. Distinct from contract aborts. */
+export class TransportError extends MorseError {}
+
 // Contract abort
 
 /** Move module whose abort codes the SDK knows about. */

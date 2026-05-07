@@ -30,6 +30,9 @@ export type BlobObjectId = Brand<string, "BlobObjectId">;
 /** Hex-encoded Sui account address. */
 export type SuiAddress = Brand<string, "SuiAddress">;
 
+/** Generic Sui object ID for objects without a more specific brand. */
+export type SuiObjectId = Brand<string, "SuiObjectId">;
+
 // Storage mode
 
 /**
@@ -113,7 +116,7 @@ export interface Collection {
 	readonly storageMode: StorageMode;
 	readonly nextEntryId: number;
 	/** Sui object ID of the dynamic-field table holding entries. */
-	readonly entriesTableId: string;
+	readonly entriesTableId: SuiObjectId;
 }
 
 // Publication
@@ -125,7 +128,7 @@ export interface Publication {
 	readonly slug: string;
 	readonly collections: readonly Collection[];
 	/** Sui object ID of the denylist table tracking revoked PublisherCaps. */
-	readonly revokedPublisherCapsTableId: string;
+	readonly revokedPublisherCapsTableId: SuiObjectId;
 }
 
 // Capabilities
@@ -145,6 +148,21 @@ export interface PublisherCap {
 
 // Transaction receipt
 
+/** One object created by a transaction. */
+export interface TxCreatedObject {
+	readonly objectId: SuiObjectId;
+	/**
+	 * Move type tag, e.g. `0x35b5..::publication::Publication`. Treat as opaque;
+	 * use exact string match against a known type, not substring matching.
+	 */
+	readonly objectType: string;
+}
+
+/** One object deleted by a transaction. */
+export interface TxDeletedObject {
+	readonly objectId: SuiObjectId;
+}
+
 /**
  * Result of a signed transaction. `gasUsedMist = computationCost + storageCost - storageRebate`;
  * negative values are possible when storage is freed.
@@ -152,4 +170,6 @@ export interface PublisherCap {
 export interface TxReceipt {
 	readonly digest: string;
 	readonly gasUsedMist: bigint;
+	readonly createdObjects: readonly TxCreatedObject[];
+	readonly deletedObjects: readonly TxDeletedObject[];
 }

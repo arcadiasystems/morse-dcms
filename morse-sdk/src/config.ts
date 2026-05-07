@@ -26,12 +26,21 @@ export const DEFAULT_RPC_URLS: Readonly<Record<Network, string>> = {
 // NetworkConfig
 
 /**
- * Points the SDK at a Morse deployment. Obtain `packageId` and `registryId`
- * from the `sui client publish` output for your target network.
+ * Points the SDK at a Morse deployment. Values come from the deployment's
+ * `Published.toml`.
+ *
+ * `packageId` is the `published-at` address (current upgrade) used as the
+ * target of Move calls. `originalPackageId` is the `original-id` (genesis
+ * publish address) used as the canonical type identity that Sui surfaces in
+ * `objectType` strings and type filters; defaults to `packageId` when
+ * omitted (correct for a fresh deploy with no upgrades). Swapping the two
+ * values causes type-filter reads (e.g. `listPublicationsOwnedBy`) to return
+ * empty.
  */
 export interface NetworkConfig {
 	readonly network: Network;
 	readonly rpcUrl: string;
 	readonly packageId: PackageId;
+	readonly originalPackageId?: PackageId;
 	readonly registryId: RegistryId;
 }

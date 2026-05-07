@@ -2,3 +2,8 @@ node_modules/
 dist/
 coverage/
 *.tsbuildinfo
+
+# Environment files: ignore everything except the documented template.
+.env
+.env.*
+!.env.example

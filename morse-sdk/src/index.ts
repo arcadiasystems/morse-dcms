@@ -2,11 +2,7 @@
  * Public entry point for morse-sdk.
  */
 
-export type {
-	BatchObjectReader,
-	ObjectReader,
-	TransactionExecutor,
-} from "./clients.js";
+export type { ObjectReader, TransactionExecutor } from "./clients.js";
 export {
 	accessPolicyFromU8,
 	accessPolicyToU8,
@@ -19,6 +15,7 @@ export {
 	toPublisherCapId,
 	toRegistryId,
 	toSuiAddress,
+	toSuiObjectId,
 } from "./codecs.js";
 export {
 	DEFAULT_RPC_URLS,
@@ -33,10 +30,30 @@ export {
 	MorseError,
 	NotFoundError,
 	type NotFoundResource,
+	TransportError,
 	UNKNOWN_ABORT_NAME,
 	UnauthorizedError,
 	ValidationError,
 } from "./errors.js";
+export {
+	type CreatePublicationArgs,
+	type CreatePublicationResult,
+	createPublication,
+	type DeletePublicationArgs,
+	type DeletePublicationResult,
+	deletePublication,
+	type PublicationConfig,
+	type TransferOwnershipArgs,
+	type TransferOwnershipResult,
+	transferOwnership,
+} from "./ops/index.js";
+export {
+	type ListPublicationsOptions,
+	type OwnedPublication,
+	type PublicationListPage,
+	type PublicationReader,
+	RpcPublicationReader,
+} from "./read/index.js";
 export {
 	AccessPolicy,
 	type BlobObjectId,
@@ -56,6 +73,9 @@ export {
 	SealPolicyTag,
 	StorageMode,
 	type SuiAddress,
+	type SuiObjectId,
+	type TxCreatedObject,
+	type TxDeletedObject,
 	type TxReceipt,
 } from "./types.js";
-export type { WalletAdapter } from "./wallets/index.js";
+export { KeypairAdapter, type WalletAdapter } from "./wallets/index.js";

@@ -6,6 +6,7 @@ import {
 	ContractAbortError,
 	MorseError,
 	NotFoundError,
+	TransportError,
 	UNKNOWN_ABORT_NAME,
 	UnauthorizedError,
 	ValidationError,
@@ -40,6 +41,16 @@ describe("MorseError hierarchy", () => {
 		expect(error).toBeInstanceOf(UnauthorizedError);
 		expect(error).toBeInstanceOf(MorseError);
 		expect(error.message).toBe("no cap");
+	});
+
+	test("TransportError extends MorseError and carries cause", () => {
+		const root = new Error("connection refused");
+		const error = new TransportError("RPC unreachable", { cause: root });
+		expect(error).toBeInstanceOf(TransportError);
+		expect(error).toBeInstanceOf(MorseError);
+		expect(error.message).toBe("RPC unreachable");
+		expect(error.cause).toBe(root);
+		expect(error.name).toBe("TransportError");
 	});
 
 	test("preserves cause through the Error options", () => {

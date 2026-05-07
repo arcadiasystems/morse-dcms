@@ -14,6 +14,7 @@ import {
 	type RegistryId,
 	StorageMode,
 	type SuiAddress,
+	type SuiObjectId,
 } from "./types.js";
 
 // ID validation
@@ -70,6 +71,12 @@ export function toBlobObjectId(value: string): BlobObjectId {
 export function toSuiAddress(value: string): SuiAddress {
 	assertObjectIdShape(value, "SuiAddress");
 	return value as SuiAddress;
+}
+
+/** Construct a `SuiObjectId`. @throws {ValidationError} On invalid shape. */
+export function toSuiObjectId(value: string): SuiObjectId {
+	assertObjectIdShape(value, "SuiObjectId");
+	return value as SuiObjectId;
 }
 
 // Storage mode
