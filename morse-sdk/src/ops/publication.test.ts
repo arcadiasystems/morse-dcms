@@ -97,6 +97,13 @@ function makeReader(publication: Publication): PublicationReader {
 			results: [],
 			nextCursor: null,
 		})),
+		getPublisherCap: mock(async () => {
+			throw new Error("not used in publication tests");
+		}),
+		listPublisherCapsOwnedBy: mock(async () => ({
+			results: [],
+			nextCursor: null,
+		})),
 	};
 }
 
@@ -256,6 +263,13 @@ describe("deletePublication", () => {
 				throw new NotFoundError("publication", PUBLICATION_ID);
 			}),
 			listPublicationsOwnedBy: mock(async () => ({
+				results: [],
+				nextCursor: null,
+			})),
+			getPublisherCap: mock(async () => {
+				throw new Error("not used in publication tests");
+			}),
+			listPublisherCapsOwnedBy: mock(async () => ({
 				results: [],
 				nextCursor: null,
 			})),

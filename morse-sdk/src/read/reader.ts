@@ -10,6 +10,8 @@ import {
 	storageModeFromU8,
 	toOwnerCapId,
 	toPublicationId,
+	toPublisherCapId,
+	toSuiAddress,
 	toSuiObjectId,
 } from "../codecs.js";
 import { NotFoundError, TransportError, ValidationError } from "../errors.js";
@@ -19,6 +21,8 @@ import type {
 	PackageId,
 	Publication,
 	PublicationId,
+	PublisherCap,
+	PublisherCapId,
 	SuiAddress,
 	SuiObjectId,
 } from "../types.js";
@@ -44,7 +48,23 @@ export interface ListPublicationsOptions {
 	readonly signal?: AbortSignal;
 }
 
-/** Read-only access to publications. */
+/** Result of a single page of `listPublisherCapsOwnedBy`. */
+export interface PublisherCapListPage {
+	readonly results: readonly PublisherCap[];
+	readonly nextCursor: string | null;
+}
+
+/** Options for `listPublisherCapsOwnedBy`. */
+export interface ListPublisherCapsOptions {
+	readonly limit?: number;
+	readonly cursor?: string;
+	readonly signal?: AbortSignal;
+}
+
+/**
+ * Read-only access to the publication domain: publications and the
+ * PublisherCaps that grant write access to them.
+ */
 export interface PublicationReader {
 	/**
 	 * Fetch a publication by ID.
@@ -62,6 +82,26 @@ export interface PublicationReader {
 		address: SuiAddress,
 		options?: ListPublicationsOptions,
 	): Promise<PublicationListPage>;
+
+	/**
+	 * Fetch a PublisherCap by ID.
+	 * @throws {NotFoundError} If no object exists at the given ID.
+	 * @throws {ValidationError} If the on-chain JSON does not match the expected shape.
+	 * @throws {TransportError} On RPC failure.
+	 */
+	getPublisherCap(
+		id: PublisherCapId,
+		signal?: AbortSignal,
+	): Promise<PublisherCap>;
+
+	/**
+	 * Page through PublisherCaps owned by an address.
+	 * @throws {TransportError} On RPC failure.
+	 */
+	listPublisherCapsOwnedBy(
+		address: SuiAddress,
+		options?: ListPublisherCapsOptions,
+	): Promise<PublisherCapListPage>;
 }
 
 /** RPC-backed `PublicationReader` using a Sui client. */
@@ -124,6 +164,55 @@ export class RpcPublicationReader implements PublicationReader {
 		const results = response.objects.map((object) =>
 			parseOwnedPublication(object),
 		);
+		return { results, nextCursor: response.cursor };
+	}
+
+	async getPublisherCap(
+		id: PublisherCapId,
+		signal?: AbortSignal,
+	): Promise<PublisherCap> {
+		let response: Awaited<ReturnType<ObjectReader["getObject"]>>;
+		try {
+			response = await this.callClient("getObject", () =>
+				this.client.getObject({
+					objectId: id,
+					include: { json: true },
+					...(signal === undefined ? {} : { signal }),
+				}),
+			);
+		} catch (error) {
+			if (
+				error instanceof TransportError &&
+				isObjectNotFoundError(error.cause, id)
+			) {
+				throw new NotFoundError("publisher-cap", id, { cause: error.cause });
+			}
+			throw error;
+		}
+		const object = response.object;
+		if (!object) {
+			throw new NotFoundError("publisher-cap", id);
+		}
+		return parsePublisherCap(object);
+	}
+
+	async listPublisherCapsOwnedBy(
+		address: SuiAddress,
+		options: ListPublisherCapsOptions = {},
+	): Promise<PublisherCapListPage> {
+		const { limit = DEFAULT_PAGE_LIMIT, cursor, signal } = options;
+		const publisherCapType = `${this.originalPackageId}::publication::PublisherCap`;
+		const response = await this.callClient("listOwnedObjects", () =>
+			this.client.listOwnedObjects({
+				owner: address,
+				type: publisherCapType,
+				limit,
+				cursor: cursor ?? null,
+				include: { json: true },
+				...(signal === undefined ? {} : { signal }),
+			}),
+		);
+		const results = response.objects.map((object) => parsePublisherCap(object));
 		return { results, nextCursor: response.cursor };
 	}
 
@@ -207,6 +296,39 @@ function parseCollection(value: unknown, index: number): Collection {
 			`${path}.next_entry_id`,
 		),
 		entriesTableId: parseTableId(collection["entries"], `${path}.entries`),
+	};
+}
+
+function parsePublisherCap(
+	object: SuiClientTypes.Object<{ json: true }>,
+): PublisherCap {
+	const json = object.json;
+	if (!json || typeof json !== "object") {
+		throw new ValidationError(
+			`PublisherCap ${object.objectId} has no parsed JSON content`,
+			"publisherCap.json",
+		);
+	}
+	// Move `ID` and `address` fields serialize as bare hex strings.
+	// Move `UID` (e.g. the struct's own `id` field) serializes as `{ id: "0x..." }`;
+	// we use `object.objectId` from the SDK metadata wrapper for the cap's ID instead.
+	const fields = json as { publication_id?: unknown; holder?: unknown };
+	if (typeof fields.publication_id !== "string") {
+		throw new ValidationError(
+			"PublisherCap.publication_id is missing or not a string",
+			"publisherCap.publication_id",
+		);
+	}
+	if (typeof fields.holder !== "string") {
+		throw new ValidationError(
+			"PublisherCap.holder is missing or not a string",
+			"publisherCap.holder",
+		);
+	}
+	return {
+		id: toPublisherCapId(object.objectId),
+		publicationId: toPublicationId(fields.publication_id),
+		holder: toSuiAddress(fields.holder),
 	};
 }
 

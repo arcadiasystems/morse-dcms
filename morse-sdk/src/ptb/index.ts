@@ -4,6 +4,14 @@
  */
 
 export {
+	type BuildDestroyPublisherCapArgs,
+	type BuildIssuePublisherCapArgs,
+	type BuildRevokePublisherCapArgs,
+	buildDestroyPublisherCap,
+	buildIssuePublisherCap,
+	buildRevokePublisherCap,
+} from "./cap.js";
+export {
 	type BuildCreatePublicationArgs,
 	type BuildDeletePublicationArgs,
 	type BuildSharePublicationArgs,

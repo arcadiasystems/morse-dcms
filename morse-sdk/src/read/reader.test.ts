@@ -1,7 +1,12 @@
 import { describe, expect, mock, test } from "bun:test";
 
 import type { ObjectReader } from "../clients.js";
-import { toPackageId, toPublicationId, toSuiAddress } from "../codecs.js";
+import {
+	toPackageId,
+	toPublicationId,
+	toPublisherCapId,
+	toSuiAddress,
+} from "../codecs.js";
 import { NotFoundError, TransportError, ValidationError } from "../errors.js";
 import { StorageMode } from "../types.js";
 import { RpcPublicationReader } from "./reader.js";
@@ -11,6 +16,9 @@ const PACKAGE_ID = toPackageId(
 );
 const PUBLICATION_ID = toPublicationId(
 	"0x000000000000000000000000000000000000000000000000000000000000aaaa",
+);
+const PUBLISHER_CAP_ID = toPublisherCapId(
+	"0x000000000000000000000000000000000000000000000000000000000000eeee",
 );
 const ADDRESS = toSuiAddress(
 	"0x000000000000000000000000000000000000000000000000000000000000cccc",
@@ -290,5 +298,123 @@ describe("RpcPublicationReader.listPublicationsOwnedBy", () => {
 		await expect(reader.listPublicationsOwnedBy(ADDRESS)).rejects.toThrow(
 			ValidationError,
 		);
+	});
+});
+
+describe("RpcPublicationReader.getPublisherCap", () => {
+	function publisherCapObject(json: Record<string, unknown>) {
+		return {
+			object: {
+				objectId: PUBLISHER_CAP_ID,
+				version: "1",
+				digest: "abc",
+				owner: { $kind: "AddressOwner", AddressOwner: ADDRESS },
+				type: `${PACKAGE_ID}::publication::PublisherCap`,
+				json,
+			},
+		};
+	}
+
+	test("parses a PublisherCap with publication_id and holder", async () => {
+		const client = makeReader({
+			getObject: mock(async () =>
+				publisherCapObject({
+					id: { id: PUBLISHER_CAP_ID },
+					publication_id: PUBLICATION_ID,
+					holder: ADDRESS,
+				}),
+			),
+		});
+		const reader = new RpcPublicationReader(client, PACKAGE_ID);
+		const cap = await reader.getPublisherCap(PUBLISHER_CAP_ID);
+		expect(cap.id as string).toBe(PUBLISHER_CAP_ID as string);
+		expect(cap.publicationId as string).toBe(PUBLICATION_ID as string);
+		expect(cap.holder as string).toBe(ADDRESS as string);
+	});
+
+	test("throws NotFoundError when the cap does not exist", async () => {
+		const client = makeReader({
+			getObject: mock(async () => {
+				throw new Error(`Object ${PUBLISHER_CAP_ID} not found`);
+			}),
+		});
+		const reader = new RpcPublicationReader(client, PACKAGE_ID);
+		await expect(reader.getPublisherCap(PUBLISHER_CAP_ID)).rejects.toThrow(
+			NotFoundError,
+		);
+	});
+
+	test("throws ValidationError when holder is missing", async () => {
+		const client = makeReader({
+			getObject: mock(async () =>
+				publisherCapObject({
+					id: { id: PUBLISHER_CAP_ID },
+					publication_id: PUBLICATION_ID,
+				}),
+			),
+		});
+		const reader = new RpcPublicationReader(client, PACKAGE_ID);
+		await expect(reader.getPublisherCap(PUBLISHER_CAP_ID)).rejects.toThrow(
+			ValidationError,
+		);
+	});
+});
+
+describe("RpcPublicationReader.listPublisherCapsOwnedBy", () => {
+	test("forwards limit, cursor, signal, and the PublisherCap type filter", async () => {
+		const spy = mock(async () => ({
+			objects: [],
+			hasNextPage: false,
+			cursor: null,
+		}));
+		const reader = new RpcPublicationReader(
+			makeReader({ listOwnedObjects: spy }),
+			PACKAGE_ID,
+		);
+		const controller = new AbortController();
+		await reader.listPublisherCapsOwnedBy(ADDRESS, {
+			limit: 7,
+			cursor: "cap-page",
+			signal: controller.signal,
+		});
+		const calls = spy.mock.calls as unknown as Array<
+			Array<Record<string, unknown>>
+		>;
+		const args = calls[0]?.[0] ?? {};
+		expect(args["limit"]).toBe(7);
+		expect(args["cursor"]).toBe("cap-page");
+		expect(args["signal"]).toBe(controller.signal);
+		expect(args["type"]).toBe(`${PACKAGE_ID}::publication::PublisherCap`);
+	});
+
+	test("uses the PublisherCap type filter and returns parsed caps", async () => {
+		const spy = mock(async () => ({
+			objects: [
+				{
+					objectId: PUBLISHER_CAP_ID,
+					type: `${PACKAGE_ID}::publication::PublisherCap`,
+					json: {
+						id: { id: PUBLISHER_CAP_ID },
+						publication_id: PUBLICATION_ID,
+						holder: ADDRESS,
+					},
+				},
+			],
+			hasNextPage: false,
+			cursor: null,
+		}));
+		const reader = new RpcPublicationReader(
+			makeReader({ listOwnedObjects: spy }),
+			PACKAGE_ID,
+		);
+		const page = await reader.listPublisherCapsOwnedBy(ADDRESS);
+		expect(page.results).toHaveLength(1);
+		expect(page.results[0]?.id as string).toBe(PUBLISHER_CAP_ID as string);
+
+		const calls = spy.mock.calls as unknown as Array<
+			Array<Record<string, unknown>>
+		>;
+		const args = calls[0]?.[0] ?? {};
+		expect(args["type"]).toBe(`${PACKAGE_ID}::publication::PublisherCap`);
 	});
 });

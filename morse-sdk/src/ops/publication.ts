@@ -10,7 +10,7 @@ import {
 
 import { toOwnerCapId, toPublicationId, toPublisherCapId } from "../codecs.js";
 import type { NetworkConfig } from "../config.js";
-import { TransportError, ValidationError } from "../errors.js";
+import { ValidationError } from "../errors.js";
 import {
 	buildCreatePublication,
 	buildDeletePublication,
@@ -24,9 +24,9 @@ import type {
 	PublicationId,
 	PublisherCapId,
 	SuiAddress,
-	TxReceipt,
 } from "../types.js";
 import type { WalletAdapter } from "../wallets/adapter.js";
+import { findCreatedId } from "./internal.js";
 
 /** Subset of `NetworkConfig` required to address the deployed contract. */
 export type PublicationConfig = Pick<
@@ -216,16 +216,4 @@ function validateSlug(slug: string): void {
 			"slug",
 		);
 	}
-}
-
-function findCreatedId(receipt: TxReceipt, expectedType: string): string {
-	const created = receipt.createdObjects.find(
-		(object) => object.objectType === expectedType,
-	);
-	if (!created) {
-		throw new TransportError(
-			`Receipt is missing a created object of type ${expectedType}`,
-		);
-	}
-	return created.objectId;
 }

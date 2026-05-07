@@ -18,6 +18,7 @@ import type {
 	RegistryId,
 	SuiAddress,
 } from "../types.js";
+import { resolveObjectArg } from "./internal.js";
 
 export interface BuildCreatePublicationArgs {
 	readonly packageId: PackageId;
@@ -125,11 +126,4 @@ export function buildTransferPublisherCap(
 			tx.pure.address(args.recipient),
 		],
 	});
-}
-
-function resolveObjectArg(
-	tx: Transaction,
-	value: OwnerCapId | PublisherCapId | TransactionObjectArgument,
-): TransactionObjectArgument {
-	return typeof value === "string" ? tx.object(value) : value;
 }
