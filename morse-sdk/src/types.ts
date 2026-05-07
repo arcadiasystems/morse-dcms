@@ -27,6 +27,20 @@ export type PublisherCapId = Brand<string, "PublisherCapId">;
 /** Sui object ID of a Walrus `Blob`. */
 export type BlobObjectId = Brand<string, "BlobObjectId">;
 
+/**
+ * Walrus content-addressed blob ID. URL-safe base64 of the 32-byte content
+ * digest, 43 chars without padding. Distinct from `BlobObjectId`, which is
+ * the Sui object holding the blob.
+ */
+export type WalrusBlobId = Brand<string, "WalrusBlobId">;
+
+/**
+ * 37-byte quilt patch ID: `quilt_id(32) || version(1) || start(2) || end(2)`,
+ * u16 indices little-endian (BCS canonical). Branded to prevent accidental
+ * passing of arbitrary byte arrays to APIs that expect a validated patch ID.
+ */
+export type QuiltPatchId = Uint8Array & { readonly __brand: "QuiltPatchId" };
+
 /** Hex-encoded Sui account address. */
 export type SuiAddress = Brand<string, "SuiAddress">;
 
@@ -70,11 +84,11 @@ export type SealPolicyTag = (typeof SealPolicyTag)[keyof typeof SealPolicyTag];
 
 /**
  * Walrus content reference for a revision. `blob` holds a Sui object ID;
- * `quilt` holds a 37-byte id: `blob_id(32) || version(1) || start(2) || end(2)`.
+ * `quilt` holds a 37-byte `QuiltPatchId`.
  */
 export type BlobRef =
 	| { readonly kind: "blob"; readonly blobObjectId: BlobObjectId }
-	| { readonly kind: "quilt"; readonly patchId: Uint8Array };
+	| { readonly kind: "quilt"; readonly patchId: QuiltPatchId };
 
 /** Byte length of a QuiltPatchId, enforced by the Move layer. */
 export const QUILT_PATCH_ID_LENGTH = 37;

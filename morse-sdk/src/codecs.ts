@@ -11,10 +11,13 @@ import {
 	type PackageId,
 	type PublicationId,
 	type PublisherCapId,
+	QUILT_PATCH_ID_LENGTH,
+	type QuiltPatchId,
 	type RegistryId,
 	StorageMode,
 	type SuiAddress,
 	type SuiObjectId,
+	type WalrusBlobId,
 } from "./types.js";
 
 // ID validation
@@ -77,6 +80,42 @@ export function toSuiAddress(value: string): SuiAddress {
 export function toSuiObjectId(value: string): SuiObjectId {
 	assertObjectIdShape(value, "SuiObjectId");
 	return value as SuiObjectId;
+}
+
+// Walrus blob id
+
+/** URL-safe base64 alphabet, no padding. 43 chars carries 32 bytes. */
+const WALRUS_BLOB_ID_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+
+/**
+ * Construct a `WalrusBlobId` from a URL-safe base64 string (43 chars,
+ * unpadded). @throws {ValidationError} On invalid shape.
+ */
+export function toWalrusBlobId(value: string): WalrusBlobId {
+	if (!WALRUS_BLOB_ID_PATTERN.test(value)) {
+		throw new ValidationError(
+			`Invalid WalrusBlobId: expected 43 URL-safe base64 chars (unpadded), got ${JSON.stringify(value)}`,
+			"WalrusBlobId",
+		);
+	}
+	return value as WalrusBlobId;
+}
+
+// Quilt patch id
+
+/**
+ * Construct a `QuiltPatchId` by validating length only. Use the structural
+ * codec in `walrus/quilt-patch-id.ts` for `{quiltId, version, startIndex,
+ * endIndex}` round-trips. @throws {ValidationError} On wrong length.
+ */
+export function toQuiltPatchId(bytes: Uint8Array): QuiltPatchId {
+	if (bytes.length !== QUILT_PATCH_ID_LENGTH) {
+		throw new ValidationError(
+			`Invalid QuiltPatchId: expected ${QUILT_PATCH_ID_LENGTH} bytes, got ${bytes.length}`,
+			"QuiltPatchId",
+		);
+	}
+	return bytes as QuiltPatchId;
 }
 
 // Storage mode

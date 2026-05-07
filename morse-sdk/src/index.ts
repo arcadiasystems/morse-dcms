@@ -13,9 +13,11 @@ export {
 	toPackageId,
 	toPublicationId,
 	toPublisherCapId,
+	toQuiltPatchId,
 	toRegistryId,
 	toSuiAddress,
 	toSuiObjectId,
+	toWalrusBlobId,
 } from "./codecs.js";
 export {
 	DEFAULT_RPC_URLS,
@@ -87,6 +89,7 @@ export {
 	type PublisherCap,
 	type PublisherCapId,
 	QUILT_PATCH_ID_LENGTH,
+	type QuiltPatchId,
 	type RegistryId,
 	type Revision,
 	SealPolicyTag,
@@ -96,5 +99,25 @@ export {
 	type TxCreatedObject,
 	type TxDeletedObject,
 	type TxReceipt,
+	type WalrusBlobId,
 } from "./types.js";
 export { KeypairAdapter, type WalletAdapter } from "./wallets/index.js";
+export {
+	DefaultWalrusWriteAdapter,
+	type DefaultWalrusWriteAdapterOptions,
+	decodeQuiltPatchId,
+	encodeQuiltPatchId,
+	QUILT_PATCH_ID_VERSION,
+	type QuiltPatchIdParts,
+	type QuiltPatchInput,
+	quiltPatchIdFromString,
+	quiltPatchIdToString,
+	type UploadBlobOptions,
+	type UploadBlobResult,
+	type UploadQuiltOptions,
+	type UploadQuiltPatch,
+	type UploadQuiltResult,
+	type WalrusAdapterConfig,
+	type WalrusUploadCommonOptions,
+	type WalrusWriteAdapter,
+} from "./walrus/index.js";
