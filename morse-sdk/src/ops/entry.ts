@@ -13,8 +13,10 @@ import { Transaction } from "@mysten/sui/transactions";
 
 import type { MorsePackageConfig } from "../config.js";
 import {
+	buildAddEncryptedEntry,
 	buildAddEntry,
 	buildAppendDraftRevision,
+	buildAppendEncryptedDraftRevision,
 	buildDeleteEntry,
 	buildPublishDirect,
 	buildPublishFromDraft,
@@ -24,6 +26,7 @@ import type {
 	PublicationId,
 	PublisherCapId,
 	QuiltPatchId,
+	SealId,
 	TxReceipt,
 } from "../types.js";
 import type { WalletAdapter } from "../wallets/adapter.js";
@@ -258,4 +261,104 @@ export async function deleteEntry(
 		entryId: args.entryId,
 	});
 	return adapter.signAndExecuteTransaction(tx, args.signal);
+}
+
+export interface AddEncryptedEntryArgs {
+	readonly publicationId: PublicationId;
+	readonly publisherCapId: PublisherCapId;
+	readonly collectionName: string;
+	readonly name: string;
+	readonly blobObjectId: BlobObjectId;
+	readonly quiltPatchId?: QuiltPatchId;
+	readonly contentType: string;
+	readonly sealId: SealId;
+	readonly signal?: AbortSignal;
+}
+
+/**
+ * Add a new entry whose first revision is encrypted under the supplied
+ * `sealId` with the Publisher access policy. Encryption is performed
+ * out-of-band (consumer encrypts the payload, uploads the ciphertext to
+ * Walrus, then calls this op with the resulting `blobObjectId`).
+ *
+ * @throws {ContractAbortError} On Move abort.
+ * @throws {TransportError} On RPC, network, or response-parsing failure.
+ */
+export async function addEncryptedEntry(
+	adapter: WalletAdapter,
+	config: MorsePackageConfig,
+	args: AddEncryptedEntryArgs,
+): Promise<AddEntryResult> {
+	const tx = new Transaction();
+	buildAddEncryptedEntry(tx, {
+		packageId: config.packageId,
+		publication: args.publicationId,
+		publisherCap: args.publisherCapId,
+		collectionName: args.collectionName,
+		name: args.name,
+		blobObjectId: args.blobObjectId,
+		...(args.quiltPatchId === undefined
+			? {}
+			: { quiltPatchId: args.quiltPatchId }),
+		contentType: args.contentType,
+		sealId: args.sealId,
+	});
+	const simulated = await adapter.simulateTransaction(tx, args.signal);
+	const entryId = decodeU64ReturnValue(simulated, 0, 0);
+	const receipt = await adapter.signAndExecuteTransaction(tx, args.signal);
+	return {
+		digest: receipt.digest,
+		gasUsedMist: receipt.gasUsedMist,
+		entryId,
+		revisionId: 0,
+	};
+}
+
+export interface AppendEncryptedDraftRevisionArgs {
+	readonly publicationId: PublicationId;
+	readonly publisherCapId: PublisherCapId;
+	readonly collectionName: string;
+	readonly entryId: number;
+	readonly blobObjectId: BlobObjectId;
+	readonly quiltPatchId?: QuiltPatchId;
+	readonly contentType: string;
+	readonly sealId: SealId;
+	readonly signal?: AbortSignal;
+}
+
+/**
+ * Append an encrypted draft revision to an existing entry. Each revision
+ * carries its own `sealId`; passing a different identity from the prior
+ * revision is valid on-chain.
+ *
+ * @throws {ContractAbortError} On Move abort.
+ * @throws {TransportError} On RPC, network, or response-parsing failure.
+ */
+export async function appendEncryptedDraftRevision(
+	adapter: WalletAdapter,
+	config: MorsePackageConfig,
+	args: AppendEncryptedDraftRevisionArgs,
+): Promise<RevisionAppendResult> {
+	const tx = new Transaction();
+	buildAppendEncryptedDraftRevision(tx, {
+		packageId: config.packageId,
+		publication: args.publicationId,
+		publisherCap: args.publisherCapId,
+		collectionName: args.collectionName,
+		entryId: args.entryId,
+		blobObjectId: args.blobObjectId,
+		...(args.quiltPatchId === undefined
+			? {}
+			: { quiltPatchId: args.quiltPatchId }),
+		contentType: args.contentType,
+		sealId: args.sealId,
+	});
+	const simulated = await adapter.simulateTransaction(tx, args.signal);
+	const revisionId = decodeU64ReturnValue(simulated, 0, 0);
+	const receipt = await adapter.signAndExecuteTransaction(tx, args.signal);
+	return {
+		digest: receipt.digest,
+		gasUsedMist: receipt.gasUsedMist,
+		revisionId,
+	};
 }

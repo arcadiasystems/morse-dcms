@@ -11,14 +11,17 @@ import {
 	toSuiAddress,
 } from "../codecs.js";
 import { ContractAbortError, TransportError } from "../errors.js";
+import { buildPublisherSealId } from "../seal/identity.js";
 import { QUILT_PATCH_ID_LENGTH, type TxReceipt } from "../types.js";
 import type {
 	SimulationReturnValues,
 	WalletAdapter,
 } from "../wallets/adapter.js";
 import {
+	addEncryptedEntry,
 	addEntry,
 	appendDraftRevision,
+	appendEncryptedDraftRevision,
 	deleteEntry,
 	publishDirect,
 	publishFromDraft,
@@ -218,5 +221,48 @@ describe("deleteEntry", () => {
 		await expect(promise).rejects.toBe(abort);
 		expect(abort.module).toBe("collection");
 		expect(abort.reason).toBe("EEntryNotFound");
+	});
+});
+
+describe("addEncryptedEntry", () => {
+	test("returns entryId from simulation and revisionId 0", async () => {
+		const sealId = buildPublisherSealId(
+			PUBLICATION_ID,
+			new Uint8Array([1, 2, 3]),
+		);
+		const adapter = adapterReturning(11);
+		const result = await addEncryptedEntry(adapter, CONFIG, {
+			publicationId: PUBLICATION_ID,
+			publisherCapId: PUBLISHER_CAP_ID,
+			collectionName: "blog",
+			name: "encrypted-post",
+			blobObjectId: BLOB_OBJECT_ID,
+			contentType: "application/octet-stream",
+			sealId,
+		});
+		expect(result.entryId).toBe(11);
+		expect(result.revisionId).toBe(0);
+		expect(adapter.simulateTransaction).toHaveBeenCalledTimes(1);
+		expect(adapter.signAndExecuteTransaction).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("appendEncryptedDraftRevision", () => {
+	test("returns revisionId from simulation", async () => {
+		const sealId = buildPublisherSealId(
+			PUBLICATION_ID,
+			new Uint8Array([7, 7, 7, 7]),
+		);
+		const adapter = adapterReturning(5);
+		const result = await appendEncryptedDraftRevision(adapter, CONFIG, {
+			publicationId: PUBLICATION_ID,
+			publisherCapId: PUBLISHER_CAP_ID,
+			collectionName: "blog",
+			entryId: 0,
+			blobObjectId: BLOB_OBJECT_ID,
+			contentType: "application/octet-stream",
+			sealId,
+		});
+		expect(result.revisionId).toBe(5);
 	});
 });

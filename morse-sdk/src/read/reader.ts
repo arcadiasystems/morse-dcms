@@ -29,6 +29,7 @@ import type {
 	PublisherCap,
 	PublisherCapId,
 	Revision,
+	SealId,
 	SuiAddress,
 	SuiObjectId,
 } from "../types.js";
@@ -648,7 +649,14 @@ function convertRevision(
 		contentType: parsed.content_type,
 		encrypted: parsed.encrypted,
 		accessPolicy: accessPolicyFromU8(parsed.access_policy),
-		sealId: parsed.seal_id === null ? null : new Uint8Array(parsed.seal_id),
+		// On-chain bytes have already passed Move's `assert_valid_publisher_seal_id`
+		// invariants (length, prefix, policy tag), so we brand them here without
+		// re-validating client-side. This lets `Revision.sealId` flow directly into
+		// `SealAdapter.decrypt` without a consumer-side cast.
+		sealId:
+			parsed.seal_id === null
+				? null
+				: (new Uint8Array(parsed.seal_id) as SealId),
 		author: toSuiAddress(parsed.author),
 	};
 }

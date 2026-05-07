@@ -67,6 +67,33 @@ export class TransportError extends MorseError {}
 /** SDK configuration gap (e.g. asking for a network with no canonical deployment). */
 export class ConfigurationError extends MorseError {}
 
+// Seal
+
+/** Distinct failure modes Seal exposes to consumers. Narrow on `code`. */
+export type SealErrorCode =
+	| "no-access"
+	| "decrypt-failed"
+	| "session-expired"
+	| "rate-limited";
+
+/**
+ * Seal encryption or decryption failed for a content reason (not transport).
+ * Use this to distinguish authorization gaps (`no-access`) from network
+ * blips (`TransportError`).
+ */
+export class SealError extends MorseError {
+	readonly code: SealErrorCode;
+
+	constructor(
+		code: SealErrorCode,
+		message: string,
+		options?: { cause?: unknown },
+	) {
+		super(message, options);
+		this.code = code;
+	}
+}
+
 // Contract abort
 
 /** Move module whose abort codes the SDK knows about. */

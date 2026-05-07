@@ -18,13 +18,17 @@ export {
 	buildDeleteCollection,
 } from "./collection.js";
 export {
+	type BuildAddEncryptedEntryArgs,
 	type BuildAddEntryArgs,
 	type BuildAppendDraftRevisionArgs,
+	type BuildAppendEncryptedDraftRevisionArgs,
 	type BuildDeleteEntryArgs,
 	type BuildPublishDirectArgs,
 	type BuildPublishFromDraftArgs,
+	buildAddEncryptedEntry,
 	buildAddEntry,
 	buildAppendDraftRevision,
+	buildAppendEncryptedDraftRevision,
 	buildDeleteEntry,
 	buildPublishDirect,
 	buildPublishFromDraft,

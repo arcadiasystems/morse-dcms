@@ -22,11 +22,15 @@ export {
 	deleteCollection,
 } from "./collection.js";
 export {
+	type AddEncryptedEntryArgs,
 	type AddEntryArgs,
 	type AddEntryResult,
 	type AppendDraftRevisionArgs,
+	type AppendEncryptedDraftRevisionArgs,
+	addEncryptedEntry,
 	addEntry,
 	appendDraftRevision,
+	appendEncryptedDraftRevision,
 	type DeleteEntryArgs,
 	type DeleteEntryResult,
 	deleteEntry,

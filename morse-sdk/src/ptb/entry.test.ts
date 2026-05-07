@@ -9,10 +9,13 @@ import {
 	toPublisherCapId,
 	toQuiltPatchId,
 } from "../codecs.js";
+import { buildPublisherSealId } from "../seal/identity.js";
 import { QUILT_PATCH_ID_LENGTH } from "../types.js";
 import {
+	buildAddEncryptedEntry,
 	buildAddEntry,
 	buildAppendDraftRevision,
+	buildAppendEncryptedDraftRevision,
 	buildDeleteEntry,
 	buildPublishDirect,
 	buildPublishFromDraft,
@@ -146,5 +149,53 @@ describe("buildDeleteEntry", () => {
 		const call = moveCall(tx, 0);
 		expect(call.function).toBe("delete_entry_from_collection");
 		expect(call.arguments).toHaveLength(4);
+	});
+});
+
+describe("buildAddEncryptedEntry", () => {
+	const SEAL_ID = buildPublisherSealId(
+		PUBLICATION_ID,
+		new Uint8Array([0xde, 0xad, 0xbe, 0xef]),
+	);
+
+	test("targets add_entry_to_collection with 10 args", () => {
+		const tx = new Transaction();
+		buildAddEncryptedEntry(tx, {
+			packageId: PACKAGE_ID,
+			publication: PUBLICATION_ID,
+			publisherCap: PUBLISHER_CAP_ID,
+			collectionName: "blog",
+			name: "encrypted-post",
+			blobObjectId: BLOB_OBJECT_ID,
+			contentType: "application/octet-stream",
+			sealId: SEAL_ID,
+		});
+		const call = moveCall(tx, 0);
+		expect(call.function).toBe("add_entry_to_collection");
+		expect(call.arguments).toHaveLength(10);
+	});
+});
+
+describe("buildAppendEncryptedDraftRevision", () => {
+	const SEAL_ID = buildPublisherSealId(
+		PUBLICATION_ID,
+		new Uint8Array([1, 2, 3, 4]),
+	);
+
+	test("targets append_collection_entry_draft_revision with 10 args", () => {
+		const tx = new Transaction();
+		buildAppendEncryptedDraftRevision(tx, {
+			packageId: PACKAGE_ID,
+			publication: PUBLICATION_ID,
+			publisherCap: PUBLISHER_CAP_ID,
+			collectionName: "blog",
+			entryId: 0,
+			blobObjectId: BLOB_OBJECT_ID,
+			contentType: "application/octet-stream",
+			sealId: SEAL_ID,
+		});
+		const call = moveCall(tx, 0);
+		expect(call.function).toBe("append_collection_entry_draft_revision");
+		expect(call.arguments).toHaveLength(10);
 	});
 });

@@ -41,6 +41,13 @@ export type WalrusBlobId = Brand<string, "WalrusBlobId">;
  */
 export type QuiltPatchId = Uint8Array & { readonly __brand: "QuiltPatchId" };
 
+/**
+ * Seal identity bytes. Layout: `publication_id(32) || policy_tag(u8) || nonce(>=1)`.
+ * Total length must be > 33. Branded so callers cannot bypass the identity
+ * builder; construct via `buildPublisherSealId`.
+ */
+export type SealId = Uint8Array & { readonly __brand: "SealId" };
+
 /** Hex-encoded Sui account address. */
 export type SuiAddress = Brand<string, "SuiAddress">;
 
@@ -105,7 +112,7 @@ export interface Revision {
 	readonly encrypted: boolean;
 	readonly accessPolicy: AccessPolicy;
 	/** Seal identity bound to encrypted revisions; `null` when unencrypted. */
-	readonly sealId: Uint8Array | null;
+	readonly sealId: SealId | null;
 	/** Address that submitted the transaction creating this revision. */
 	readonly author: SuiAddress;
 }

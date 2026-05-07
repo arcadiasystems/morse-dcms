@@ -11,17 +11,21 @@ import type {
 	TransactionResult,
 } from "@mysten/sui/transactions";
 
-import type {
-	BlobObjectId,
-	PackageId,
-	PublicationId,
-	PublisherCapId,
-	QuiltPatchId,
+import { accessPolicyToU8 } from "../codecs.js";
+import {
+	AccessPolicy,
+	type BlobObjectId,
+	type PackageId,
+	type PublicationId,
+	type PublisherCapId,
+	type QuiltPatchId,
+	type SealId,
 } from "../types.js";
 import { resolveObjectArg } from "./internal.js";
 
 const ACCESS_POLICY_PUBLIC_U8 = 0;
 const ENCRYPTED_FALSE = false;
+const ENCRYPTED_TRUE = true;
 
 /** Build a `0x1::option::Option<vector<u8>>` Some/None argument. */
 function optionPatchIdArg(
@@ -39,6 +43,16 @@ function optionPatchIdArg(
 /** Build a `0x1::option::Option<vector<u8>>` `None` for the unused seal_id slot. */
 function noSealIdArg(tx: Transaction): TransactionObjectArgument {
 	return tx.pure(bcs.option(bcs.vector(bcs.u8())).serialize(null));
+}
+
+/** Build a `0x1::option::Option<vector<u8>>` `Some(SealId)` argument. */
+function someSealIdArg(
+	tx: Transaction,
+	sealId: SealId,
+): TransactionObjectArgument {
+	return tx.pure(
+		bcs.option(bcs.vector(bcs.u8())).serialize(Array.from(sealId)),
+	);
 }
 
 export interface BuildAddEntryArgs {
@@ -193,6 +207,82 @@ export function buildDeleteEntry(
 			resolveObjectArg(tx, args.publisherCap),
 			tx.pure.string(args.collectionName),
 			tx.pure.u64(args.entryId),
+		],
+	});
+}
+
+export interface BuildAddEncryptedEntryArgs {
+	readonly packageId: PackageId;
+	readonly publication: PublicationId | TransactionObjectArgument;
+	readonly publisherCap: PublisherCapId | TransactionObjectArgument;
+	readonly collectionName: string;
+	readonly name: string;
+	readonly blobObjectId: BlobObjectId | TransactionObjectArgument;
+	readonly quiltPatchId?: QuiltPatchId;
+	readonly contentType: string;
+	readonly sealId: SealId;
+}
+
+/**
+ * Add a `publication::add_entry_to_collection` call for an encrypted entry
+ * (encrypted=true, access_policy=Publisher, seal_id=Some). Returns u64 entry id.
+ */
+export function buildAddEncryptedEntry(
+	tx: Transaction,
+	args: BuildAddEncryptedEntryArgs,
+): TransactionResult {
+	return tx.moveCall({
+		target: `${args.packageId}::publication::add_entry_to_collection`,
+		arguments: [
+			resolveObjectArg(tx, args.publication),
+			resolveObjectArg(tx, args.publisherCap),
+			tx.pure.string(args.collectionName),
+			tx.pure.string(args.name),
+			resolveObjectArg(tx, args.blobObjectId),
+			optionPatchIdArg(tx, args.quiltPatchId),
+			tx.pure.string(args.contentType),
+			tx.pure.bool(ENCRYPTED_TRUE),
+			tx.pure.u8(accessPolicyToU8(AccessPolicy.Publisher)),
+			someSealIdArg(tx, args.sealId),
+		],
+	});
+}
+
+export interface BuildAppendEncryptedDraftRevisionArgs {
+	readonly packageId: PackageId;
+	readonly publication: PublicationId | TransactionObjectArgument;
+	readonly publisherCap: PublisherCapId | TransactionObjectArgument;
+	readonly collectionName: string;
+	readonly entryId: number;
+	readonly blobObjectId: BlobObjectId | TransactionObjectArgument;
+	readonly quiltPatchId?: QuiltPatchId;
+	readonly contentType: string;
+	readonly sealId: SealId;
+}
+
+/**
+ * Add a `publication::append_collection_entry_draft_revision` call for an
+ * encrypted draft revision. Returns u64 revision id. Each revision carries
+ * its own `sealId`; passing a different identity from the prior revision is
+ * valid on-chain.
+ */
+export function buildAppendEncryptedDraftRevision(
+	tx: Transaction,
+	args: BuildAppendEncryptedDraftRevisionArgs,
+): TransactionResult {
+	return tx.moveCall({
+		target: `${args.packageId}::publication::append_collection_entry_draft_revision`,
+		arguments: [
+			resolveObjectArg(tx, args.publication),
+			resolveObjectArg(tx, args.publisherCap),
+			tx.pure.string(args.collectionName),
+			tx.pure.u64(args.entryId),
+			resolveObjectArg(tx, args.blobObjectId),
+			optionPatchIdArg(tx, args.quiltPatchId),
+			tx.pure.string(args.contentType),
+			tx.pure.bool(ENCRYPTED_TRUE),
+			tx.pure.u8(accessPolicyToU8(AccessPolicy.Publisher)),
+			someSealIdArg(tx, args.sealId),
 		],
 	});
 }
