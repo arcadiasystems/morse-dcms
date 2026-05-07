@@ -252,6 +252,14 @@ public fun destroy_publisher_cap(publication: &mut Publication, cap: PublisherCa
   id.delete();
 }
 
+/// Transfer a PublisherCap to an address. The cap's `holder` field is fixed
+/// at issuance and is not modified here; only that address can exercise the
+/// cap regardless of object ownership. Use this to deliver the cap object to
+/// its bound holder after `new_publication` or `issue_publisher_cap`.
+public fun transfer_publisher_cap(cap: PublisherCap, recipient: address) {
+  transfer::transfer(cap, recipient)
+}
+
 /// Revoke a PublisherCap by ID. Only callable by the owner.
 /// Adds the cap ID to the revoked denylist; future writes using that cap will be rejected.
 public fun revoke_publisher_cap(publication: &mut Publication, owner_cap: &OwnerCap, cap_id: ID) {
