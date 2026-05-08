@@ -21,7 +21,12 @@ import {
 import type { ClientWithCoreApi } from "@mysten/sui/client";
 import { Transaction } from "@mysten/sui/transactions";
 
-import { SealError, TransportError, ValidationError } from "../errors.js";
+import {
+	ConfigurationError,
+	SealError,
+	TransportError,
+	ValidationError,
+} from "../errors.js";
 import type {
 	PackageId,
 	PublicationId,
@@ -88,21 +93,49 @@ export class DefaultSealAdapter implements SealAdapter {
 	}
 
 	/**
-	 * Build an adapter from a morse package config (typically `morseConfig({network})`)
-	 * plus the Seal-specific server list and threshold. Picks
+	 * Build an adapter from a morse package config (typically
+	 * `morseConfig({ network })`). Defaults `serverConfigs` from
+	 * `morseConfig.sealKeyServers` (the canonical testnet allowlist baked
+	 * into morse-sdk) when omitted; defaults `threshold` to
+	 * `min(2, serverConfigs.length)` when omitted. Picks
 	 * `originalPackageId ?? packageId` internally; passing a post-upgrade
 	 * `packageId` directly would silently produce ciphertexts that become
 	 * undecryptable across upgrades.
+	 *
+	 * Pass `seal: {}` for the default path; supply `serverConfigs` when you
+	 * want a custom set (paid plans, alternate trust assumptions, region
+	 * pinning), or `threshold` when you want a non-default TSS shape.
+	 *
+	 * @throws {ConfigurationError} If neither `seal.serverConfigs` nor
+	 *   `morseConfig.sealKeyServers` provide any servers (e.g. mainnet
+	 *   pre-freeze).
 	 */
 	static fromMorseConfig(
-		morseConfig: { packageId: PackageId; originalPackageId?: PackageId },
-		seal: Omit<SealAdapterConfig, "packageId">,
+		morseConfig: {
+			packageId: PackageId;
+			originalPackageId?: PackageId;
+			sealKeyServers?: readonly KeyServerConfig[];
+		},
+		seal: Partial<Omit<SealAdapterConfig, "packageId">>,
 		suiClient: SealCompatibleClient,
 	): DefaultSealAdapter {
+		const serverConfigs =
+			seal.serverConfigs ?? morseConfig.sealKeyServers ?? [];
+		if (serverConfigs.length === 0) {
+			throw new ConfigurationError(
+				"morseConfig has no canonical Seal key servers for this network and no override was supplied. Pass seal.serverConfigs explicitly, or use a network where the allowlist is pinned.",
+			);
+		}
+		const threshold = seal.threshold ?? Math.min(2, serverConfigs.length);
 		return DefaultSealAdapter.fromConfig(
 			{
 				packageId: morseConfig.originalPackageId ?? morseConfig.packageId,
-				...seal,
+				serverConfigs,
+				threshold,
+				...(seal.verifyKeyServers === undefined
+					? {}
+					: { verifyKeyServers: seal.verifyKeyServers }),
+				...(seal.timeout === undefined ? {} : { timeout: seal.timeout }),
 			},
 			suiClient,
 		);

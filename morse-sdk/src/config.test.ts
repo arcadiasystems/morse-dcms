@@ -122,4 +122,23 @@ describe("morseConfig", () => {
 		expect(config.registryId).toBeDefined();
 		expect(config.rpcUrl).toBe("https://fullnode.testnet.sui.io:443");
 	});
+
+	test("testnet config carries the canonical Seal key-server allowlist", () => {
+		const config = morseConfig({ network: "testnet" });
+		expect(config.sealKeyServers.length).toBeGreaterThan(0);
+		for (const server of config.sealKeyServers) {
+			expect(typeof server.objectId).toBe("string");
+			expect(server.objectId.startsWith("0x")).toBe(true);
+			expect(server.weight).toBeGreaterThan(0);
+		}
+	});
+
+	test("sealKeyServers can be overridden", () => {
+		const custom = [{ objectId: "0xabc", weight: 1 }];
+		const config = morseConfig({
+			network: "testnet",
+			sealKeyServers: custom,
+		});
+		expect(config.sealKeyServers).toBe(custom);
+	});
 });

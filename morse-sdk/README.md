@@ -146,7 +146,10 @@ try {
 
 ```ts
 const config = morseConfig({ network: "testnet" });
-// { network, rpcUrl, packageId, originalPackageId, registryId }
+// {
+//   network, rpcUrl, packageId, originalPackageId, registryId,
+//   sealKeyServers: [{ objectId, weight }, ...]   // canonical testnet allowlist
+// }
 ```
 
 Override individual fields for forks or local nodes:

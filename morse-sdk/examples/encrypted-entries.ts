@@ -45,25 +45,18 @@ export function newSealIdFor(publicationId: PublicationId): SealId {
 }
 
 /**
- * Build the Seal and Walrus adapters once per encryption flow. `seal` carries
- * the morse package id, the key-server list, and the TSS threshold. `walrus`
- * is constructed against the Walrus testnet (Walrus's network parameter
- * accepts `"mainnet" | "testnet"` only, so we don't thread `ctx.config.network`
- * through; production code with a non-testnet morseConfig would map
- * accordingly).
+ * Build the Seal and Walrus adapters once per encryption flow. Defaults the
+ * Seal `serverConfigs` and `threshold` from `ctx.config.sealKeyServers` (the
+ * canonical testnet allowlist baked into morse-sdk). Walrus is constructed
+ * against the Walrus testnet — Walrus's `network` parameter accepts only
+ * `"mainnet" | "testnet"`, so production code with a non-testnet morseConfig
+ * maps `ctx.config.network` accordingly.
  */
-function buildAdapters(
-	ctx: ExampleContext,
-	keyServers: KeyServerConfig[],
-): {
+function buildAdapters(ctx: ExampleContext): {
 	seal: DefaultSealAdapter;
 	walrus: DefaultWalrusWriteAdapter;
 } {
-	const seal = DefaultSealAdapter.fromMorseConfig(
-		ctx.config,
-		{ serverConfigs: keyServers, threshold: 2 },
-		ctx.client,
-	);
+	const seal = DefaultSealAdapter.fromMorseConfig(ctx.config, {}, ctx.client);
 	const walrus = DefaultWalrusWriteAdapter.fromConfig(
 		{ network: "testnet", suiClient: ctx.client },
 		ctx.keypair,
@@ -76,10 +69,6 @@ function buildAdapters(
  * entry referencing it. The contract stores `encrypted=true` and the
  * `sealId` bytes per revision; `accessPolicy` is hardcoded to Publisher
  * (Subscription is reserved for future work).
- *
- * `fromMorseConfig` picks `originalPackageId ?? packageId` automatically;
- * passing the post-upgrade `packageId` to `fromConfig` directly would
- * silently produce ciphertexts that become undecryptable across upgrades.
  */
 export async function publishEncryptedEntry(
 	ctx: ExampleContext,
@@ -87,10 +76,9 @@ export async function publishEncryptedEntry(
 		publicationId: PublicationId;
 		publisherCapId: PublisherCapId;
 		plaintext: Uint8Array;
-		keyServers: KeyServerConfig[];
 	},
 ): Promise<{ entryId: number; sealId: SealId }> {
-	const { seal, walrus } = buildAdapters(ctx, args.keyServers);
+	const { seal, walrus } = buildAdapters(ctx);
 
 	const sealId = newSealIdFor(args.publicationId);
 	const { ciphertext } = await seal.encrypt(args.plaintext, { sealId });
@@ -122,10 +110,9 @@ export async function appendEncryptedDraft(
 		publisherCapId: PublisherCapId;
 		entryId: number;
 		plaintext: Uint8Array;
-		keyServers: KeyServerConfig[];
 	},
 ): Promise<{ revisionId: number; sealId: SealId }> {
-	const { seal, walrus } = buildAdapters(ctx, args.keyServers);
+	const { seal, walrus } = buildAdapters(ctx);
 
 	const sealId = newSealIdFor(args.publicationId);
 	const { ciphertext } = await seal.encrypt(args.plaintext, { sealId });
@@ -162,13 +149,58 @@ export async function decryptCiphertext(
 		sessionKey: SessionKey;
 		sealId: SealId;
 		publisherCapId: PublisherCapId;
-		keyServers: KeyServerConfig[];
 	},
 ): Promise<Uint8Array> {
-	const { seal } = buildAdapters(ctx, args.keyServers);
+	const { seal } = buildAdapters(ctx);
 	return seal.decrypt(args.ciphertext, {
 		sessionKey: args.sessionKey,
 		sealId: args.sealId,
 		publisherCapId: args.publisherCapId,
 	});
+}
+
+/**
+ * Power-user variant: pass a custom Seal server set (paid plans, alternate
+ * trust assumptions, region pinning). The default `publishEncryptedEntry`
+ * inherits from `morseConfig.sealKeyServers` and is the right path for
+ * standard testnet/mainnet flows.
+ */
+export async function publishEncryptedEntryWithCustomServers(
+	ctx: ExampleContext,
+	args: {
+		publicationId: PublicationId;
+		publisherCapId: PublisherCapId;
+		plaintext: Uint8Array;
+		serverConfigs: KeyServerConfig[];
+		threshold?: number;
+	},
+): Promise<{ entryId: number; sealId: SealId }> {
+	const seal = DefaultSealAdapter.fromMorseConfig(
+		ctx.config,
+		{
+			serverConfigs: args.serverConfigs,
+			...(args.threshold === undefined ? {} : { threshold: args.threshold }),
+		},
+		ctx.client,
+	);
+	const walrus = DefaultWalrusWriteAdapter.fromConfig(
+		{ network: "testnet", suiClient: ctx.client },
+		ctx.keypair,
+	);
+	const sealId = newSealIdFor(args.publicationId);
+	const { ciphertext } = await seal.encrypt(args.plaintext, { sealId });
+	const blob = await walrus.uploadBlob(ciphertext, {
+		epochs: 3,
+		deletable: true,
+	});
+	const result = await addEncryptedEntry(ctx.adapter, ctx.config, {
+		publicationId: args.publicationId,
+		publisherCapId: args.publisherCapId,
+		collectionName: "secret-blog",
+		name: "private-doc",
+		blobObjectId: blob.blobObjectId,
+		contentType: "application/octet-stream",
+		sealId,
+	});
+	return { entryId: result.entryId, sealId };
 }

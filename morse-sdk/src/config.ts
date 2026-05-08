@@ -3,6 +3,8 @@
  * hides deployed package addresses from consumers using known networks.
  */
 
+import type { KeyServerConfig } from "@mysten/seal";
+
 import { toPackageId, toRegistryId } from "./codecs.js";
 import { ConfigurationError } from "./errors.js";
 import type { PackageId, RegistryId } from "./types.js";
@@ -46,6 +48,13 @@ export interface NetworkConfig {
 	readonly packageId: PackageId;
 	readonly originalPackageId?: PackageId;
 	readonly registryId: RegistryId;
+	/**
+	 * Canonical Seal threshold-encryption key servers for the network. Used by
+	 * `DefaultSealAdapter.fromMorseConfig` when the consumer omits an explicit
+	 * `serverConfigs`. Empty for networks where the allowlist isn't pinned yet
+	 * (e.g. mainnet pre-freeze).
+	 */
+	readonly sealKeyServers: readonly KeyServerConfig[];
 }
 
 /**
@@ -72,6 +81,7 @@ const KNOWN_DEPLOYMENTS: Partial<
 			readonly packageId: PackageId;
 			readonly originalPackageId: PackageId;
 			readonly registryId: RegistryId;
+			readonly sealKeyServers: readonly KeyServerConfig[];
 		}
 	>
 > = {
@@ -85,6 +95,22 @@ const KNOWN_DEPLOYMENTS: Partial<
 		registryId: toRegistryId(
 			"0xb25e4849d720ad5058c1945a819aa1dc01ff899006e3f0fe7cb9c62668d307e2",
 		),
+		// Canonical Seal testnet allowlist; mirrors the values used in Mysten's
+		// own integration tests at
+		// https://github.com/MystenLabs/ts-sdks/blob/main/packages/seal/test/unit/integration.test.ts
+		// Pulled 2026-05-08. Public, stable; not a secret.
+		sealKeyServers: [
+			{
+				objectId:
+					"0x73d05d62c18d9374e3ea529e8e0ed6161da1a141a94d3f76ae3fe4e99356db75",
+				weight: 1,
+			},
+			{
+				objectId:
+					"0xf5d14a81a982144ae441cd7d64b09027f116a468bd36e7eca494f750591623c8",
+				weight: 1,
+			},
+		],
 	},
 };
 
@@ -99,6 +125,7 @@ export interface MorseConfigOptions {
 	readonly packageId?: PackageId;
 	readonly originalPackageId?: PackageId;
 	readonly registryId?: RegistryId;
+	readonly sealKeyServers?: readonly KeyServerConfig[];
 }
 
 /**
@@ -131,5 +158,6 @@ export function morseConfig(options: MorseConfigOptions): NetworkConfig {
 		packageId,
 		registryId,
 		...(originalPackageId === undefined ? {} : { originalPackageId }),
+		sealKeyServers: options.sealKeyServers ?? deployment?.sealKeyServers ?? [],
 	};
 }

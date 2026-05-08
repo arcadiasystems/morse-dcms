@@ -150,6 +150,7 @@ export {
 	type WalletStandardSignerOptions,
 } from "./wallets/index.js";
 export {
+	DefaultWalrusReadAdapter,
 	DefaultWalrusWriteAdapter,
 	type DefaultWalrusWriteAdapterOptions,
 	decodeQuiltPatchId,
@@ -164,6 +165,9 @@ export {
 	type UploadQuiltPatch,
 	type UploadQuiltResult,
 	type WalrusAdapterConfig,
+	type WalrusReadAdapter,
+	type WalrusReadAdapterConfig,
+	type WalrusReadOptions,
 	type WalrusUploadCommonOptions,
 	type WalrusWriteAdapter,
 } from "./walrus/index.js";

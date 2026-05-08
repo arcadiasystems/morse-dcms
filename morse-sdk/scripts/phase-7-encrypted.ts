@@ -13,12 +13,13 @@
  *
  * Required env vars:
  *   PRIVATE_KEY        - suiprivkey1... bech32 secret key
- *   SEAL_KEY_SERVERS   - JSON array of {"objectId": "0x...", "weight": 1}
- *                        entries; consult the Mysten Seal docs for the
- *                        current testnet allowlist.
  * Optional:
  *   SUI_RPC_URL        - override the default testnet RPC URL
- *   SEAL_THRESHOLD     - integer threshold (default 2)
+ *   SEAL_KEY_SERVERS   - JSON array of {"objectId": "0x...", "weight": 1}
+ *                        entries; overrides morseConfig.sealKeyServers
+ *                        for testing custom server sets. Defaults to the
+ *                        canonical testnet allowlist baked into morse-sdk.
+ *   SEAL_THRESHOLD     - integer threshold; overrides default (min(2, count))
  */
 
 import { type KeyServerConfig, SessionKey } from "@mysten/seal";
@@ -35,16 +36,21 @@ import {
 	buildSmokeContext,
 	cleanupSmokePublication,
 	done,
-	readEnv,
 	step,
 } from "./_shared.js";
 
 async function main(): Promise<void> {
 	const ctx = buildSmokeContext();
 	const slug = `morse-entry-encrypted-${Date.now()}`;
-	const serverConfigs = parseKeyServers(readEnv("SEAL_KEY_SERVERS"));
-	const threshold = Number(process.env.SEAL_THRESHOLD ?? "2");
-	if (!Number.isInteger(threshold) || threshold < 1) {
+	const envServers = process.env.SEAL_KEY_SERVERS;
+	const overrideServers = envServers ? parseKeyServers(envServers) : undefined;
+	const overrideThreshold = process.env.SEAL_THRESHOLD
+		? Number(process.env.SEAL_THRESHOLD)
+		: undefined;
+	if (
+		overrideThreshold !== undefined &&
+		(!Number.isInteger(overrideThreshold) || overrideThreshold < 1)
+	) {
 		throw new Error(`Invalid SEAL_THRESHOLD: ${process.env.SEAL_THRESHOLD}`);
 	}
 
@@ -56,15 +62,25 @@ async function main(): Promise<void> {
 		{ network: "testnet", suiClient: ctx.client },
 		ctx.keypair,
 	);
-	const seal = DefaultSealAdapter.fromConfig(
+	const seal = DefaultSealAdapter.fromMorseConfig(
+		ctx.config,
 		{
-			packageId: ctx.config.originalPackageId ?? ctx.config.packageId,
-			serverConfigs,
-			threshold,
+			...(overrideServers === undefined
+				? {}
+				: { serverConfigs: overrideServers }),
+			...(overrideThreshold === undefined
+				? {}
+				: { threshold: overrideThreshold }),
 		},
 		ctx.client,
 	);
-	done(`seal threshold=${threshold} servers=${serverConfigs.length}`);
+	if (overrideServers === undefined) {
+		done(
+			`seal using morseConfig default key servers (${ctx.config.sealKeyServers.length})`,
+		);
+	} else {
+		done(`seal using SEAL_KEY_SERVERS override (${overrideServers.length})`);
+	}
 
 	step(3, 9, `Creating publication "${slug}"...`);
 	const created = await createPublication(ctx.adapter, ctx.config, {

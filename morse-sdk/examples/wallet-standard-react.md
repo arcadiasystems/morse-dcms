@@ -226,18 +226,25 @@ export function UploadButton({
 
 ## Encrypted entries (Seal SessionKey)
 
-Encrypted decryption needs a `SessionKey`, which the wallet signs
-(personal message). The same `WalletStandardSigner` from `useMorse()`
-works as the `signer` argument — Seal calls only
-`signer.getPublicKey().toSuiAddress()` and
-`signer.signPersonalMessage(bytes)`, both routed to the wallet via the
-hooks already wired in.
+`morseConfig({ network: "testnet" })` ships with a `sealKeyServers`
+field pre-populated with the canonical testnet allowlist. End users
+never see a key-server config; developers don't paste objectIds.
+
+The `WalletStandardSigner` from `useMorse()` plugs straight into Seal —
+the library calls only `signer.getPublicKey().toSuiAddress()` and
+`signer.signPersonalMessage(bytes)`, both routed to the wallet popup
+through the hooks already wired in.
 
 ```tsx
-import { SessionKey } from "@mysten/seal";
+import { DefaultSealAdapter, SessionKey } from "morse-sdk";
 
-const { signer, config, client, adapter } = morse;
+const { signer, config, client } = morse;
 
+// Encrypt: no JSON paste, no threshold input.
+const seal = DefaultSealAdapter.fromMorseConfig(config, {}, client);
+const { ciphertext } = await seal.encrypt(plaintext, { sealId });
+
+// Decrypt: build a SessionKey via the wallet, then ask Seal to recover bytes.
 const sessionKey = await SessionKey.create({
   address: signer.toSuiAddress(),
   packageId: config.originalPackageId ?? config.packageId,
@@ -245,7 +252,17 @@ const sessionKey = await SessionKey.create({
   signer,
   suiClient: client,
 });
+const recovered = await seal.decrypt(ciphertext, {
+  sessionKey,
+  sealId,
+  publisherCapId,
+});
 ```
+
+Custom server sets (paid plans, alternate trust assumptions, region
+pinning) override via `DefaultSealAdapter.fromMorseConfig(config, {
+serverConfigs }, client)`. The default path is the right one for almost
+every dapp.
 
 Suiet's personal-message signing is identical to other wallets' in this
 flow — wallet-standard normalizes it.

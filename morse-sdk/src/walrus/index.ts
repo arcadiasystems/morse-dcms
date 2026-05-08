@@ -19,6 +19,12 @@ export {
 	type WalrusAdapterConfig,
 } from "./default-adapter.js";
 export {
+	DefaultWalrusReadAdapter,
+	type WalrusReadAdapter,
+	type WalrusReadAdapterConfig,
+	type WalrusReadOptions,
+} from "./default-read-adapter.js";
+export {
 	decodeQuiltPatchId,
 	encodeQuiltPatchId,
 	type QuiltPatchIdParts,
