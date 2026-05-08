@@ -144,6 +144,10 @@ export {
 	KeypairAdapter,
 	type SimulationReturnValues,
 	type WalletAdapter,
+	type WalletSignPersonalMessage,
+	type WalletSignTransaction,
+	WalletStandardSigner,
+	type WalletStandardSignerOptions,
 } from "./wallets/index.js";
 export {
 	DefaultWalrusWriteAdapter,

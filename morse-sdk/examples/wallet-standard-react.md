@@ -6,8 +6,14 @@ wallet-standard-compatible wallet such as [Suiet](https://suiet.app/),
 
 The shape works with any wallet-standard wallet: dapp-kit's
 `WalletProvider` discovers all installed wallets through the protocol;
-the user picks one in the connect modal. `examples/wallet-standard.ts`
-defines the `WalletStandardAdapter` class this snippet uses.
+the user picks one in the connect modal.
+
+Two pieces collaborate:
+- `WalletStandardAdapter` (defined in `examples/wallet-standard.ts`) for
+  morse-sdk's own ops (createPublication, addEntry, etc.).
+- `WalletStandardSigner` (shipped from `morse-sdk`) for libraries that
+  accept Sui's `Signer` abstract — `@mysten/walrus` (uploads) and
+  `@mysten/seal` (`SessionKey.create` for decrypt).
 
 ## Install
 
@@ -70,27 +76,33 @@ The `ConnectButton` component from dapp-kit handles wallet discovery
 (Suiet, Sui Wallet, Slush, etc.), connection, and disconnection. No
 Suiet-specific code is needed here.
 
-## Wiring the adapter
+## Wiring the adapter and signer
 
 ```tsx
 // src/useMorseAdapter.ts
 import {
   useCurrentAccount,
   useSignAndExecuteTransaction,
+  useSignPersonalMessage,
+  useSignTransaction,
 } from "@mysten/dapp-kit";
+import { Ed25519PublicKey } from "@mysten/sui/keypairs/ed25519";
 import { SuiGrpcClient } from "@mysten/sui/grpc";
 import {
   morseConfig,
   RpcPublicationReader,
+  WalletStandardSigner,
 } from "morse-sdk";
 import { useMemo } from "react";
 
 import { WalletStandardAdapter } from "./WalletStandardAdapter";
 // ^ class defined in examples/wallet-standard.ts; copy into your app.
 
-export function useMorseAdapter() {
+export function useMorse() {
   const account = useCurrentAccount();
   const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
+  const { mutateAsync: signTransaction } = useSignTransaction();
+  const { mutateAsync: signPersonalMessage } = useSignPersonalMessage();
 
   return useMemo(() => {
     if (!account) return null;
@@ -99,20 +111,38 @@ export function useMorseAdapter() {
       network: "testnet",
       baseUrl: config.rpcUrl,
     });
+
+    // For morse-sdk ops (createPublication, addEntry, ...).
     const adapter = new WalletStandardAdapter(
       account.address,
       ({ transaction }) => signAndExecute({ transaction }),
       client,
     );
+
+    // For Walrus uploads and Seal SessionKey - both want a Sui `Signer`.
+    // The wallet supplies the public key as raw bytes; wrap it in
+    // Ed25519PublicKey (or the appropriate scheme).
+    const signer = new WalletStandardSigner({
+      publicKey: new Ed25519PublicKey(account.publicKey),
+      keyScheme: "ED25519",
+      signTransaction: ({ transaction }) =>
+        signTransaction({ transaction }),
+      signPersonalMessage: ({ message }) =>
+        signPersonalMessage({ message }),
+    });
+
     const reader = RpcPublicationReader.fromMorseConfig(config, client);
-    return { adapter, reader, config, client };
-  }, [account, signAndExecute]);
+    return { adapter, signer, reader, config, client };
+  }, [account, signAndExecute, signTransaction, signPersonalMessage]);
 }
 ```
 
 The hook returns `null` until a wallet is connected. Once connected, it
-returns `{ adapter, reader, config, client }` ready to pass to any morse-sdk
-op.
+returns `{ adapter, signer, reader, config, client }` — pass `adapter` to
+morse-sdk ops, `signer` to Walrus and Seal.
+
+If the connected account uses Secp256k1 instead of Ed25519, swap
+`Ed25519PublicKey` for `Secp256k1PublicKey` and `keyScheme: "Secp256k1"`.
 
 ## Using it
 
@@ -141,29 +171,78 @@ When the user clicks, Suiet (or whichever wallet they connected) pops up
 its native confirmation dialog. The user approves, the wallet returns
 the digest, and the SDK polls for finality.
 
-## Encrypted entries (Seal SessionKey)
+## Walrus upload through the wallet
 
-Encrypted decryption needs a `SessionKey`, which the wallet must sign
-(personal message). dapp-kit exposes the corresponding hook:
+Walrus's `WalrusClient` requires a Sui `Signer`. With
+`WalletStandardSigner` from the hook above, browser dapps can upload
+without ever holding the user's private key — every Walrus-side
+transaction (`register_blob`, `certify_blob`) routes through the wallet
+popup.
 
 ```tsx
-import { useSignPersonalMessage } from "@mysten/dapp-kit";
+// src/UploadButton.tsx
+import { addEntry, DefaultWalrusWriteAdapter } from "morse-sdk";
+
+import { useMorse } from "./useMorseAdapter";
+
+export function UploadButton({
+  publicationId,
+  publisherCapId,
+}: {
+  publicationId: string;
+  publisherCapId: string;
+}) {
+  const morse = useMorse();
+  if (!morse) return <p>Connect a wallet to continue.</p>;
+
+  async function onClick() {
+    // Build the Walrus adapter once per session against the wallet signer.
+    const walrus = DefaultWalrusWriteAdapter.fromConfig(
+      { network: "testnet", suiClient: morse.client },
+      morse.signer,
+    );
+
+    // Wallet pops up to confirm the register_blob and certify_blob txs.
+    const blob = await walrus.uploadBlob(
+      new TextEncoder().encode("hello from a wallet"),
+      { epochs: 3, deletable: true },
+    );
+
+    // Reference the freshly-uploaded blob in an entry.
+    const entry = await addEntry(morse.adapter, morse.config, {
+      publicationId,
+      publisherCapId,
+      collectionName: "blog",
+      name: "first-post",
+      blobObjectId: blob.blobObjectId,
+      contentType: "text/plain",
+    });
+    console.log("created entry", entry.entryId);
+  }
+
+  return <button onClick={onClick}>Upload + add entry</button>;
+}
+```
+
+## Encrypted entries (Seal SessionKey)
+
+Encrypted decryption needs a `SessionKey`, which the wallet signs
+(personal message). The same `WalletStandardSigner` from `useMorse()`
+works as the `signer` argument — Seal calls only
+`signer.getPublicKey().toSuiAddress()` and
+`signer.signPersonalMessage(bytes)`, both routed to the wallet via the
+hooks already wired in.
+
+```tsx
 import { SessionKey } from "@mysten/seal";
 
-const { mutateAsync: signPersonalMessage } = useSignPersonalMessage();
+const { signer, config, client, adapter } = morse;
 
 const sessionKey = await SessionKey.create({
-  address: account.address,
+  address: signer.toSuiAddress(),
   packageId: config.originalPackageId ?? config.packageId,
   ttlMin: 10,
-  signer: {
-    signPersonalMessage: async (message: Uint8Array) => {
-      const result = await signPersonalMessage({ message });
-      // Adapt to the shape `@mysten/seal` expects; see version-specific
-      // docs for the precise return shape.
-      return result;
-    },
-  } as Parameters<typeof SessionKey.create>[0]["signer"],
+  signer,
   suiClient: client,
 });
 ```

@@ -4,3 +4,9 @@
 
 export type { SimulationReturnValues, WalletAdapter } from "./adapter.js";
 export { KeypairAdapter } from "./keypair-adapter.js";
+export {
+	type WalletSignPersonalMessage,
+	type WalletSignTransaction,
+	WalletStandardSigner,
+	type WalletStandardSignerOptions,
+} from "./wallet-standard-signer.js";
