@@ -86,6 +86,12 @@ export interface ListEntriesOptions {
 	readonly signal?: AbortSignal;
 }
 
+/** Options for `scanEntries`. `pageSize` controls the per-RPC page size. */
+export interface ScanEntriesOptions {
+	readonly pageSize?: number;
+	readonly signal?: AbortSignal;
+}
+
 /**
  * Read-only access to the publication domain: publications and the
  * PublisherCaps that grant write access to them.
@@ -156,11 +162,8 @@ export interface PublicationReader {
 	): Promise<Revision>;
 
 	/**
-	 * Page through entries in a collection.
-	 *
-	 * Order is the dynamic-field object-store order, not chronological. Each
-	 * `Entry.id` carries the stable monotonic ID assigned at insertion; sort
-	 * by it client-side if you need chronological order.
+	 * Page through entries in a collection. See `ListEntriesOptions` for
+	 * ordering and pagination semantics.
 	 *
 	 * @throws {NotFoundError} If the collection does not exist.
 	 * @throws {ValidationError} If the on-chain bytes do not match the BCS schema.
@@ -171,6 +174,21 @@ export interface PublicationReader {
 		collectionName: string,
 		options?: ListEntriesOptions,
 	): Promise<EntryListPage>;
+
+	/**
+	 * Iterate every entry in a collection. Auto-paginates `listEntries` until
+	 * the cursor is exhausted; consumers can `for await` and break early. Same
+	 * ordering caveat as `listEntries` (object-store, not chronological).
+	 *
+	 * @throws {NotFoundError} If the collection does not exist.
+	 * @throws {ValidationError} If the on-chain bytes do not match the BCS schema.
+	 * @throws {TransportError} On RPC failure.
+	 */
+	scanEntries(
+		publicationId: PublicationId,
+		collectionName: string,
+		options?: ScanEntriesOptions,
+	): AsyncIterable<Entry>;
 }
 
 /** RPC-backed `PublicationReader` using a Sui client. */
@@ -184,6 +202,22 @@ export class RpcPublicationReader implements PublicationReader {
 		private readonly client: ObjectReader,
 		private readonly originalPackageId: PackageId,
 	) {}
+
+	/**
+	 * Build a reader from a morse package config (typically the value returned
+	 * by `morseConfig({network})`). Picks `originalPackageId ?? packageId`
+	 * internally; passing the post-upgrade `packageId` to the constructor
+	 * directly would silently empty type-filtered list results.
+	 */
+	static fromMorseConfig(
+		config: { packageId: PackageId; originalPackageId?: PackageId },
+		client: ObjectReader,
+	): RpcPublicationReader {
+		return new RpcPublicationReader(
+			client,
+			config.originalPackageId ?? config.packageId,
+		);
+	}
 
 	async getPublication(
 		id: PublicationId,
@@ -367,6 +401,29 @@ export class RpcPublicationReader implements PublicationReader {
 			parseDynamicEntry(field),
 		);
 		return { results, nextCursor: response.cursor };
+	}
+
+	async *scanEntries(
+		publicationId: PublicationId,
+		collectionName: string,
+		options: ScanEntriesOptions = {},
+	): AsyncIterable<Entry> {
+		const { pageSize = DEFAULT_PAGE_LIMIT, signal } = options;
+		let cursor: string | undefined;
+		while (true) {
+			const page = await this.listEntries(publicationId, collectionName, {
+				limit: pageSize,
+				...(cursor === undefined ? {} : { cursor }),
+				...(signal === undefined ? {} : { signal }),
+			});
+			for (const entry of page.results) {
+				yield entry;
+			}
+			if (page.nextCursor === null) {
+				return;
+			}
+			cursor = page.nextCursor;
+		}
 	}
 
 	private async entriesTableId(

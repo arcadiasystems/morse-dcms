@@ -156,3 +156,42 @@ export async function destroyPublisherCap(
 		gasUsedMist: receipt.gasUsedMist,
 	};
 }
+
+export interface TransferPublisherCapArgs {
+	readonly publisherCapId: PublisherCapId;
+	readonly recipient: SuiAddress;
+	readonly signal?: AbortSignal;
+}
+
+export interface TransferPublisherCapResult {
+	readonly digest: string;
+	readonly gasUsedMist: bigint;
+}
+
+/**
+ * Transfer a PublisherCap to a new address. The cap remains bound to its
+ * original `holder`; transferring changes object ownership but not write
+ * authority. To move write authority, the original holder destroys the cap
+ * and the OwnerCap holder issues a new one to the target address.
+ * @throws {ContractAbortError} On Move abort.
+ * @throws {TransportError} On RPC, network, or response-parsing failure.
+ */
+export async function transferPublisherCap(
+	adapter: WalletAdapter,
+	config: MorsePackageConfig,
+	args: TransferPublisherCapArgs,
+): Promise<TransferPublisherCapResult> {
+	const tx = new Transaction();
+	buildTransferPublisherCap(tx, {
+		packageId: config.packageId,
+		publisherCap: args.publisherCapId,
+		recipient: args.recipient,
+	});
+
+	const receipt = await adapter.signAndExecuteTransaction(tx, args.signal);
+
+	return {
+		digest: receipt.digest,
+		gasUsedMist: receipt.gasUsedMist,
+	};
+}

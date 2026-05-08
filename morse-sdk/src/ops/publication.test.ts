@@ -113,6 +113,11 @@ function makeReader(publication: Publication): PublicationReader {
 			throw new Error("not used in publication tests");
 		}),
 		listEntries: mock(async () => ({ results: [], nextCursor: null })),
+		scanEntries: () => ({
+			async *[Symbol.asyncIterator]() {
+				/* empty */
+			},
+		}),
 	};
 }
 
@@ -289,6 +294,11 @@ describe("deletePublication", () => {
 				throw new Error("not used in publication tests");
 			}),
 			listEntries: mock(async () => ({ results: [], nextCursor: null })),
+			scanEntries: () => ({
+				async *[Symbol.asyncIterator]() {
+					/* empty */
+				},
+			}),
 		};
 		const adapter = makeAdapter({
 			digest: "x",

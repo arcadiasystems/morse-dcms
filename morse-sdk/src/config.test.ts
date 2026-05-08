@@ -106,4 +106,20 @@ describe("morseConfig", () => {
 		expect(config.packageId).toBe(localPackage);
 		expect(config.registryId).toBe(localRegistry);
 	});
+
+	test("partial override on testnet keeps unspecified fields from the canonical deployment", () => {
+		const customPackage = toPackageId(
+			"0x000000000000000000000000000000000000000000000000000000000000abcd",
+		);
+		const config = morseConfig({
+			network: "testnet",
+			packageId: customPackage,
+		});
+		expect(config.packageId).toBe(customPackage);
+		// originalPackageId and registryId should fall through to the canonical
+		// testnet deployment, not be undefined.
+		expect(config.originalPackageId).toBeDefined();
+		expect(config.registryId).toBeDefined();
+		expect(config.rpcUrl).toBe("https://fullnode.testnet.sui.io:443");
+	});
 });

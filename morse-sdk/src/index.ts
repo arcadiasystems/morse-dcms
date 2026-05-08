@@ -85,7 +85,10 @@ export {
 	revokePublisherCap,
 	type TransferOwnershipArgs,
 	type TransferOwnershipResult,
+	type TransferPublisherCapArgs,
+	type TransferPublisherCapResult,
 	transferOwnership,
+	transferPublisherCap,
 } from "./ops/index.js";
 export {
 	type EntryListPage,
@@ -97,6 +100,7 @@ export {
 	type PublicationReader,
 	type PublisherCapListPage,
 	RpcPublicationReader,
+	type ScanEntriesOptions,
 } from "./read/index.js";
 export {
 	buildPublisherSealId,
@@ -146,7 +150,6 @@ export {
 	type DefaultWalrusWriteAdapterOptions,
 	decodeQuiltPatchId,
 	encodeQuiltPatchId,
-	QUILT_PATCH_ID_VERSION,
 	type QuiltPatchIdParts,
 	type QuiltPatchInput,
 	quiltPatchIdFromString,

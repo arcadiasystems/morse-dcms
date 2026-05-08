@@ -137,6 +137,38 @@ describe("addEntry", () => {
 			}),
 		).rejects.toBeInstanceOf(TransportError);
 	});
+
+	test("aborts between simulate and execute when signal fires mid-flight", async () => {
+		const controller = new AbortController();
+		const adapter: WalletAdapter = {
+			address: SENDER,
+			simulateTransaction: mock(async () => {
+				// Simulate the signal firing during the simulate→execute window.
+				controller.abort();
+				return [[bcsU64(7)]];
+			}),
+			signAndExecuteTransaction: mock(async (_tx, signal) => {
+				// signAndExecute should observe the aborted signal and throw, never
+				// produce a receipt.
+				if (signal?.aborted) {
+					throw new DOMException("aborted", "AbortError");
+				}
+				return RECEIPT;
+			}),
+		};
+		await expect(
+			addEntry(adapter, CONFIG, {
+				publicationId: PUBLICATION_ID,
+				publisherCapId: PUBLISHER_CAP_ID,
+				collectionName: "blog",
+				name: "x",
+				blobObjectId: BLOB_OBJECT_ID,
+				contentType: "text/markdown",
+				signal: controller.signal,
+			}),
+		).rejects.toThrow();
+		expect(adapter.signAndExecuteTransaction).toHaveBeenCalledTimes(1);
+	});
 });
 
 describe("appendDraftRevision", () => {

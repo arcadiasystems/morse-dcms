@@ -68,8 +68,6 @@ interface WalrusWriteClient {
 	}>;
 }
 
-export type { WalrusWriteClient };
-
 /** Construction options for `DefaultWalrusWriteAdapter`. */
 export interface DefaultWalrusWriteAdapterOptions {
 	readonly client: WalrusWriteClient;

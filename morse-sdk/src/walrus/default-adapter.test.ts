@@ -4,7 +4,6 @@ import { UserAbortError } from "@mysten/walrus";
 
 import { TransportError, ValidationError } from "../errors.js";
 import { QUILT_PATCH_ID_LENGTH, type WalrusBlobId } from "../types.js";
-import type { WalrusWriteClient } from "./default-adapter.js";
 import { DefaultWalrusWriteAdapter } from "./default-adapter.js";
 import {
 	encodeQuiltPatchId,
@@ -18,17 +17,51 @@ const SAMPLE_BLOB_ID =
 const SUI_OBJECT_ID =
 	"0xd1dd47c84e7c2f217a8b5a4fcec849a3b985df4fada82f72b72602423d8d018e";
 
+interface FakeWalrusClient {
+	writeBlob(args: {
+		blob: Uint8Array;
+		deletable: boolean;
+		epochs: number;
+		signer: Signer;
+		owner?: string;
+		signal?: AbortSignal;
+	}): Promise<{ blobId: string; blobObject: { id: string } }>;
+	writeQuilt(args: {
+		blobs: Array<{
+			contents: Uint8Array;
+			identifier: string;
+			tags?: Record<string, string>;
+		}>;
+		deletable: boolean;
+		epochs: number;
+		signer: Signer;
+		owner?: string;
+		signal?: AbortSignal;
+	}): Promise<{
+		blobId: string;
+		blobObject: { id: string };
+		index: {
+			patches: Array<{
+				patchId: string;
+				startIndex: number;
+				endIndex: number;
+				identifier: string;
+			}>;
+		};
+	}>;
+}
+
 interface CallLog {
 	writeBlob: unknown[];
 	writeQuilt: unknown[];
 }
 
-function fakeClient(overrides: Partial<WalrusWriteClient> = {}): {
-	client: WalrusWriteClient;
+function fakeClient(overrides: Partial<FakeWalrusClient> = {}): {
+	client: FakeWalrusClient;
 	calls: CallLog;
 } {
 	const calls: CallLog = { writeBlob: [], writeQuilt: [] };
-	const client: WalrusWriteClient = {
+	const client: FakeWalrusClient = {
 		writeBlob: async (args) => {
 			calls.writeBlob.push(args);
 			return {

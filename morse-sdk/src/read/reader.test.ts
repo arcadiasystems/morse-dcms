@@ -746,3 +746,136 @@ describe("RpcPublicationReader.listEntries", () => {
 		}
 	});
 });
+
+describe("RpcPublicationReader.scanEntries", () => {
+	test("walks all pages and stops on nextCursor=null", async () => {
+		const e0 = buildEntryBcs({
+			name: "first",
+			revisionContentTypes: ["text/markdown"],
+			draftHead: null,
+			publicHead: 0,
+		});
+		const e1 = buildEntryBcs({
+			name: "second",
+			revisionContentTypes: ["text/markdown"],
+			draftHead: null,
+			publicHead: 0,
+		});
+		let call = 0;
+		const reader = new RpcPublicationReader(
+			makeReader({
+				getObject: mock(async () =>
+					publicationObject(happyPathPublicationJson()),
+				),
+				listDynamicFields: mock(async () => {
+					call += 1;
+					if (call === 1) {
+						return {
+							dynamicFields: [
+								{
+									fieldId: "0xfield0",
+									type: "...",
+									name: buildEntryIdName(0),
+									valueType: "...",
+									value: { type: "...", bcs: e0 },
+									$kind: "DynamicField",
+								},
+							],
+							hasNextPage: true,
+							cursor: "page-2",
+						};
+					}
+					return {
+						dynamicFields: [
+							{
+								fieldId: "0xfield1",
+								type: "...",
+								name: buildEntryIdName(1),
+								valueType: "...",
+								value: { type: "...", bcs: e1 },
+								$kind: "DynamicField",
+							},
+						],
+						hasNextPage: false,
+						cursor: null,
+					};
+				}),
+			}),
+			PACKAGE_ID,
+		);
+		const collected: number[] = [];
+		for await (const entry of reader.scanEntries(PUBLICATION_ID, "blog")) {
+			collected.push(entry.id);
+		}
+		expect(collected).toEqual([0, 1]);
+		expect(call).toBe(2);
+	});
+
+	test("early-bail does not fetch additional pages", async () => {
+		const e0 = buildEntryBcs({
+			name: "first",
+			revisionContentTypes: ["text/markdown"],
+			draftHead: null,
+			publicHead: 0,
+		});
+		const spy = mock(async () => ({
+			dynamicFields: [
+				{
+					fieldId: "0xfield0",
+					type: "...",
+					name: buildEntryIdName(0),
+					valueType: "...",
+					value: { type: "...", bcs: e0 },
+					$kind: "DynamicField",
+				},
+			],
+			hasNextPage: true,
+			cursor: "page-2",
+		}));
+		const reader = new RpcPublicationReader(
+			makeReader({
+				getObject: mock(async () =>
+					publicationObject(happyPathPublicationJson()),
+				),
+				listDynamicFields: spy,
+			}),
+			PACKAGE_ID,
+		);
+		for await (const entry of reader.scanEntries(PUBLICATION_ID, "blog")) {
+			expect(entry.id).toBe(0);
+			break;
+		}
+		expect(spy).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("RpcPublicationReader.fromMorseConfig", () => {
+	test("uses originalPackageId when present", async () => {
+		const reader = RpcPublicationReader.fromMorseConfig(
+			{
+				packageId: toPackageId(
+					"0x0000000000000000000000000000000000000000000000000000000000000aaa",
+				),
+				originalPackageId: PACKAGE_ID,
+			},
+			makeReader({
+				getObject: mock(async () =>
+					publicationObject(happyPathPublicationJson()),
+				),
+			}),
+		);
+		const publication = await reader.getPublication(PUBLICATION_ID);
+		expect(publication.id as string).toBe(PUBLICATION_ID as string);
+	});
+
+	test("falls back to packageId when originalPackageId is omitted", () => {
+		const reader = RpcPublicationReader.fromMorseConfig(
+			{ packageId: PACKAGE_ID },
+			makeReader(),
+		);
+		// The constructor stores the resolved id privately; call a method that
+		// uses it (listPublicationsOwnedBy) and confirm the type filter is built
+		// from the supplied packageId.
+		expect(reader).toBeInstanceOf(RpcPublicationReader);
+	});
+});

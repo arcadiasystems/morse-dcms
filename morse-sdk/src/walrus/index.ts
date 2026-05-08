@@ -21,7 +21,6 @@ export {
 export {
 	decodeQuiltPatchId,
 	encodeQuiltPatchId,
-	QUILT_PATCH_ID_VERSION,
 	type QuiltPatchIdParts,
 	quiltPatchIdFromString,
 	quiltPatchIdToString,

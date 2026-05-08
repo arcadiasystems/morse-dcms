@@ -12,4 +12,5 @@ export {
 	type PublicationReader,
 	type PublisherCapListPage,
 	RpcPublicationReader,
+	type ScanEntriesOptions,
 } from "./reader.js";

@@ -88,8 +88,30 @@ export class DefaultSealAdapter implements SealAdapter {
 	}
 
 	/**
+	 * Build an adapter from a morse package config (typically `morseConfig({network})`)
+	 * plus the Seal-specific server list and threshold. Picks
+	 * `originalPackageId ?? packageId` internally; passing a post-upgrade
+	 * `packageId` directly would silently produce ciphertexts that become
+	 * undecryptable across upgrades.
+	 */
+	static fromMorseConfig(
+		morseConfig: { packageId: PackageId; originalPackageId?: PackageId },
+		seal: Omit<SealAdapterConfig, "packageId">,
+		suiClient: SealCompatibleClient,
+	): DefaultSealAdapter {
+		return DefaultSealAdapter.fromConfig(
+			{
+				packageId: morseConfig.originalPackageId ?? morseConfig.packageId,
+				...seal,
+			},
+			suiClient,
+		);
+	}
+
+	/**
 	 * Build an adapter from a `SealAdapterConfig` and a Sui-compatible client
-	 * (a `SuiGrpcClient` satisfies the `SealCompatibleClient` shape).
+	 * (a `SuiGrpcClient` satisfies the `SealCompatibleClient` shape). Use
+	 * `fromMorseConfig` instead when you have a `morseConfig({network})`.
 	 */
 	static fromConfig(
 		config: SealAdapterConfig,

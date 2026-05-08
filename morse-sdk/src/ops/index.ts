@@ -12,6 +12,9 @@ export {
 	type RevokePublisherCapArgs,
 	type RevokePublisherCapResult,
 	revokePublisherCap,
+	type TransferPublisherCapArgs,
+	type TransferPublisherCapResult,
+	transferPublisherCap,
 } from "./cap.js";
 export {
 	type CreateCollectionArgs,

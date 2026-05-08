@@ -15,6 +15,7 @@ import {
 	destroyPublisherCap,
 	issuePublisherCap,
 	revokePublisherCap,
+	transferPublisherCap,
 } from "./cap.js";
 
 const PACKAGE_ID = toPackageId(
@@ -126,5 +127,22 @@ describe("destroyPublisherCap", () => {
 		});
 		expect(result.digest).toBe("tx-destroy");
 		expect(result.gasUsedMist).toBe(100n);
+	});
+});
+
+describe("transferPublisherCap", () => {
+	test("returns a typed receipt", async () => {
+		const adapter = makeAdapter({
+			digest: "tx-transfer-pcap",
+			gasUsedMist: 80n,
+			createdObjects: [],
+			deletedObjects: [],
+		});
+		const result = await transferPublisherCap(adapter, CONFIG, {
+			publisherCapId: PUBLISHER_CAP_ID,
+			recipient: HOLDER,
+		});
+		expect(result.digest).toBe("tx-transfer-pcap");
+		expect(result.gasUsedMist).toBe(80n);
 	});
 });
