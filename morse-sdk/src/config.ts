@@ -77,13 +77,13 @@ const KNOWN_DEPLOYMENTS: Partial<
 > = {
 	testnet: {
 		packageId: toPackageId(
-			"0x805cb29a52734bd794f05bc2c1d6ff74d1d6c0b5b279406e6564ec8bc3ece81a",
+			"0x191946c5dc1ea1b978e664d85455e81ef9bdd1d3dbb221fd48cf9008d46a00f0",
 		),
 		originalPackageId: toPackageId(
-			"0x35b5e28d27f5acf23fe6181815b4603ec9b560d52c4edab8fdf0e331efc42c31",
+			"0x191946c5dc1ea1b978e664d85455e81ef9bdd1d3dbb221fd48cf9008d46a00f0",
 		),
 		registryId: toRegistryId(
-			"0xdd3e471ccb66ee71eac1add0f47491d1a556a4dc51db4437a3f3450ed907049f",
+			"0xb25e4849d720ad5058c1945a819aa1dc01ff899006e3f0fe7cb9c62668d307e2",
 		),
 	},
 };

@@ -36,9 +36,9 @@ public struct Publication has key {
 /// The sender becomes the initial publisher (holder of the returned PublisherCap).
 public fun new_publication(
   registry: &mut PublicationRegistry,
-  ctx: &mut TxContext,
   name: String,
   slug: String,
+  ctx: &mut TxContext,
 ): (Publication, OwnerCap, PublisherCap) {
   // Create publication object.
   let publication = Publication {

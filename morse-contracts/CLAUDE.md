@@ -130,7 +130,7 @@ Every test that needs a `Publication` follows this pattern — no test-only crea
 let ctx = &mut tx_context::dummy();
 let mut registry = publication::new_registry_for_testing(ctx); // init() bypass — legitimate
 let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication(
-  &mut registry, ctx, b"My Publication".to_string(), b"my-slug".to_string(),
+  &mut registry, b"My Publication".to_string(), b"my-slug".to_string(), ctx,
 );
 ```
 

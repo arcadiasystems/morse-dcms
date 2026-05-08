@@ -12,7 +12,7 @@ import { StorageMode } from "../types.js";
 import { RpcPublicationReader } from "./reader.js";
 
 const PACKAGE_ID = toPackageId(
-	"0x35b5e28d27f5acf23fe6181815b4603ec9b560d52c4edab8fdf0e331efc42c31",
+	"0x0000000000000000000000000000000000000000000000000000000000000111",
 );
 const PUBLICATION_ID = toPublicationId(
 	"0x000000000000000000000000000000000000000000000000000000000000aaaa",

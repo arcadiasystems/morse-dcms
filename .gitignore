@@ -1,3 +1,4 @@
 .claude/*
 morse-cli/.env.testnet
 node_modules
+playground/

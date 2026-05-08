@@ -12,7 +12,7 @@ use publication::publication;
 fun setup(ctx: &mut TxContext): (publication::PublicationRegistry, publication::Publication, publication::OwnerCap, publication::PublisherCap) {
   let mut registry = publication::new_registry_for_testing(ctx);
   let (pub_obj, owner_cap, publisher_cap) = publication::new_publication(
-    &mut registry, ctx, b"ArcSys Blog".to_string(), b"arcsys-blog".to_string(),
+    &mut registry, b"ArcSys Blog".to_string(), b"arcsys-blog".to_string(), ctx,
   );
   (registry, pub_obj, owner_cap, publisher_cap)
 }
@@ -36,7 +36,7 @@ fun test_new_publication() {
   let publication_name = b"ArcSys Blog".to_string();
 
   let (publication_obj, owner_cap, publisher_cap) = publication::new_publication(
-    &mut registry, ctx, publication_name, b"arcsys-blog".to_string(),
+    &mut registry, publication_name, b"arcsys-blog".to_string(), ctx,
   );
 
   assert_eq!(publication::collections_length(&publication_obj), 0);
@@ -53,7 +53,7 @@ fun test_slug_registry_lookup() {
   let ctx = &mut tx_context::dummy();
   let mut registry = publication::new_registry_for_testing(ctx);
   let (publication_obj, owner_cap, publisher_cap) = publication::new_publication(
-    &mut registry, ctx, b"ArcSys Blog".to_string(), b"my-personal-blog".to_string(),
+    &mut registry, b"ArcSys Blog".to_string(), b"my-personal-blog".to_string(), ctx,
   );
 
   assert_eq!(publication::contains_slug(&registry, b"my-personal-blog".to_string()), true);
@@ -74,10 +74,10 @@ fun test_duplicate_slug_fails() {
   let mut registry = publication::new_registry_for_testing(ctx);
 
   let (publication_obj, owner_cap, publisher_cap) = publication::new_publication(
-    &mut registry, ctx, b"ArcSys Blog".to_string(), b"my-personal-blog".to_string(),
+    &mut registry, b"ArcSys Blog".to_string(), b"my-personal-blog".to_string(), ctx,
   );
   let (_other_publication, _other_owner_cap, _other_publisher_cap) = publication::new_publication(
-    &mut registry, ctx, b"Other".to_string(), b"my-personal-blog".to_string(),
+    &mut registry, b"Other".to_string(), b"my-personal-blog".to_string(), ctx,
   );
 
   unit_test::destroy(_other_publication);
@@ -94,7 +94,7 @@ fun test_invalid_slug_fails() {
   let ctx = &mut tx_context::dummy();
   let mut registry = publication::new_registry_for_testing(ctx);
   let (publication_obj, owner_cap, publisher_cap) = publication::new_publication(
-    &mut registry, ctx, b"ArcSys Blog".to_string(), b"My-Personal-Blog".to_string(),
+    &mut registry, b"ArcSys Blog".to_string(), b"My-Personal-Blog".to_string(), ctx,
   );
   unit_test::destroy(publication_obj);
   unit_test::destroy(owner_cap);
@@ -108,14 +108,14 @@ fun test_slug_reusable_after_delete() {
   let mut registry = publication::new_registry_for_testing(ctx);
 
   let (publication_obj, owner_cap, publisher_cap) = publication::new_publication(
-    &mut registry, ctx, b"ArcSys Blog".to_string(), b"my-personal-blog".to_string(),
+    &mut registry, b"ArcSys Blog".to_string(), b"my-personal-blog".to_string(), ctx,
   );
 
   publication::delete_publication(&mut registry, publication_obj, owner_cap);
   assert_eq!(publication::contains_slug(&registry, b"my-personal-blog".to_string()), false);
 
   let (publication_obj_2, owner_cap_2, publisher_cap_2) = publication::new_publication(
-    &mut registry, ctx, b"ArcSys Blog v2".to_string(), b"my-personal-blog".to_string(),
+    &mut registry, b"ArcSys Blog v2".to_string(), b"my-personal-blog".to_string(), ctx,
   );
   assert_eq!(publication::contains_slug(&registry, b"my-personal-blog".to_string()), true);
 
@@ -131,7 +131,7 @@ fun test_delete_publication() {
   let ctx = &mut tx_context::dummy();
   let mut registry = publication::new_registry_for_testing(ctx);
   let (publication_obj, owner_cap, publisher_cap) = publication::new_publication(
-    &mut registry, ctx, b"ArcSys Blog".to_string(), b"delete-me".to_string(),
+    &mut registry, b"ArcSys Blog".to_string(), b"delete-me".to_string(), ctx,
   );
 
   publication::delete_publication(&mut registry, publication_obj, owner_cap);
@@ -145,7 +145,7 @@ fun test_delete_publication_with_revoked_cap_succeeds() {
   let ctx = &mut tx_context::dummy();
   let mut registry = publication::new_registry_for_testing(ctx);
   let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication(
-    &mut registry, ctx, b"ArcSys Blog".to_string(), b"delete-me-2".to_string(),
+    &mut registry, b"ArcSys Blog".to_string(), b"delete-me-2".to_string(), ctx,
   );
 
   let cap_id = object::id(&publisher_cap);
@@ -254,10 +254,10 @@ fun test_wrong_owner_cannot_revoke_publisher_cap() {
   let ctx = &mut tx_context::dummy();
   let mut registry = publication::new_registry_for_testing(ctx);
   let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication(
-    &mut registry, ctx, b"ArcSys Blog".to_string(), b"pub-a".to_string(),
+    &mut registry, b"ArcSys Blog".to_string(), b"pub-a".to_string(), ctx,
   );
   let (other_publication, other_owner_cap, other_publisher_cap) = publication::new_publication(
-    &mut registry, ctx, b"Other".to_string(), b"pub-b".to_string(),
+    &mut registry, b"Other".to_string(), b"pub-b".to_string(), ctx,
   );
   let cap = publication::issue_publisher_cap(&mut publication_obj, &owner_cap, ctx.sender(), ctx);
   let cap_id = object::id(&cap);
@@ -414,10 +414,10 @@ fun test_unauthorized_create_collection() {
   let ctx = &mut tx_context::dummy();
   let mut registry = publication::new_registry_for_testing(ctx);
   let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication(
-    &mut registry, ctx, b"ArcSys Blog".to_string(), b"pub-a".to_string(),
+    &mut registry, b"ArcSys Blog".to_string(), b"pub-a".to_string(), ctx,
   );
   let (other_pub, other_owner_cap, other_publisher_cap) = publication::new_publication(
-    &mut registry, ctx, b"Other".to_string(), b"pub-b".to_string(),
+    &mut registry, b"Other".to_string(), b"pub-b".to_string(), ctx,
   );
 
   publication::create_collection(&mut publication_obj, &other_publisher_cap, b"articles".to_string(), 0, ctx);
