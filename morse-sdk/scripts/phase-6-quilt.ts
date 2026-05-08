@@ -17,7 +17,6 @@
  *   bun run scripts/phase-6-quilt.ts
  */
 
-import { done, formatMist, step } from "../examples/utils.js";
 import {
 	addEntry,
 	createCollection,
@@ -25,7 +24,13 @@ import {
 	DefaultWalrusWriteAdapter,
 	StorageMode,
 } from "../src/index.js";
-import { buildSmokeContext, cleanupSmokePublication } from "./_shared.js";
+import {
+	buildSmokeContext,
+	cleanupSmokePublication,
+	done,
+	formatMist,
+	step,
+} from "./_shared.js";
 
 async function main(): Promise<void> {
 	const ctx = buildSmokeContext();

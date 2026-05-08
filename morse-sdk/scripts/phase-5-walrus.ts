@@ -22,7 +22,6 @@
 import { decodeSuiPrivateKey } from "@mysten/sui/cryptography";
 import { SuiGrpcClient } from "@mysten/sui/grpc";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
-import { done, readEnv, step } from "../examples/utils.js";
 import {
 	DefaultWalrusWriteAdapter,
 	decodeQuiltPatchId,
@@ -30,6 +29,7 @@ import {
 	QUILT_PATCH_ID_LENGTH,
 	quiltPatchIdToString,
 } from "../src/index.js";
+import { done, readEnv, step } from "./_shared.js";
 
 async function main(): Promise<void> {
 	const privateKey = readEnv("PRIVATE_KEY");

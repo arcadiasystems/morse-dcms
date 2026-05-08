@@ -1,14 +1,14 @@
 /**
- * Shared helpers for Phase 6+ smoke scripts. Enforces the cleanup ordering
- * required by the contract: `deleteEntry × N` then `deleteCollection × M`
- * then `deletePublication`. Skipping any layer leaves chain state that a
- * later run cannot remove without a separate repair script.
+ * Shared helpers for the testnet smoke scripts. Bundles wallet/reader setup
+ * with the contract-required cleanup ordering: `deleteEntry × N` then
+ * `deleteCollection × M` then `deletePublication`. Skipping any layer leaves
+ * chain state that a later run cannot remove without a separate repair script.
  */
 
 import { decodeSuiPrivateKey } from "@mysten/sui/cryptography";
 import { SuiGrpcClient } from "@mysten/sui/grpc";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
-import { formatMist, readEnv } from "../examples/utils.js";
+
 import {
 	type CreatePublicationResult,
 	deleteCollection,
@@ -19,6 +19,41 @@ import {
 	type NetworkConfig,
 	RpcPublicationReader,
 } from "../src/index.js";
+
+// IO helpers
+
+/** Format a Mist amount as a SUI decimal string. */
+export function formatMist(mist: bigint): string {
+	const negative = mist < 0n;
+	const abs = negative ? -mist : mist;
+	const whole = abs / 1_000_000_000n;
+	const frac = abs % 1_000_000_000n;
+	const fracStr = frac.toString().padStart(9, "0").replace(/0+$/, "");
+	const value = fracStr.length > 0 ? `${whole}.${fracStr}` : `${whole}`;
+	return `${negative ? "-" : ""}${value} SUI`;
+}
+
+/** Read a required env var or exit. */
+export function readEnv(name: string): string {
+	const value = process.env[name];
+	if (!value) {
+		console.error(`Missing required env var: ${name}`);
+		process.exit(1);
+	}
+	return value;
+}
+
+/** Print a numbered step header. */
+export function step(index: number, total: number, message: string): void {
+	console.log(`[${index}/${total}] ${message}`);
+}
+
+/** Print an indented status line under the current step. */
+export function done(message: string): void {
+	console.log(`        ${message}`);
+}
+
+// Smoke setup + cleanup
 
 export interface SmokeContext {
 	readonly client: SuiGrpcClient;
@@ -45,10 +80,7 @@ export function buildSmokeContext(): SmokeContext {
 	}
 	const keypair = Ed25519Keypair.fromSecretKey(secretKey);
 	const adapter = new KeypairAdapter(keypair, client);
-	const reader = new RpcPublicationReader(
-		client,
-		config.originalPackageId ?? config.packageId,
-	);
+	const reader = RpcPublicationReader.fromMorseConfig(config, client);
 	return { client, adapter, keypair, reader, config };
 }
 

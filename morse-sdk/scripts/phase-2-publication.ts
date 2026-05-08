@@ -28,7 +28,7 @@ import {
 	type PublicationId,
 	RpcPublicationReader,
 } from "../src/index.js";
-import { done, formatMist, readEnv, step } from "./utils.js";
+import { done, formatMist, readEnv, step } from "./_shared.js";
 
 async function main(): Promise<void> {
 	const privateKey = readEnv("PRIVATE_KEY");

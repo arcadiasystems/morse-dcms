@@ -23,7 +23,12 @@
 		"resolveJsonModule": true,
 		"skipLibCheck": true,
 
-		"noEmit": true
+		"noEmit": true,
+
+		"baseUrl": ".",
+		"paths": {
+			"morse-sdk": ["./src/index.ts"]
+		}
 	},
 	"include": ["src/**/*", "examples/**/*", "scripts/**/*"]
 }
