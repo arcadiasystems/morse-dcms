@@ -114,14 +114,14 @@ Always construct readers and seal adapters via `fromMorseConfig` (e.g. `RpcPubli
 
 `WalletStandardSigner.fromAccount(account, callbacks)` takes a wallet-standard `WalletAccount` and produces a Sui `Signer` for `@mysten/walrus` and `@mysten/seal`. It decodes the signature scheme from `account.publicKey` length and confirms the derivation matches `account.address`.
 
-| Scheme       | Status     | Notes                                                                                  |
-| ------------ | ---------- | -------------------------------------------------------------------------------------- |
-| ED25519      | Supported  | 32-byte raw key. Most common (Sui Wallet, Suiet, Slush keypair accounts).              |
-| Secp256k1    | Supported  | 33-byte raw key. Same `Signer` surface; signing routes through the wallet.             |
-| Secp256r1    | Supported  | 33-byte raw key. Disambiguated from Secp256k1 / Passkey by address derivation.         |
-| Passkey      | Supported  | 33-byte raw key. WebAuthn signing inside the wallet; `Signer` surface unchanged.       |
-| ZkLogin      | Refused    | Variable-length identifier with OAuth-tied signing; not exercised against Walrus/Seal. |
-| MultiSig     | Refused    | Multi-key signature aggregation; not exercised against Walrus/Seal.                    |
+| Scheme    | Status                       | Notes                                                                                                                                                                                                |
+| --------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ED25519   | Supported                    | 32-byte raw key. Most common (Sui Wallet, Suiet, Slush keypair accounts).                                                                                                                            |
+| Secp256k1 | Supported                    | 33-byte raw key. Same `Signer` surface; signing routes through the wallet.                                                                                                                           |
+| Secp256r1 | Supported                    | 33-byte raw key. Disambiguated from Secp256k1 / Passkey by address derivation.                                                                                                                       |
+| Passkey   | Supported                    | 33-byte raw key. WebAuthn signing inside the wallet; `Signer` surface unchanged.                                                                                                                     |
+| ZkLogin   | Decoder ships, E2E unverified | Variable-length `[1 iss-len][iss][32 addressSeed]` identifier (auto-detects modern vs legacy address derivation). Walrus `register_blob` / `certify_blob` and Seal `SessionKey` flows have not been smoke-tested with zkLogin signatures; if your users see Walrus or Seal errors on these accounts, fall back to a keypair account. |
+| MultiSig  | Refused                      | Variable-length aggregation of multiple keys; signing semantics differ from `Signer` and have not been wired up.                                                                                     |
 
 Refused schemes throw `ConfigurationError` at construction time. Surface the message to your user as "this wallet account isn't supported yet" rather than letting the page crash inside Walrus or Seal later.
 

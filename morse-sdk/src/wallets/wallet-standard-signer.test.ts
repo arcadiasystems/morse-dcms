@@ -5,6 +5,7 @@ import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Secp256k1Keypair } from "@mysten/sui/keypairs/secp256k1";
 import { Secp256r1Keypair } from "@mysten/sui/keypairs/secp256r1";
 import { Transaction } from "@mysten/sui/transactions";
+import { toZkLoginPublicIdentifier } from "@mysten/sui/zklogin";
 
 import { ConfigurationError } from "../errors.js";
 import { WalletStandardSigner } from "./wallet-standard-signer.js";
@@ -241,7 +242,30 @@ describe("WalletStandardSigner", () => {
 		).toThrow(/Secp256k1, Secp256r1, or Passkey/);
 	});
 
-	test("fromAccount refuses zkLogin-shaped (61-byte) public keys", () => {
+	test("fromAccount detects ZkLogin from a variable-length public identifier", () => {
+		const zkPk = toZkLoginPublicIdentifier(
+			123456789n,
+			"https://accounts.google.com",
+			{ legacyAddress: false },
+		);
+		const signer = WalletStandardSigner.fromAccount(
+			{
+				address: zkPk.toSuiAddress(),
+				publicKey: zkPk.toRawBytes(),
+			},
+			{
+				signTransaction: mock(async () => ({ bytes: "AAAA", signature: "s" })),
+				signPersonalMessage: mock(async () => ({
+					bytes: "AAAA",
+					signature: "s",
+				})),
+			},
+		);
+		expect(signer.getKeyScheme()).toBe("ZkLogin");
+		expect(signer.toSuiAddress()).toBe(zkPk.toSuiAddress());
+	});
+
+	test("fromAccount refuses non-conforming variable-length public keys", () => {
 		expect(() =>
 			WalletStandardSigner.fromAccount(
 				{
@@ -260,7 +284,7 @@ describe("WalletStandardSigner", () => {
 					})),
 				},
 			),
-		).toThrow(/zkLogin, multisig, or unknown/);
+		).toThrow(/multisig or unknown/);
 	});
 
 	test("signAndExecuteTransaction does not override an explicitly-set sender", async () => {

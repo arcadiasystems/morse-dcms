@@ -136,11 +136,19 @@ The hook returns `null` until a wallet is connected. Once connected, it
 returns `{ adapter, signer, reader, config, client }` — pass `adapter` to
 morse-sdk ops, `signer` to Walrus and Seal.
 
-`fromAccount` supports Ed25519, Secp256k1, Secp256r1, and Passkey
-accounts. If the connected wallet uses zkLogin or multisig, `fromAccount`
-throws a `ConfigurationError` — surface that to the user as "this wallet
-account isn't supported yet" rather than letting the page crash inside
-Walrus or Seal later.
+`fromAccount` decodes Ed25519, Secp256k1, Secp256r1, Passkey, and
+ZkLogin accounts. MultiSig is refused with `ConfigurationError`.
+
+The ZkLogin path is structural — the dispatch is correct but Walrus and
+Seal end-to-end behavior with zkLogin signatures is unverified at the
+time of writing (see the compatibility table in the SDK README). For
+production, prefer keypair / passkey accounts until you have smoke-tested
+your specific Walrus + Seal versions against a Slush zkLogin account.
+
+Wrap `fromAccount` in a try/catch (or surface the thrown
+`ConfigurationError` from a hook) so an unsupported wallet account
+renders as product copy ("this wallet account isn't supported yet")
+rather than crashing the page.
 
 ## Using it
 

@@ -31,6 +31,7 @@ import { Secp256k1PublicKey } from "@mysten/sui/keypairs/secp256k1";
 import { Secp256r1PublicKey } from "@mysten/sui/keypairs/secp256r1";
 import type { Transaction } from "@mysten/sui/transactions";
 import { normalizeSuiAddress } from "@mysten/sui/utils";
+import { ZkLoginPublicIdentifier } from "@mysten/sui/zklogin";
 
 import { ConfigurationError } from "../errors.js";
 
@@ -101,12 +102,20 @@ export class WalletStandardSigner extends Signer {
 	 * derivation matches `account.address`.
 	 *
 	 * Supported schemes: ED25519 (32-byte raw key), Secp256k1, Secp256r1,
-	 * Passkey (all three 33-byte raw keys, disambiguated by address match).
+	 * Passkey (all three 33-byte raw keys, disambiguated by address match),
+	 * and ZkLogin (variable-length identifier of the form
+	 * `[1 byte iss-len][iss bytes][32 byte addressSeed]`). MultiSig is
+	 * refused.
 	 *
-	 * @throws {ConfigurationError} If the account uses zkLogin or multisig
-	 *   (the underlying `Signer` shape and Walrus / Seal expectations don't
-	 *   round-trip cleanly), or if no candidate scheme produces an address
-	 *   matching `account.address`.
+	 * Caveat for ZkLogin: the dispatch is structurally correct but
+	 * end-to-end behavior against `@mysten/walrus`'s `register_blob` /
+	 * `certify_blob` and `@mysten/seal`'s `SessionKey` verification has
+	 * not been smoke-tested. If your users see Seal `decrypt-failed` or
+	 * Walrus signature errors on zkLogin accounts, fall back to a
+	 * keypair account.
+	 *
+	 * @throws {ConfigurationError} If the account uses multisig, or if no
+	 *   candidate scheme produces an address matching `account.address`.
 	 */
 	static fromAccount(
 		account: WalletStandardAccount,
@@ -231,7 +240,23 @@ function decodeAccountPublicKey(
 		);
 	}
 
+	// ZkLogin pub identifier is `[1 byte iss-len][iss bytes][32 byte addressSeed]`,
+	// always > 33 bytes. `fromBytes({ address })` auto-tries non-legacy then
+	// legacy address derivation and throws on mismatch; treat throw as
+	// "not zkLogin" and fall through to refusal so multisig and garbage
+	// bytes don't get silently labeled as zkLogin.
+	if (bytes.length > 33) {
+		try {
+			const publicKey = ZkLoginPublicIdentifier.fromBytes(bytes, {
+				address: account.address,
+			});
+			return { publicKey, keyScheme: "ZkLogin" };
+		} catch {
+			// Fall through.
+		}
+	}
+
 	throw new ConfigurationError(
-		`WalletStandardSigner does not support this account: account.publicKey is ${bytes.length} bytes, which suggests a zkLogin, multisig, or unknown signature scheme. Connect a standard keypair account (Ed25519, Secp256k1, Secp256r1, or Passkey) or implement a custom Signer.`,
+		`WalletStandardSigner does not support this account: account.publicKey is ${bytes.length} bytes and does not match a zkLogin identifier for address ${account.address}. This suggests a multisig or unknown signature scheme; implement a custom Signer.`,
 	);
 }
