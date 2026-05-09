@@ -7,6 +7,8 @@ export { KeypairAdapter } from "./keypair-adapter.js";
 export {
 	type WalletSignPersonalMessage,
 	type WalletSignTransaction,
+	type WalletStandardAccount,
 	WalletStandardSigner,
+	type WalletStandardSignerCallbacks,
 	type WalletStandardSignerOptions,
 } from "./wallet-standard-signer.js";

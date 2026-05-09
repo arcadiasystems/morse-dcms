@@ -86,7 +86,6 @@ import {
   useSignPersonalMessage,
   useSignTransaction,
 } from "@mysten/dapp-kit";
-import { Ed25519PublicKey } from "@mysten/sui/keypairs/ed25519";
 import { SuiGrpcClient } from "@mysten/sui/grpc";
 import {
   morseConfig,
@@ -120,15 +119,11 @@ export function useMorse() {
     );
 
     // For Walrus uploads and Seal SessionKey - both want a Sui `Signer`.
-    // The wallet supplies the public key as raw bytes; wrap it in
-    // Ed25519PublicKey (or the appropriate scheme).
-    const signer = new WalletStandardSigner({
-      publicKey: new Ed25519PublicKey(account.publicKey),
-      keyScheme: "ED25519",
-      signTransaction: ({ transaction }) =>
-        signTransaction({ transaction }),
-      signPersonalMessage: ({ message }) =>
-        signPersonalMessage({ message }),
+    // `fromAccount` decodes the scheme from the wallet's raw public key
+    // and refuses zkLogin / multisig accounts at construction time.
+    const signer = WalletStandardSigner.fromAccount(account, {
+      signTransaction: ({ transaction }) => signTransaction({ transaction }),
+      signPersonalMessage: ({ message }) => signPersonalMessage({ message }),
     });
 
     const reader = RpcPublicationReader.fromMorseConfig(config, client);
@@ -141,8 +136,11 @@ The hook returns `null` until a wallet is connected. Once connected, it
 returns `{ adapter, signer, reader, config, client }` — pass `adapter` to
 morse-sdk ops, `signer` to Walrus and Seal.
 
-If the connected account uses Secp256k1 instead of Ed25519, swap
-`Ed25519PublicKey` for `Secp256k1PublicKey` and `keyScheme: "Secp256k1"`.
+`fromAccount` supports Ed25519, Secp256k1, Secp256r1, and Passkey
+accounts. If the connected wallet uses zkLogin or multisig, `fromAccount`
+throws a `ConfigurationError` — surface that to the user as "this wallet
+account isn't supported yet" rather than letting the page crash inside
+Walrus or Seal later.
 
 ## Using it
 

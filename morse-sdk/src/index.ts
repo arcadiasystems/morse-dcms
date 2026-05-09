@@ -146,7 +146,9 @@ export {
 	type WalletAdapter,
 	type WalletSignPersonalMessage,
 	type WalletSignTransaction,
+	type WalletStandardAccount,
 	WalletStandardSigner,
+	type WalletStandardSignerCallbacks,
 	type WalletStandardSignerOptions,
 } from "./wallets/index.js";
 export {

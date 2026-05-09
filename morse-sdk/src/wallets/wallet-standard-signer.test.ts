@@ -1,8 +1,12 @@
 import { describe, expect, mock, test } from "bun:test";
 import type { ClientWithCoreApi } from "@mysten/sui/client";
 import type { PublicKey } from "@mysten/sui/cryptography";
+import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
+import { Secp256k1Keypair } from "@mysten/sui/keypairs/secp256k1";
+import { Secp256r1Keypair } from "@mysten/sui/keypairs/secp256r1";
 import { Transaction } from "@mysten/sui/transactions";
 
+import { ConfigurationError } from "../errors.js";
 import { WalletStandardSigner } from "./wallet-standard-signer.js";
 
 const ADDRESS =
@@ -12,6 +16,10 @@ function fakePublicKey(): PublicKey {
 	return {
 		toSuiAddress: () => ADDRESS,
 	} as unknown as PublicKey;
+}
+
+function secret(byte: number): Uint8Array {
+	return new Uint8Array(32).fill(byte);
 }
 
 function fakeClient(): ClientWithCoreApi {
@@ -129,6 +137,130 @@ describe("WalletStandardSigner", () => {
 		expect(Array.from(submitArgs?.transaction as Uint8Array)).toEqual([
 			0xab, 0xcd, 0xef,
 		]);
+	});
+
+	test("fromAccount detects ED25519 from a 32-byte raw public key", () => {
+		const keypair = Ed25519Keypair.fromSecretKey(secret(0x11));
+		const signer = WalletStandardSigner.fromAccount(
+			{
+				address: keypair.toSuiAddress(),
+				publicKey: keypair.getPublicKey().toRawBytes(),
+			},
+			{
+				signTransaction: mock(async () => ({ bytes: "AAAA", signature: "s" })),
+				signPersonalMessage: mock(async () => ({
+					bytes: "AAAA",
+					signature: "s",
+				})),
+			},
+		);
+		expect(signer.getKeyScheme()).toBe("ED25519");
+		expect(signer.toSuiAddress()).toBe(keypair.toSuiAddress());
+	});
+
+	test("fromAccount detects Secp256k1 from a 33-byte raw public key", () => {
+		const keypair = Secp256k1Keypair.fromSecretKey(secret(0x22));
+		const signer = WalletStandardSigner.fromAccount(
+			{
+				address: keypair.toSuiAddress(),
+				publicKey: keypair.getPublicKey().toRawBytes(),
+			},
+			{
+				signTransaction: mock(async () => ({ bytes: "AAAA", signature: "s" })),
+				signPersonalMessage: mock(async () => ({
+					bytes: "AAAA",
+					signature: "s",
+				})),
+			},
+		);
+		expect(signer.getKeyScheme()).toBe("Secp256k1");
+		expect(signer.toSuiAddress()).toBe(keypair.toSuiAddress());
+	});
+
+	test("fromAccount detects Secp256r1 from a 33-byte raw public key", () => {
+		const keypair = Secp256r1Keypair.fromSecretKey(secret(0x33));
+		const signer = WalletStandardSigner.fromAccount(
+			{
+				address: keypair.toSuiAddress(),
+				publicKey: keypair.getPublicKey().toRawBytes(),
+			},
+			{
+				signTransaction: mock(async () => ({ bytes: "AAAA", signature: "s" })),
+				signPersonalMessage: mock(async () => ({
+					bytes: "AAAA",
+					signature: "s",
+				})),
+			},
+		);
+		expect(signer.getKeyScheme()).toBe("Secp256r1");
+		expect(signer.toSuiAddress()).toBe(keypair.toSuiAddress());
+	});
+
+	test("fromAccount throws ConfigurationError when a 32-byte key does not derive the address", () => {
+		const keypair = Ed25519Keypair.fromSecretKey(secret(0x44));
+		expect(() =>
+			WalletStandardSigner.fromAccount(
+				{
+					address:
+						"0x0000000000000000000000000000000000000000000000000000000000000001",
+					publicKey: keypair.getPublicKey().toRawBytes(),
+				},
+				{
+					signTransaction: mock(async () => ({
+						bytes: "AAAA",
+						signature: "s",
+					})),
+					signPersonalMessage: mock(async () => ({
+						bytes: "AAAA",
+						signature: "s",
+					})),
+				},
+			),
+		).toThrow(ConfigurationError);
+	});
+
+	test("fromAccount throws ConfigurationError when a 33-byte key matches no scheme", () => {
+		expect(() =>
+			WalletStandardSigner.fromAccount(
+				{
+					address:
+						"0x0000000000000000000000000000000000000000000000000000000000000002",
+					publicKey: new Uint8Array(33).fill(0x02),
+				},
+				{
+					signTransaction: mock(async () => ({
+						bytes: "AAAA",
+						signature: "s",
+					})),
+					signPersonalMessage: mock(async () => ({
+						bytes: "AAAA",
+						signature: "s",
+					})),
+				},
+			),
+		).toThrow(/Secp256k1, Secp256r1, or Passkey/);
+	});
+
+	test("fromAccount refuses zkLogin-shaped (61-byte) public keys", () => {
+		expect(() =>
+			WalletStandardSigner.fromAccount(
+				{
+					address:
+						"0x0000000000000000000000000000000000000000000000000000000000000003",
+					publicKey: new Uint8Array(61).fill(0x05),
+				},
+				{
+					signTransaction: mock(async () => ({
+						bytes: "AAAA",
+						signature: "s",
+					})),
+					signPersonalMessage: mock(async () => ({
+						bytes: "AAAA",
+						signature: "s",
+					})),
+				},
+			),
+		).toThrow(/zkLogin, multisig, or unknown/);
 	});
 
 	test("signAndExecuteTransaction does not override an explicitly-set sender", async () => {

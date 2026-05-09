@@ -110,6 +110,21 @@ Reader pattern is parallel: `PublicationReader` is the interface, `RpcPublicatio
 
 Always construct readers and seal adapters via `fromMorseConfig` (e.g. `RpcPublicationReader.fromMorseConfig(config, client)`); the raw constructors take `originalPackageId` directly and passing the wrong value silently empties type-filtered list results.
 
+## Wallet scheme support
+
+`WalletStandardSigner.fromAccount(account, callbacks)` takes a wallet-standard `WalletAccount` and produces a Sui `Signer` for `@mysten/walrus` and `@mysten/seal`. It decodes the signature scheme from `account.publicKey` length and confirms the derivation matches `account.address`.
+
+| Scheme       | Status     | Notes                                                                                  |
+| ------------ | ---------- | -------------------------------------------------------------------------------------- |
+| ED25519      | Supported  | 32-byte raw key. Most common (Sui Wallet, Suiet, Slush keypair accounts).              |
+| Secp256k1    | Supported  | 33-byte raw key. Same `Signer` surface; signing routes through the wallet.             |
+| Secp256r1    | Supported  | 33-byte raw key. Disambiguated from Secp256k1 / Passkey by address derivation.         |
+| Passkey      | Supported  | 33-byte raw key. WebAuthn signing inside the wallet; `Signer` surface unchanged.       |
+| ZkLogin      | Refused    | Variable-length identifier with OAuth-tied signing; not exercised against Walrus/Seal. |
+| MultiSig     | Refused    | Multi-key signature aggregation; not exercised against Walrus/Seal.                    |
+
+Refused schemes throw `ConfigurationError` at construction time. Surface the message to your user as "this wallet account isn't supported yet" rather than letting the page crash inside Walrus or Seal later.
+
 ## Error taxonomy
 
 All errors extend `MorseError`. Narrow by class:
