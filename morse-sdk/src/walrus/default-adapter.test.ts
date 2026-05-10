@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import type { Signer } from "@mysten/sui/cryptography";
-import { UserAbortError } from "@mysten/walrus";
+import {
+	NotEnoughBlobConfirmationsError,
+	UserAbortError,
+} from "@mysten/walrus";
 
 import { TransportError, ValidationError } from "../errors.js";
 import { QUILT_PATCH_ID_LENGTH, type WalrusBlobId } from "../types.js";
@@ -169,6 +172,35 @@ describe("DefaultWalrusWriteAdapter.uploadBlob", () => {
 		expect((caught as TransportError & { cause: unknown }).cause).toBe(
 			original,
 		);
+	});
+
+	test("preserves a NotEnoughBlobConfirmationsError cause for instanceof narrowing", async () => {
+		const original = new NotEnoughBlobConfirmationsError(
+			"Too many failures while writing blob X to nodes",
+		);
+		const { client } = fakeClient({
+			writeBlob: async () => {
+				throw original;
+			},
+		});
+		const adapter = new DefaultWalrusWriteAdapter({
+			client,
+			signer: FAKE_SIGNER,
+		});
+
+		let caught: unknown;
+		try {
+			await adapter.uploadBlob(new Uint8Array(), {
+				epochs: 1,
+				deletable: true,
+			});
+		} catch (error) {
+			caught = error;
+		}
+		expect(caught).toBeInstanceOf(TransportError);
+		const cause = (caught as TransportError & { cause: unknown }).cause;
+		expect(cause).toBe(original);
+		expect(cause).toBeInstanceOf(NotEnoughBlobConfirmationsError);
 	});
 
 	test("propagates ValidationError without wrapping", async () => {
