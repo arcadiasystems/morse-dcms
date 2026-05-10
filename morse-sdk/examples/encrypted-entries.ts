@@ -21,6 +21,7 @@ import type { KeyServerConfig, SessionKey } from "@mysten/seal";
 import type { PublicationId, PublisherCapId, SealId } from "morse-sdk";
 import {
 	addEncryptedEntry,
+	addEncryptedEntryFromBytes,
 	appendEncryptedDraftRevision,
 	buildPublisherSealId,
 	DefaultSealAdapter,
@@ -66,9 +67,11 @@ function buildAdapters(ctx: ExampleContext): {
 
 /**
  * Encrypt a payload, upload the ciphertext to Walrus, and add an encrypted
- * entry referencing it. The contract stores `encrypted=true` and the
- * `sealId` bytes per revision; `accessPolicy` is hardcoded to Publisher
- * (Subscription is reserved for future work).
+ * entry referencing it in 2 wallet popups (encrypt is popup-free; popups
+ * are register_blob then certify_blob + add_entry combined). The contract
+ * stores `encrypted=true` and the `sealId` bytes per revision;
+ * `accessPolicy` is hardcoded to Publisher (Subscription is reserved for
+ * future work).
  */
 export async function publishEncryptedEntry(
 	ctx: ExampleContext,
@@ -79,7 +82,37 @@ export async function publishEncryptedEntry(
 	},
 ): Promise<{ entryId: number; sealId: SealId }> {
 	const { seal, walrus } = buildAdapters(ctx);
+	const sealId = newSealIdFor(args.publicationId);
+	const result = await addEncryptedEntryFromBytes(ctx.adapter, ctx.config, {
+		walrus,
+		seal,
+		publicationId: args.publicationId,
+		publisherCapId: args.publisherCapId,
+		collectionName: "secret-blog",
+		name: "private-doc",
+		plaintext: args.plaintext,
+		contentType: "application/octet-stream",
+		sealId,
+		upload: { epochs: 3, deletable: true },
+	});
+	return { entryId: result.entryId, sealId };
+}
 
+/**
+ * Lower-level alternative when ciphertext already exists (separately
+ * encrypted, separately uploaded). Uses `addEncryptedEntry` with a
+ * pre-uploaded `blobObjectId`. Prefer `publishEncryptedEntry` above for
+ * the typical encrypt-and-publish flow.
+ */
+export async function publishEncryptedEntryFromExistingBlob(
+	ctx: ExampleContext,
+	args: {
+		publicationId: PublicationId;
+		publisherCapId: PublisherCapId;
+		plaintext: Uint8Array;
+	},
+): Promise<{ entryId: number; sealId: SealId }> {
+	const { seal, walrus } = buildAdapters(ctx);
 	const sealId = newSealIdFor(args.publicationId);
 	const { ciphertext } = await seal.encrypt(args.plaintext, { sealId });
 	const blob = await walrus.uploadBlob(ciphertext, {

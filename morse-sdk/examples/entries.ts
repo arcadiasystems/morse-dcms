@@ -37,7 +37,9 @@
 import type { BlobObjectId, PublicationId, PublisherCapId } from "morse-sdk";
 import {
 	addEntry,
+	addEntryFromBytes,
 	appendDraftRevision,
+	DefaultWalrusWriteAdapter,
 	deleteEntry,
 	publishDirect,
 	publishFromDraft,
@@ -45,10 +47,43 @@ import {
 import type { ExampleContext } from "./setup.js";
 
 /**
- * Create an entry whose first revision is public and points at `blobObjectId`.
- * The entry is immediately readable.
+ * Create an entry by uploading `bytes` to Walrus and adding the resulting
+ * blob in 2 wallet popups (register, then certify+addEntry combined).
+ * Recommended path for the typical "publish content" flow.
  */
 export async function createPost(
+	ctx: ExampleContext,
+	args: {
+		publicationId: PublicationId;
+		publisherCapId: PublisherCapId;
+		bytes: Uint8Array;
+	},
+): Promise<number> {
+	const walrus = DefaultWalrusWriteAdapter.fromConfig(
+		{ network: "testnet", suiClient: ctx.client },
+		ctx.keypair,
+	);
+	const result = await addEntryFromBytes(ctx.adapter, ctx.config, {
+		walrus,
+		publicationId: args.publicationId,
+		publisherCapId: args.publisherCapId,
+		collectionName: "blog",
+		name: "first-post",
+		bytes: args.bytes,
+		contentType: "text/plain",
+		upload: { epochs: 3, deletable: true },
+	});
+	return result.entryId;
+}
+
+/**
+ * Lower-level alternative when you already have an uploaded blob (e.g. for
+ * blob deduplication across entries, server-side pre-upload, or decoupled
+ * upload-then-publish UX). Uses 1 wallet popup, but requires a separate
+ * `uploadBlob` call elsewhere (2 popups for the upload, 1 for this op = 3
+ * total). Prefer `createPost` above unless you need this control.
+ */
+export async function createPostFromExistingBlob(
 	ctx: ExampleContext,
 	args: {
 		publicationId: PublicationId;

@@ -53,7 +53,13 @@ export interface AddEntryResult {
 }
 
 /**
- * Add a new entry to a collection with its first revision.
+ * Add a new entry to a collection with its first revision, given a
+ * pre-uploaded `blobObjectId`. For the typical "upload-then-add" flow,
+ * prefer `addEntryFromBytes`, which packs upload + addEntry into 2 wallet
+ * popups instead of 3. Use this lower-level form when reusing a blob across
+ * multiple entries (deduplication), decoupling upload time from publish
+ * time, or pre-uploading from a server.
+ *
  * @throws {ContractAbortError} On Move abort.
  * @throws {TransportError} On RPC, network, or response-parsing failure.
  */
@@ -277,9 +283,13 @@ export interface AddEncryptedEntryArgs {
 
 /**
  * Add a new entry whose first revision is encrypted under the supplied
- * `sealId` with the Publisher access policy. Encryption is performed
- * out-of-band (consumer encrypts the payload, uploads the ciphertext to
- * Walrus, then calls this op with the resulting `blobObjectId`).
+ * `sealId` with the Publisher access policy, given pre-encrypted ciphertext
+ * already uploaded to Walrus. For the typical encrypt-upload-add flow,
+ * prefer `addEncryptedEntryFromBytes`, which handles encryption and 2-popup
+ * upload in a single call. Use this lower-level form when ciphertext
+ * already exists, you want to attach the same ciphertext to multiple
+ * entries, or you upload from a different process than the one calling
+ * this op.
  *
  * @throws {ContractAbortError} On Move abort.
  * @throws {TransportError} On RPC, network, or response-parsing failure.

@@ -10,13 +10,14 @@
  */
 
 import {
-	addEntry,
+	addEntryFromBytes,
 	ContractAbortError,
 	createCollection,
 	createPublication,
 	DefaultWalrusWriteAdapter,
 	StorageMode,
 	TransportError,
+	UncertifiedBlobError,
 	ValidationError,
 } from "morse-sdk";
 import { buildContext } from "./setup.js";
@@ -42,27 +43,30 @@ export async function quickstart(privateKey: string): Promise<void> {
 		storageMode: StorageMode.Blob,
 	});
 
-	// 3. Upload a payload to Walrus. The Move layer rejects non-deletable
-	//    blobs; always pass `deletable: true`.
+	// 3. Build the Walrus write adapter once. Browser flows substitute a
+	//    wallet-standard signer for `ctx.keypair`. The Move layer rejects
+	//    non-deletable blobs; always pass `deletable: true`.
 	const walrus = DefaultWalrusWriteAdapter.fromConfig(
 		{ network: "testnet", suiClient: ctx.client },
 		ctx.keypair,
 	);
-	const blob = await walrus.uploadBlob(
-		new TextEncoder().encode("hello world"),
-		{ epochs: 3, deletable: true },
-	);
 
-	// 4. Attach the blob as the first revision of a new entry. Entry IDs are
-	//    monotonic u64s assigned by the contract; the SDK retrieves them via
-	//    a pre-flight simulation of the same PTB.
-	const entry = await addEntry(ctx.adapter, ctx.config, {
+	// 4. Upload bytes and add them as the first revision of a new entry in 2
+	//    wallet popups (register_blob, then certify_blob + add_entry combined
+	//    into a single PTB). Entry IDs are monotonic u64s assigned by the
+	//    contract; the SDK retrieves them via a pre-flight simulation. For
+	//    pre-uploaded blobs (deduplication, decoupled timing, server-side
+	//    pre-upload), use the lower-level `uploadBlob` + `addEntry` pair —
+	//    see the README's "Choosing the right entry path".
+	const entry = await addEntryFromBytes(ctx.adapter, ctx.config, {
+		walrus,
 		publicationId: created.publicationId,
 		publisherCapId: created.publisherCapId,
 		collectionName: "blog",
 		name: "first-post",
-		blobObjectId: blob.blobObjectId,
+		bytes: new TextEncoder().encode("hello world"),
 		contentType: "text/plain",
+		upload: { epochs: 3, deletable: true },
 	});
 
 	// 5. Read it back. The returned `Entry` carries the synthetic id, the
@@ -85,10 +89,12 @@ export async function quickstart(privateKey: string): Promise<void> {
 }
 
 /**
- * The same flow with the three errors a new consumer is most likely to hit.
+ * The same flow with the four errors a new consumer is most likely to hit.
  * `ContractAbortError` covers the named Move aborts (e.g. duplicate slug);
  * `ValidationError` is client-side input rejection; `TransportError` is RPC
- * or network failure. See the README's error taxonomy for the full set.
+ * or network failure; `UncertifiedBlobError` signals the second popup of
+ * `addEntryFromBytes` failed after the blob was uploaded (the bytes are on
+ * Walrus but unattached). See the README's error taxonomy for the full set.
  */
 export async function quickstartWithErrorHandling(
 	privateKey: string,
@@ -96,7 +102,11 @@ export async function quickstartWithErrorHandling(
 	try {
 		await quickstart(privateKey);
 	} catch (err) {
-		if (err instanceof ContractAbortError) {
+		if (err instanceof UncertifiedBlobError) {
+			console.error(
+				`uncertified blob ${err.blobObjectId} (id ${err.blobId}); upload succeeded but the entry was not created`,
+			);
+		} else if (err instanceof ContractAbortError) {
 			console.error(`move abort: ${err.module}::${err.reason}`);
 		} else if (err instanceof ValidationError) {
 			console.error(`bad input on ${err.field}: ${err.message}`);

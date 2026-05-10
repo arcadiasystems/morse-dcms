@@ -123,6 +123,15 @@ export class DefaultWalrusWriteAdapter implements WalrusWriteAdapter {
 		});
 	}
 
+	/**
+	 * Upload a blob to Walrus end-to-end (register + upload + certify) in 2
+	 * wallet popups, returning the certified blob's content id and Sui object
+	 * id. For the common "upload then add as a new entry" flow, prefer
+	 * `addEntryFromBytes`, which composes upload with `add_entry` into the
+	 * same 2 popups. Use this when reusing a blob across multiple entries,
+	 * pre-uploading on a server, or otherwise decoupling upload from entry
+	 * creation.
+	 */
 	async uploadBlob(
 		data: Uint8Array,
 		options: UploadBlobOptions,

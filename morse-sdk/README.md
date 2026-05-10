@@ -40,7 +40,13 @@ const reader = RpcPublicationReader.fromMorseConfig(config, client);
 Then create a publication, add an entry, read it back:
 
 ```ts
-import { addEntry, createCollection, createPublication, StorageMode } from "morse-sdk";
+import {
+  addEntryFromBytes,
+  createCollection,
+  createPublication,
+  DefaultWalrusWriteAdapter,
+  StorageMode,
+} from "morse-sdk";
 
 const created = await createPublication(adapter, config, {
   name: "My Publication",
@@ -52,19 +58,44 @@ await createCollection(adapter, config, {
   name: "blog",
   storageMode: StorageMode.Blob,
 });
-// (upload a blob to Walrus first - see examples/quickstart.ts)
-const entry = await addEntry(adapter, config, {
+
+const walrus = DefaultWalrusWriteAdapter.fromConfig(
+  { network: "testnet", suiClient: client },
+  keypair,
+);
+
+const entry = await addEntryFromBytes(adapter, config, {
+  walrus,
   publicationId: created.publicationId,
   publisherCapId: created.publisherCapId,
   collectionName: "blog",
   name: "first-post",
-  blobObjectId,
+  bytes: new TextEncoder().encode("hello world"),
   contentType: "text/plain",
+  upload: { epochs: 3, deletable: true },
 });
 const fetched = await reader.getEntry(created.publicationId, "blog", entry.entryId);
 ```
 
+`addEntryFromBytes` runs in **2 wallet popups** (one for `register_blob`, one for the combined `certify_blob + add_entry_to_collection` PTB) instead of the 3 popups a separate `uploadBlob` + `addEntry` would emit. See "Choosing the right entry path" below for when to prefer the lower-level split form.
+
 The compile-checked end-to-end version is in [`examples/quickstart.ts`](./examples/quickstart.ts).
+
+## Choosing the right entry path
+
+The SDK ships two ways to publish content. The high-level `addEntryFromBytes` (and its encrypted twin `addEncryptedEntryFromBytes`) is the recommended default; the split form (`uploadBlob` + `addEntry`) is for cases the high-level shape doesn't cover.
+
+| Use                                                  | Function                                            | Wallet popups |
+| ---------------------------------------------------- | --------------------------------------------------- | ------------- |
+| Publish raw bytes as a new entry (typical case)      | `addEntryFromBytes`                                 | 2             |
+| Publish encrypted bytes as a new entry               | `addEncryptedEntryFromBytes`                        | 2             |
+| Reuse one blob across many entries (deduplication)   | `uploadBlob` once, then `addEntry` N times          | 2 + N         |
+| Decouple upload and add-entry (e.g. draft-then-attach UX) | `uploadBlob` (upload time), `addEntry` (publish time) | 2 + 1         |
+| Server pre-uploads, browser only adds entries        | `uploadBlob` (server), `addEntry` (browser)         | 0 server + 1 browser |
+
+**`addEntryFromBytes` requires `DefaultWalrusWriteAdapter`** (the optimization uses its flow-aware `startBlobUpload` API). Custom `WalrusWriteAdapter` implementations should use the split form until they implement their own equivalent. The function rejects non-default adapters with `TransportError` before any IO.
+
+If `addEntryFromBytes` succeeds in popup 1 (register + upload) but fails in popup 2 (the combined certify + add_entry tx — user rejected, contract aborted, network blip), it throws `UncertifiedBlobError` carrying the `blobObjectId` and `blobId` of the orphaned blob. The blob is on storage nodes and you've paid for it but it's uncertified; storage releases on registration expiry. Surface the error to your user or log the IDs for support.
 
 ## Examples
 
@@ -138,6 +169,7 @@ All errors extend `MorseError`. Narrow by class:
 | `SealError`          | `code` (`no-access` / `decrypt-failed` / `session-expired` / `rate-limited`) | Seal authorization or decryption failed. |
 | `TransportError`     | -                                | RPC, network, or response-parsing failure.                           |
 | `ConfigurationError` | -                                | SDK config gap (e.g. unsupported network).                           |
+| `UncertifiedBlobError` | `blobObjectId`, `blobId`       | `addEntryFromBytes` upload succeeded but the combined certify+add_entry tx failed; the blob is uploaded but uncertified. |
 
 ```ts
 try {
@@ -188,6 +220,7 @@ const config = morseConfig({
 - **`listEntries` ordering is dynamic-field object-store order**, not chronological. Sort by `entry.id` for insertion order.
 - **Walrus testnet flakiness**. `NotEnoughBlobConfirmationsError` from the underlying client is environmental; rerun. The SDK preserves the original error as the `cause` (use `instanceof` for narrowing — Walrus error classes don't set `.name`). Browser consumers may additionally see `NoBlobMetadataReceivedError` on reads from testnet due to CORS gaps on a subset of Walrus storage nodes; the CLI smoke scripts hit the full node pool and are more reliable for verification.
 - **Walrus uploads need WAL, not just SUI**. Fund the address from the [Walrus testnet faucet](https://docs.walrus.site/usage/web-tool.html#testnet-tokens) in addition to the [Sui faucet](https://faucet.sui.io/). Uploads error with `Insufficient balance of ::wal::WAL` if you skip this.
+- **gRPC client only at v0.1.0**. The reader and adapter interfaces are typed against `Pick<SuiGrpcClient, ...>` from `@mysten/sui/grpc`. `SuiJsonRpcClient` from `@mysten/sui/jsonRpc` has differently-named methods (`getDynamicFields` vs `listDynamicFields`, etc.) and is not yet a drop-in alternative. JSON-RPC fallback is planned for v0.2.0; for now, environments that block gRPC need to proxy or use a gRPC-compatible RPC endpoint.
 
 ## Smoke scripts
 
