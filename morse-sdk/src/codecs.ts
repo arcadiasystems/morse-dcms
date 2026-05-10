@@ -24,62 +24,72 @@ import {
 
 /** `0x` + 1 to 64 lowercase hex chars. */
 const OBJECT_ID_PATTERN = /^0x[0-9a-f]{1,64}$/;
+const OBJECT_ID_HEX_LENGTH = 64;
 
-function assertObjectIdShape(value: string, field: string): void {
+/**
+ * Validate the input shape and return its zero-padded canonical form.
+ * Sui represents object IDs as 32-byte values rendered `0x`+64 hex chars.
+ * Short forms (e.g. `"0x1"`) are accepted as input — they're convenient in
+ * Move source — but the brand always carries the canonical 64-char form so
+ * downstream string equality works against RPC responses (which are always
+ * canonical).
+ */
+function normalizeObjectId(value: string, field: string): string {
 	if (!OBJECT_ID_PATTERN.test(value)) {
 		throw new ValidationError(
 			`Invalid ${field}: expected lowercase hex prefixed with "0x" and up to 64 hex characters, got ${JSON.stringify(value)}`,
 			field,
 		);
 	}
+	const hex = value.slice(2);
+	if (hex.length === OBJECT_ID_HEX_LENGTH) {
+		return value;
+	}
+	return `0x${hex.padStart(OBJECT_ID_HEX_LENGTH, "0")}`;
 }
 
-/** Construct a `PackageId`. @throws {ValidationError} On invalid shape. */
+/**
+ * Construct a `PackageId`. Input may be `0x` + 1-64 lowercase hex chars;
+ * the result is always zero-padded to 64 hex chars (Sui canonical form).
+ * @throws {ValidationError} On invalid shape.
+ */
 export function toPackageId(value: string): PackageId {
-	assertObjectIdShape(value, "PackageId");
-	return value as PackageId;
+	return normalizeObjectId(value, "PackageId") as PackageId;
 }
 
-/** Construct a `RegistryId`. @throws {ValidationError} On invalid shape. */
+/** Construct a `RegistryId`. Input is normalized to canonical 64-char form. @throws {ValidationError} On invalid shape. */
 export function toRegistryId(value: string): RegistryId {
-	assertObjectIdShape(value, "RegistryId");
-	return value as RegistryId;
+	return normalizeObjectId(value, "RegistryId") as RegistryId;
 }
 
-/** Construct a `PublicationId`. @throws {ValidationError} On invalid shape. */
+/** Construct a `PublicationId`. Input is normalized to canonical 64-char form. @throws {ValidationError} On invalid shape. */
 export function toPublicationId(value: string): PublicationId {
-	assertObjectIdShape(value, "PublicationId");
-	return value as PublicationId;
+	return normalizeObjectId(value, "PublicationId") as PublicationId;
 }
 
-/** Construct an `OwnerCapId`. @throws {ValidationError} On invalid shape. */
+/** Construct an `OwnerCapId`. Input is normalized to canonical 64-char form. @throws {ValidationError} On invalid shape. */
 export function toOwnerCapId(value: string): OwnerCapId {
-	assertObjectIdShape(value, "OwnerCapId");
-	return value as OwnerCapId;
+	return normalizeObjectId(value, "OwnerCapId") as OwnerCapId;
 }
 
-/** Construct a `PublisherCapId`. @throws {ValidationError} On invalid shape. */
+/** Construct a `PublisherCapId`. Input is normalized to canonical 64-char form. @throws {ValidationError} On invalid shape. */
 export function toPublisherCapId(value: string): PublisherCapId {
-	assertObjectIdShape(value, "PublisherCapId");
-	return value as PublisherCapId;
+	return normalizeObjectId(value, "PublisherCapId") as PublisherCapId;
 }
 
-/** Construct a `BlobObjectId`. @throws {ValidationError} On invalid shape. */
+/** Construct a `BlobObjectId`. Input is normalized to canonical 64-char form. @throws {ValidationError} On invalid shape. */
 export function toBlobObjectId(value: string): BlobObjectId {
-	assertObjectIdShape(value, "BlobObjectId");
-	return value as BlobObjectId;
+	return normalizeObjectId(value, "BlobObjectId") as BlobObjectId;
 }
 
-/** Construct a `SuiAddress`. @throws {ValidationError} On invalid shape. */
+/** Construct a `SuiAddress`. Input is normalized to canonical 64-char form. @throws {ValidationError} On invalid shape. */
 export function toSuiAddress(value: string): SuiAddress {
-	assertObjectIdShape(value, "SuiAddress");
-	return value as SuiAddress;
+	return normalizeObjectId(value, "SuiAddress") as SuiAddress;
 }
 
-/** Construct a `SuiObjectId`. @throws {ValidationError} On invalid shape. */
+/** Construct a `SuiObjectId`. Input is normalized to canonical 64-char form. @throws {ValidationError} On invalid shape. */
 export function toSuiObjectId(value: string): SuiObjectId {
-	assertObjectIdShape(value, "SuiObjectId");
-	return value as SuiObjectId;
+	return normalizeObjectId(value, "SuiObjectId") as SuiObjectId;
 }
 
 // Walrus blob id

@@ -18,6 +18,8 @@ import { ValidationError } from "./errors.js";
 import { AccessPolicy, StorageMode } from "./types.js";
 
 const VALID_ID = "0x1";
+const VALID_ID_NORMALIZED =
+	"0x0000000000000000000000000000000000000000000000000000000000000001";
 const VALID_ID_LONG =
 	"0xd1dd47c84e7c2f217a8b5a4fcec849a3b985df4fada82f72b72602423d8d018e";
 
@@ -42,8 +44,8 @@ describe("ID constructors", () => {
 	];
 
 	for (const { name, fn, field } of constructors) {
-		test(`${name} accepts a short valid object id`, () => {
-			expect(fn(VALID_ID) as string).toBe(VALID_ID);
+		test(`${name} normalizes a short valid object id to 64 hex chars`, () => {
+			expect(fn(VALID_ID) as string).toBe(VALID_ID_NORMALIZED);
 		});
 
 		test(`${name} accepts a full 32-byte object id`, () => {

@@ -92,12 +92,16 @@ describe("KeypairAdapter", () => {
 		expect(receipt.digest).toBe("tx-1");
 		expect(receipt.gasUsedMist).toBe(3500n);
 		expect(receipt.createdObjects).toHaveLength(1);
-		expect(receipt.createdObjects[0]?.objectId as string).toBe("0xabc");
+		expect(receipt.createdObjects[0]?.objectId as string).toBe(
+			"0x0000000000000000000000000000000000000000000000000000000000000abc",
+		);
 		expect(receipt.createdObjects[0]?.objectType).toBe(
 			"0xpkg::publication::Publication",
 		);
 		expect(receipt.deletedObjects).toHaveLength(1);
-		expect(receipt.deletedObjects[0]?.objectId as string).toBe("0xdef");
+		expect(receipt.deletedObjects[0]?.objectId as string).toBe(
+			"0x0000000000000000000000000000000000000000000000000000000000000def",
+		);
 	});
 
 	test("throws ContractAbortError on a known Move abort", async () => {
