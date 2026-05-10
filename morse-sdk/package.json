@@ -1,15 +1,28 @@
 {
 	"name": "morse-sdk",
-	"version": "0.0.0",
+	"version": "0.1.0",
 	"description": "TypeScript SDK for Morse dCMS on the Sui blockchain.",
 	"license": "MIT",
 	"type": "module",
-	"private": true,
 	"sideEffects": false,
+	"keywords": [
+		"sui",
+		"walrus",
+		"seal",
+		"cms",
+		"decentralized",
+		"blockchain"
+	],
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/TheDivic/morse-dcms.git",
+		"directory": "morse-sdk"
+	},
 	"files": [
 		"dist",
 		"README.md",
-		"LICENSE"
+		"LICENSE",
+		"CHANGELOG.md"
 	],
 	"main": "./dist/index.js",
 	"types": "./dist/index.d.ts",
