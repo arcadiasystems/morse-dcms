@@ -203,7 +203,22 @@ export class DefaultSealAdapter implements SealAdapter {
 		ciphertext: Uint8Array,
 		options: SealDecryptOptions,
 	): Promise<Uint8Array> {
-		const { publicationId } = decodePublisherSealId(options.sealId);
+		// `decodePublisherSealId` throws `ValidationError` on a malformed or
+		// tampered `SealId` (unknown policy tag). On-chain bytes are
+		// contract-enforced, but `Revision.sealId` from a reader brands the
+		// payload without re-validating client-side, and a hostile indexer
+		// could surface arbitrary bytes. Rewrap as `SealError("decrypt-failed")`
+		// so the throw matches `SealAdapter.decrypt`'s documented error contract.
+		let publicationId: PublicationId;
+		try {
+			({ publicationId } = decodePublisherSealId(options.sealId));
+		} catch (cause) {
+			throw new SealError(
+				"decrypt-failed",
+				`Seal identity is malformed or uses an unsupported policy tag: ${cause instanceof Error ? cause.message : String(cause)}`,
+				{ cause },
+			);
+		}
 		const txBytes = await this.buildSealApproveTxBytes(
 			publicationId,
 			options.publisherCapId,

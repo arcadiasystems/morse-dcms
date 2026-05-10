@@ -638,15 +638,23 @@ function readSafeInteger(
 
 /**
  * Detect the specific Sui gRPC per-object "not found" error. Matches the
- * exact `Object {id} not found` message format thrown by the batch object
- * lookup so that unrelated transport failures (timeouts, service unavailable)
- * are not misclassified as missing objects.
+ * `Object {id} not found` message format thrown by the batch object lookup
+ * so unrelated transport failures (timeouts, service unavailable) are not
+ * misclassified as missing objects.
+ *
+ * Uses the same anchored regex strategy as `isDynamicFieldNotFoundError`,
+ * not exact equality, so a future Sui gRPC release that adds a trailing
+ * detail (e.g. `Object 0x... not found at version N`) still matches without
+ * silently degrading to "transport failure". Anchoring with `^...$` keeps
+ * substring false positives out (e.g. "service unavailable: connection not
+ * found"). The `objectId` is matched literally for caller-side specificity.
  */
 function isObjectNotFoundError(cause: unknown, objectId: string): boolean {
 	if (!(cause instanceof Error)) {
 		return false;
 	}
-	return cause.message === `Object ${objectId} not found`;
+	const escaped = objectId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	return new RegExp(`^Object ${escaped} not found(\\b|$)`).test(cause.message);
 }
 
 function parseEntry(bcs: Uint8Array, entryId: number): Entry {

@@ -7,6 +7,16 @@
  * appends/publishes), each id-returning op simulates the PTB first to read
  * the BCS-encoded return value, then signs and executes. Two RPC round-trips
  * per call.
+ *
+ * Race-window caveat: there is a brief window between the simulate and the
+ * execute calls where another transaction can mutate the publication's
+ * shared state. In single-publisher write paths this window is narrow and
+ * the returned `entryId`/`revisionId` is reliable in practice. Under
+ * concurrent writes from multiple `PublisherCap` holders, the simulated
+ * id can be invalidated by an interleaving transaction; the SDK does not
+ * detect this and the returned id may be stale. Consumers running
+ * concurrent writers should treat the returned id as advisory and rely on
+ * `reader.listEntries(...)` for the authoritative entry set.
  */
 
 import { Transaction } from "@mysten/sui/transactions";
