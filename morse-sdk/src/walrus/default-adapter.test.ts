@@ -273,6 +273,76 @@ describe("DefaultWalrusWriteAdapter.uploadBlob", () => {
 	});
 });
 
+describe("DefaultWalrusWriteAdapter.startBlobUpload", () => {
+	test("threads the register tx digest into flow.upload (regression: addEntryFromBytes broke without this)", async () => {
+		const REGISTER_DIGEST = "register-digest-abc";
+		const FLOW_BLOB_ID = SAMPLE_BLOB_ID;
+		const FLOW_OBJECT_ID = SUI_OBJECT_ID;
+		const certifyTx = new (
+			await import("@mysten/sui/transactions")
+		).Transaction();
+
+		const calls: { register: unknown[]; upload: unknown[]; certify: number } = {
+			register: [],
+			upload: [],
+			certify: 0,
+		};
+
+		const fakeFlow = {
+			encode: async () => ({}) as never,
+			executeRegister: async (args: unknown) => {
+				calls.register.push(args);
+				return {
+					step: "registered" as const,
+					blobId: FLOW_BLOB_ID,
+					blobObjectId: FLOW_OBJECT_ID,
+					txDigest: REGISTER_DIGEST,
+				};
+			},
+			upload: async (args: unknown) => {
+				calls.upload.push(args);
+				return {} as never;
+			},
+			certify: () => {
+				calls.certify += 1;
+				return certifyTx;
+			},
+			register: () => certifyTx,
+			executeCertify: async () => ({}) as never,
+			getBlob: async () => ({}) as never,
+			run: async function* () {},
+		};
+
+		const { client } = fakeClient({
+			writeBlobFlow: (() => fakeFlow) as unknown as ReturnType<
+				typeof fakeClient
+			>["client"]["writeBlobFlow"],
+		});
+		const adapter = new DefaultWalrusWriteAdapter({
+			client,
+			signer: FAKE_SIGNER,
+		});
+
+		const result = await adapter.startBlobUpload(new Uint8Array([1]), {
+			epochs: 3,
+			deletable: true,
+			// FAKE_SIGNER has no toSuiAddress; pass owner explicitly so the
+			// adapter doesn't fall back to it.
+			owner: SUI_OBJECT_ID,
+		});
+
+		expect(calls.register).toHaveLength(1);
+		expect(calls.upload).toHaveLength(1);
+		expect((calls.upload[0] as { digest?: string }).digest).toBe(
+			REGISTER_DIGEST,
+		);
+		expect(calls.certify).toBe(1);
+		expect(result.blobObjectId as unknown as string).toBe(FLOW_OBJECT_ID);
+		expect(result.blobId as unknown as string).toBe(FLOW_BLOB_ID);
+		expect(result.certifyTransaction).toBe(certifyTx);
+	});
+});
+
 describe("DefaultWalrusWriteAdapter.uploadQuilt", () => {
 	test("forwards patches and decodes the patch id", async () => {
 		const { client, calls } = fakeClient();

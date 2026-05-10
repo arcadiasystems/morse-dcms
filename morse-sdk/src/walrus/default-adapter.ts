@@ -181,9 +181,15 @@ export class DefaultWalrusWriteAdapter implements WalrusWriteAdapter {
 				signer: this.signer,
 				owner: options.owner ?? this.signer.toSuiAddress(),
 			});
-			await flow.upload(
-				options.signal === undefined ? {} : { signal: options.signal },
-			);
+			// Walrus's writeBlobFlow.upload() requires the register tx digest
+			// (or a resume.blobObjectId from a previous session) to know which
+			// on-chain blob the off-chain bytes belong to. Mirrors Walrus's own
+			// `run()` implementation; without this `upload()` throws
+			// "Either resume.blobObjectId or upload digest must be provided".
+			await flow.upload({
+				digest: registered.txDigest,
+				...(options.signal === undefined ? {} : { signal: options.signal }),
+			});
 			const certifyTransaction = flow.certify();
 			return {
 				blobObjectId: toBlobObjectId(registered.blobObjectId),
