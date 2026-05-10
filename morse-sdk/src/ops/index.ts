@@ -44,6 +44,13 @@ export {
 	type RevisionAppendResult,
 } from "./entry.js";
 export {
+	type AddEncryptedEntryFromBytesArgs,
+	type AddEntryFromBytesArgs,
+	type AddEntryFromBytesResult,
+	addEncryptedEntryFromBytes,
+	addEntryFromBytes,
+} from "./entry-from-bytes.js";
+export {
 	type CreatePublicationArgs,
 	type CreatePublicationResult,
 	createPublication,

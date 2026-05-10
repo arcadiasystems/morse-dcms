@@ -3,6 +3,7 @@ import type { Signer } from "@mysten/sui/cryptography";
 import {
 	NotEnoughBlobConfirmationsError,
 	UserAbortError,
+	type WriteBlobFlow,
 } from "@mysten/walrus";
 
 import { TransportError, ValidationError } from "../errors.js";
@@ -52,6 +53,7 @@ interface FakeWalrusClient {
 			}>;
 		};
 	}>;
+	writeBlobFlow(options: { blob: Uint8Array }): WriteBlobFlow;
 }
 
 interface CallLog {
@@ -95,6 +97,11 @@ function fakeClient(overrides: Partial<FakeWalrusClient> = {}): {
 					],
 				},
 			};
+		},
+		writeBlobFlow: () => {
+			throw new Error(
+				"writeBlobFlow not implemented in this fake; tests that exercise startBlobUpload supply their own override",
+			);
 		},
 		...overrides,
 	};

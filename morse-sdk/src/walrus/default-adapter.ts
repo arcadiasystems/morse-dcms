@@ -5,15 +5,18 @@
  */
 
 import type { Signer } from "@mysten/sui/cryptography";
+import type { Transaction } from "@mysten/sui/transactions";
 import {
 	UserAbortError,
 	WalrusClient,
 	type WalrusClientConfig,
+	type WriteBlobFlow,
+	type WriteBlobStepRegistered,
 } from "@mysten/walrus";
 
 import { toBlobObjectId, toWalrusBlobId } from "../codecs.js";
 import { TransportError, ValidationError } from "../errors.js";
-import type { QuiltPatchId, WalrusBlobId } from "../types.js";
+import type { BlobObjectId, QuiltPatchId, WalrusBlobId } from "../types.js";
 import type {
 	QuiltPatchInput,
 	UploadBlobOptions,
@@ -66,6 +69,25 @@ interface WalrusWriteClient {
 			}>;
 		};
 	}>;
+	writeBlobFlow(options: { blob: Uint8Array }): WriteBlobFlow;
+}
+
+/**
+ * Result of `DefaultWalrusWriteAdapter.startBlobUpload`. Caller has a
+ * registered, uploaded-but-uncertified blob plus the certify `Transaction`;
+ * append further move calls to `certifyTransaction` (e.g.
+ * `add_entry_to_collection`) and submit once to land everything in a single
+ * wallet popup.
+ */
+export interface StartBlobUploadResult {
+	readonly blobObjectId: BlobObjectId;
+	readonly blobId: WalrusBlobId;
+	/**
+	 * `Transaction` already containing the `walrus::blob::certify_blob` move
+	 * call. Append your downstream calls (e.g. `buildAddEntry(tx, ...)`) and
+	 * submit the same `Transaction`.
+	 */
+	readonly certifyTransaction: Transaction;
 }
 
 /** Construction options for `DefaultWalrusWriteAdapter`. */
@@ -120,6 +142,46 @@ export class DefaultWalrusWriteAdapter implements WalrusWriteAdapter {
 			blobId: toWalrusBlobId(result.blobId),
 			blobObjectId: toBlobObjectId(result.blobObject.id),
 		};
+	}
+
+	/**
+	 * Register and upload a blob without certifying it on-chain. Returns the
+	 * blob's Sui object id, content id, and the certify `Transaction`. The
+	 * caller is expected to append further move calls (e.g.
+	 * `add_entry_to_collection`) to `certifyTransaction` and submit once,
+	 * combining certify + downstream ops into a single wallet popup.
+	 *
+	 * The first wallet popup (register_blob) happens inside this call. The
+	 * second popup is whoever submits `certifyTransaction`.
+	 *
+	 * Failure modes:
+	 *   - register fails -> throws `TransportError` with the underlying cause; nothing was uploaded
+	 *   - off-chain upload fails after register -> throws `TransportError`; the blob is registered but unuploaded (will eventually expire)
+	 *   - caller decides not to submit `certifyTransaction` -> blob remains registered+uploaded but uncertified; storage releases on registration expiry
+	 */
+	async startBlobUpload(
+		data: Uint8Array,
+		options: UploadBlobOptions,
+	): Promise<StartBlobUploadResult> {
+		return runWalrusCall(async () => {
+			const flow = this.client.writeBlobFlow({ blob: data });
+			await flow.encode();
+			const registered: WriteBlobStepRegistered = await flow.executeRegister({
+				epochs: options.epochs,
+				deletable: options.deletable,
+				signer: this.signer,
+				owner: options.owner ?? this.signer.toSuiAddress(),
+			});
+			await flow.upload(
+				options.signal === undefined ? {} : { signal: options.signal },
+			);
+			const certifyTransaction = flow.certify();
+			return {
+				blobObjectId: toBlobObjectId(registered.blobObjectId),
+				blobId: toWalrusBlobId(registered.blobId),
+				certifyTransaction,
+			};
+		});
 	}
 
 	async uploadQuilt(

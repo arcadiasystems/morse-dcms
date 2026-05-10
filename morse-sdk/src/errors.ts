@@ -67,6 +67,40 @@ export class TransportError extends MorseError {}
 /** SDK configuration gap (e.g. asking for a network with no canonical deployment). */
 export class ConfigurationError extends MorseError {}
 
+// Uncertified blob
+
+/**
+ * Thrown by `addEntryFromBytes` / `addEncryptedEntryFromBytes` when the
+ * register-and-upload step succeeded (the user already paid for storage and
+ * the bytes are on Walrus storage nodes) but the combined `certify_blob +
+ * add_entry` transaction failed (rejected popup, contract abort, network
+ * blip). The blob exists on Sui as an uncertified `Blob` object that is
+ * holding storage until either the consumer certifies it or the storage
+ * registration expires.
+ *
+ * Carries `blobObjectId` and `blobId` so the consumer can surface them to the
+ * user (e.g. "your upload was wasted; here is the blob id for support") or
+ * retry the flow with fresh bytes. The original failure is preserved as
+ * `cause`.
+ */
+export class UncertifiedBlobError extends MorseError {
+	readonly blobObjectId: string;
+	readonly blobId: string;
+
+	constructor(
+		blobObjectId: string,
+		blobId: string,
+		options?: { cause?: unknown },
+	) {
+		super(
+			`Walrus blob ${blobObjectId} was registered and uploaded but the certify+addEntry transaction failed; the blob is on storage nodes but uncertified. Retry the full flow with fresh bytes, or wait for the storage registration to expire.`,
+			options,
+		);
+		this.blobObjectId = blobObjectId;
+		this.blobId = blobId;
+	}
+}
+
 // Seal
 
 /** Distinct failure modes Seal exposes to consumers. Narrow on `code`. */

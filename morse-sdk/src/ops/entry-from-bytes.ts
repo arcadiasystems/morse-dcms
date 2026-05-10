@@ -1,0 +1,214 @@
+/**
+ * High-level entry ops that compose Walrus upload + add_entry into 2 wallet
+ * popups instead of 3.
+ *
+ * Background: a naive `uploadBlob` then `addEntry` flow emits three popups
+ * (`register_blob`, `certify_blob`, `add_entry_to_collection`). The first
+ * cannot be combined because the off-chain blob upload to storage nodes
+ * happens between register and certify. The second and third are both
+ * on-chain Sui transactions and can be packed into one PTB.
+ *
+ * `addEntryFromBytes` and `addEncryptedEntryFromBytes` use
+ * `DefaultWalrusWriteAdapter.startBlobUpload` to drive the register step,
+ * then append `add_entry_to_collection` to the certify `Transaction` and
+ * submit once.
+ *
+ * Custom `WalrusWriteAdapter` implementations are NOT supported by these
+ * functions — the optimization requires the flow-aware API on
+ * `DefaultWalrusWriteAdapter`. Custom adapters should compose
+ * `walrus.uploadBlob` + `addEntry` (3 popups) until they implement their own
+ * equivalent.
+ */
+
+import type { Transaction } from "@mysten/sui/transactions";
+
+import type { MorsePackageConfig } from "../config.js";
+import { TransportError, UncertifiedBlobError } from "../errors.js";
+import { buildAddEncryptedEntry, buildAddEntry } from "../ptb/entry.js";
+import type { SealAdapter } from "../seal/adapter.js";
+import type {
+	BlobObjectId,
+	PublicationId,
+	PublisherCapId,
+	SealId,
+	WalrusBlobId,
+} from "../types.js";
+import type { WalletAdapter } from "../wallets/adapter.js";
+import type {
+	UploadBlobOptions,
+	WalrusWriteAdapter,
+} from "../walrus/adapter.js";
+import { DefaultWalrusWriteAdapter } from "../walrus/default-adapter.js";
+import { decodeU64ReturnValue } from "./internal.js";
+
+/** Result of `addEntryFromBytes` / `addEncryptedEntryFromBytes`. */
+export interface AddEntryFromBytesResult {
+	readonly digest: string;
+	readonly gasUsedMist: bigint;
+	readonly entryId: number;
+	/** Always `0` for the entry's first revision; surfaced for symmetry. */
+	readonly revisionId: number;
+	/** Sui object id of the newly-created `Blob` referenced by the entry. */
+	readonly blobObjectId: BlobObjectId;
+	/** Walrus content-addressed blob id (43-char URL-safe-base64). */
+	readonly blobId: WalrusBlobId;
+}
+
+/** Args for `addEntryFromBytes`. */
+export interface AddEntryFromBytesArgs {
+	readonly walrus: DefaultWalrusWriteAdapter;
+	readonly publicationId: PublicationId;
+	readonly publisherCapId: PublisherCapId;
+	readonly collectionName: string;
+	readonly name: string;
+	readonly bytes: Uint8Array;
+	readonly contentType: string;
+	readonly upload: UploadBlobOptions;
+	readonly signal?: AbortSignal;
+}
+
+/**
+ * Upload `bytes` to Walrus and add the resulting blob as a new entry in one
+ * collection in 2 wallet popups: register_blob, then a combined
+ * certify_blob + add_entry_to_collection PTB.
+ *
+ * @throws {UncertifiedBlobError} If the second popup fails after upload
+ *   succeeded; the blob is uploaded but uncertified and storage is held
+ *   until expiry. The original error is preserved as `cause`.
+ * @throws {ContractAbortError} On Move abort during the simulation pass
+ *   before any popup happens.
+ * @throws {TransportError} On RPC, network, or upload-step failure before
+ *   the blob is uploaded.
+ */
+export async function addEntryFromBytes(
+	adapter: WalletAdapter,
+	config: MorsePackageConfig,
+	args: AddEntryFromBytesArgs,
+): Promise<AddEntryFromBytesResult> {
+	assertDefaultWalrusAdapter(args.walrus);
+	const upload = await args.walrus.startBlobUpload(args.bytes, args.upload);
+
+	try {
+		const tx = upload.certifyTransaction;
+		buildAddEntry(tx, {
+			packageId: config.packageId,
+			publication: args.publicationId,
+			publisherCap: args.publisherCapId,
+			collectionName: args.collectionName,
+			name: args.name,
+			blobObjectId: upload.blobObjectId,
+			contentType: args.contentType,
+		});
+		return await submitCombinedTx(adapter, tx, {
+			blobObjectId: upload.blobObjectId,
+			blobId: upload.blobId,
+			...(args.signal === undefined ? {} : { signal: args.signal }),
+		});
+	} catch (cause) {
+		if (cause instanceof UncertifiedBlobError) throw cause;
+		throw new UncertifiedBlobError(upload.blobObjectId, upload.blobId, {
+			cause,
+		});
+	}
+}
+
+/** Args for `addEncryptedEntryFromBytes`. */
+export interface AddEncryptedEntryFromBytesArgs {
+	readonly walrus: DefaultWalrusWriteAdapter;
+	readonly seal: SealAdapter;
+	readonly publicationId: PublicationId;
+	readonly publisherCapId: PublisherCapId;
+	readonly collectionName: string;
+	readonly name: string;
+	readonly plaintext: Uint8Array;
+	readonly contentType: string;
+	readonly sealId: SealId;
+	readonly upload: UploadBlobOptions;
+	readonly signal?: AbortSignal;
+}
+
+/**
+ * Encrypt `plaintext` via Seal, upload the ciphertext to Walrus, and add the
+ * resulting blob as a new encrypted entry in 2 wallet popups (encryption is
+ * popup-free; popups are register_blob then certify_blob + add_entry).
+ *
+ * @throws {SealError} If encryption fails (no popup yet).
+ * @throws {UncertifiedBlobError} If the second popup fails after upload
+ *   succeeded.
+ * @throws {ContractAbortError} On Move abort during simulation.
+ * @throws {TransportError} On RPC, network, or upload-step failure before
+ *   the blob is uploaded.
+ */
+export async function addEncryptedEntryFromBytes(
+	adapter: WalletAdapter,
+	config: MorsePackageConfig,
+	args: AddEncryptedEntryFromBytesArgs,
+): Promise<AddEntryFromBytesResult> {
+	assertDefaultWalrusAdapter(args.walrus);
+
+	const { ciphertext } = await args.seal.encrypt(args.plaintext, {
+		sealId: args.sealId,
+	});
+
+	const upload = await args.walrus.startBlobUpload(ciphertext, args.upload);
+
+	try {
+		const tx = upload.certifyTransaction;
+		buildAddEncryptedEntry(tx, {
+			packageId: config.packageId,
+			publication: args.publicationId,
+			publisherCap: args.publisherCapId,
+			collectionName: args.collectionName,
+			name: args.name,
+			blobObjectId: upload.blobObjectId,
+			contentType: args.contentType,
+			sealId: args.sealId,
+		});
+		return await submitCombinedTx(adapter, tx, {
+			blobObjectId: upload.blobObjectId,
+			blobId: upload.blobId,
+			...(args.signal === undefined ? {} : { signal: args.signal }),
+		});
+	} catch (cause) {
+		if (cause instanceof UncertifiedBlobError) throw cause;
+		throw new UncertifiedBlobError(upload.blobObjectId, upload.blobId, {
+			cause,
+		});
+	}
+}
+
+function assertDefaultWalrusAdapter(
+	walrus: WalrusWriteAdapter,
+): asserts walrus is DefaultWalrusWriteAdapter {
+	if (!(walrus instanceof DefaultWalrusWriteAdapter)) {
+		throw new TransportError(
+			"addEntryFromBytes / addEncryptedEntryFromBytes require DefaultWalrusWriteAdapter (the 2-popup optimization uses its flow-aware API). For custom WalrusWriteAdapter implementations, compose walrus.uploadBlob + addEntry (3 popups).",
+		);
+	}
+}
+
+interface SubmitCombinedArgs {
+	readonly blobObjectId: BlobObjectId;
+	readonly blobId: WalrusBlobId;
+	readonly signal?: AbortSignal;
+}
+
+async function submitCombinedTx(
+	adapter: WalletAdapter,
+	tx: Transaction,
+	args: SubmitCombinedArgs,
+): Promise<AddEntryFromBytesResult> {
+	const simulated = await adapter.simulateTransaction(tx, args.signal);
+	// Combined PTB: certify_blob is move call 0, add_entry_to_collection is
+	// move call 1; the entryId u64 is the return value of call 1.
+	const entryId = decodeU64ReturnValue(simulated, 1, 0);
+	const receipt = await adapter.signAndExecuteTransaction(tx, args.signal);
+	return {
+		digest: receipt.digest,
+		gasUsedMist: receipt.gasUsedMist,
+		entryId,
+		revisionId: 0,
+		blobObjectId: args.blobObjectId,
+		blobId: args.blobId,
+	};
+}

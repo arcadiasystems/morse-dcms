@@ -16,6 +16,7 @@ export type {
 export {
 	DefaultWalrusWriteAdapter,
 	type DefaultWalrusWriteAdapterOptions,
+	type StartBlobUploadResult,
 	type WalrusAdapterConfig,
 } from "./default-adapter.js";
 export {
