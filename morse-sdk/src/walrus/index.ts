@@ -3,20 +3,22 @@
  * QuiltPatchId structural codec.
  */
 
-export type {
-	QuiltPatchInput,
-	UploadBlobOptions,
-	UploadBlobResult,
-	UploadQuiltOptions,
-	UploadQuiltPatch,
-	UploadQuiltResult,
-	WalrusUploadCommonOptions,
-	WalrusWriteAdapter,
+export {
+	isWalrusFlowCapable,
+	type QuiltPatchInput,
+	type StartBlobUploadResult,
+	type UploadBlobOptions,
+	type UploadBlobResult,
+	type UploadQuiltOptions,
+	type UploadQuiltPatch,
+	type UploadQuiltResult,
+	type WalrusFlowCapable,
+	type WalrusUploadCommonOptions,
+	type WalrusWriteAdapter,
 } from "./adapter.js";
 export {
 	DefaultWalrusWriteAdapter,
 	type DefaultWalrusWriteAdapterOptions,
-	type StartBlobUploadResult,
 	type WalrusAdapterConfig,
 } from "./default-adapter.js";
 export {

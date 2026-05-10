@@ -21,6 +21,7 @@ import type {
 } from "../wallets/adapter.js";
 import type {
 	StartBlobUploadResult,
+	WalrusFlowCapable,
 	WalrusWriteAdapter,
 } from "../walrus/index.js";
 import { DefaultWalrusWriteAdapter } from "../walrus/index.js";
@@ -168,7 +169,7 @@ describe("addEntryFromBytes", () => {
 		expect(ub.cause).toBe(cause);
 	});
 
-	test("rejects a non-DefaultWalrusWriteAdapter with TransportError before any IO", async () => {
+	test("rejects a non-flow-capable WalrusWriteAdapter with TransportError before any IO", async () => {
 		const customWalrus: WalrusWriteAdapter = {
 			uploadBlob: mock(async () => ({
 				blobId: BLOB_ID,
@@ -182,7 +183,8 @@ describe("addEntryFromBytes", () => {
 
 		await expect(
 			addEntryFromBytes(adapter, CONFIG, {
-				walrus: customWalrus as unknown as DefaultWalrusWriteAdapter,
+				walrus: customWalrus as unknown as WalrusWriteAdapter &
+					WalrusFlowCapable,
 				publicationId: PUBLICATION_ID,
 				publisherCapId: PUBLISHER_CAP_ID,
 				collectionName: "blog",

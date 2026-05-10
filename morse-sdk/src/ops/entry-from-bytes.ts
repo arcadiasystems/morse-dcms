@@ -8,16 +8,13 @@
  * happens between register and certify. The second and third are both
  * on-chain Sui transactions and can be packed into one PTB.
  *
- * `addEntryFromBytes` and `addEncryptedEntryFromBytes` use
- * `DefaultWalrusWriteAdapter.startBlobUpload` to drive the register step,
- * then append `add_entry_to_collection` to the certify `Transaction` and
- * submit once.
- *
- * Custom `WalrusWriteAdapter` implementations are NOT supported by these
- * functions — the optimization requires the flow-aware API on
- * `DefaultWalrusWriteAdapter`. Custom adapters should compose
- * `walrus.uploadBlob` + `addEntry` (3 popups) until they implement their own
- * equivalent.
+ * `addEntryFromBytes` and `addEncryptedEntryFromBytes` use the
+ * `WalrusFlowCapable.startBlobUpload` capability to drive the register
+ * step, then append `add_entry_to_collection` to the certify `Transaction`
+ * and submit once. The default `DefaultWalrusWriteAdapter` implements the
+ * capability; consumers passing a custom `WalrusWriteAdapter` without
+ * `WalrusFlowCapable` get a clear `TransportError` and should compose
+ * `walrus.uploadBlob` + `addEntry` (3 popups) instead.
  */
 
 import type { Transaction } from "@mysten/sui/transactions";
@@ -34,11 +31,12 @@ import type {
 	WalrusBlobId,
 } from "../types.js";
 import type { WalletAdapter } from "../wallets/adapter.js";
-import type {
-	UploadBlobOptions,
-	WalrusWriteAdapter,
+import {
+	isWalrusFlowCapable,
+	type UploadBlobOptions,
+	type WalrusFlowCapable,
+	type WalrusWriteAdapter,
 } from "../walrus/adapter.js";
-import { DefaultWalrusWriteAdapter } from "../walrus/default-adapter.js";
 import { decodeU64ReturnValue } from "./internal.js";
 
 /**
@@ -80,7 +78,7 @@ export interface AddEntryFromBytesResult {
 
 /** Args for `addEntryFromBytes`. */
 export interface AddEntryFromBytesArgs {
-	readonly walrus: DefaultWalrusWriteAdapter;
+	readonly walrus: WalrusWriteAdapter & WalrusFlowCapable;
 	readonly publicationId: PublicationId;
 	readonly publisherCapId: PublisherCapId;
 	readonly collectionName: string;
@@ -116,7 +114,7 @@ export async function addEntryFromBytes(
 	config: MorsePackageConfig,
 	args: AddEntryFromBytesArgs,
 ): Promise<AddEntryFromBytesResult> {
-	assertDefaultWalrusAdapter(args.walrus);
+	assertFlowCapable(args.walrus);
 	args.onProgress?.({ phase: "uploading" });
 	const upload = await args.walrus.startBlobUpload(args.bytes, args.upload);
 
@@ -149,7 +147,7 @@ export async function addEntryFromBytes(
 
 /** Args for `addEncryptedEntryFromBytes`. */
 export interface AddEncryptedEntryFromBytesArgs {
-	readonly walrus: DefaultWalrusWriteAdapter;
+	readonly walrus: WalrusWriteAdapter & WalrusFlowCapable;
 	readonly seal: SealAdapter;
 	readonly publicationId: PublicationId;
 	readonly publisherCapId: PublisherCapId;
@@ -186,7 +184,7 @@ export async function addEncryptedEntryFromBytes(
 	config: MorsePackageConfig,
 	args: AddEncryptedEntryFromBytesArgs,
 ): Promise<AddEntryFromBytesResult> {
-	assertDefaultWalrusAdapter(args.walrus);
+	assertFlowCapable(args.walrus);
 
 	args.onProgress?.({ phase: "encrypting" });
 	const { ciphertext } = await args.seal.encrypt(args.plaintext, {
@@ -224,12 +222,12 @@ export async function addEncryptedEntryFromBytes(
 	}
 }
 
-function assertDefaultWalrusAdapter(
+function assertFlowCapable(
 	walrus: WalrusWriteAdapter,
-): asserts walrus is DefaultWalrusWriteAdapter {
-	if (!(walrus instanceof DefaultWalrusWriteAdapter)) {
+): asserts walrus is WalrusWriteAdapter & WalrusFlowCapable {
+	if (!isWalrusFlowCapable(walrus)) {
 		throw new TransportError(
-			"addEntryFromBytes / addEncryptedEntryFromBytes require DefaultWalrusWriteAdapter (the 2-popup optimization uses its flow-aware API). For custom WalrusWriteAdapter implementations, compose walrus.uploadBlob + addEntry (3 popups).",
+			"addEntryFromBytes / addEncryptedEntryFromBytes require a WalrusWriteAdapter that implements WalrusFlowCapable (i.e. exposes startBlobUpload). The default DefaultWalrusWriteAdapter does. Custom adapters that do not implement the capability should compose walrus.uploadBlob + addEntry (3 popups) instead.",
 		);
 	}
 }

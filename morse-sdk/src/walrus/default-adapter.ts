@@ -5,7 +5,6 @@
  */
 
 import type { Signer } from "@mysten/sui/cryptography";
-import type { Transaction } from "@mysten/sui/transactions";
 import {
 	UserAbortError,
 	WalrusClient,
@@ -16,14 +15,16 @@ import {
 
 import { toBlobObjectId, toWalrusBlobId } from "../codecs.js";
 import { TransportError, ValidationError } from "../errors.js";
-import type { BlobObjectId, QuiltPatchId, WalrusBlobId } from "../types.js";
+import type { QuiltPatchId, WalrusBlobId } from "../types.js";
 import type {
 	QuiltPatchInput,
+	StartBlobUploadResult,
 	UploadBlobOptions,
 	UploadBlobResult,
 	UploadQuiltOptions,
 	UploadQuiltPatch,
 	UploadQuiltResult,
+	WalrusFlowCapable,
 	WalrusWriteAdapter,
 } from "./adapter.js";
 import { quiltPatchIdFromString } from "./quilt-patch-id.js";
@@ -72,24 +73,6 @@ interface WalrusWriteClient {
 	writeBlobFlow(options: { blob: Uint8Array }): WriteBlobFlow;
 }
 
-/**
- * Result of `DefaultWalrusWriteAdapter.startBlobUpload`. Caller has a
- * registered, uploaded-but-uncertified blob plus the certify `Transaction`;
- * append further move calls to `certifyTransaction` (e.g.
- * `add_entry_to_collection`) and submit once to land everything in a single
- * wallet popup.
- */
-export interface StartBlobUploadResult {
-	readonly blobObjectId: BlobObjectId;
-	readonly blobId: WalrusBlobId;
-	/**
-	 * `Transaction` already containing the `walrus::blob::certify_blob` move
-	 * call. Append your downstream calls (e.g. `buildAddEntry(tx, ...)`) and
-	 * submit the same `Transaction`.
-	 */
-	readonly certifyTransaction: Transaction;
-}
-
 /** Construction options for `DefaultWalrusWriteAdapter`. */
 export interface DefaultWalrusWriteAdapterOptions {
 	readonly client: WalrusWriteClient;
@@ -100,7 +83,9 @@ export interface DefaultWalrusWriteAdapterOptions {
 export type WalrusAdapterConfig = WalrusClientConfig;
 
 /** Default `WalrusWriteAdapter` wrapping `@mysten/walrus`. */
-export class DefaultWalrusWriteAdapter implements WalrusWriteAdapter {
+export class DefaultWalrusWriteAdapter
+	implements WalrusWriteAdapter, WalrusFlowCapable
+{
 	private readonly client: WalrusWriteClient;
 	private readonly signer: Signer;
 

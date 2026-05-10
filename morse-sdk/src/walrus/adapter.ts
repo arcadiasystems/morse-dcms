@@ -4,6 +4,8 @@
  * paths need.
  */
 
+import type { Transaction } from "@mysten/sui/transactions";
+
 import type { BlobObjectId, QuiltPatchId, WalrusBlobId } from "../types.js";
 
 /** Storage parameters shared by blob and quilt uploads. */
@@ -70,4 +72,48 @@ export interface WalrusWriteAdapter {
 		patches: readonly QuiltPatchInput[],
 		options: UploadQuiltOptions,
 	): Promise<UploadQuiltResult>;
+}
+
+/** Result of `WalrusFlowCapable.startBlobUpload`. */
+export interface StartBlobUploadResult {
+	readonly blobObjectId: BlobObjectId;
+	readonly blobId: WalrusBlobId;
+	/**
+	 * `Transaction` already containing the `walrus::blob::certify_blob` move
+	 * call. Append your downstream calls (e.g. `add_entry_to_collection`) and
+	 * submit the same `Transaction`.
+	 */
+	readonly certifyTransaction: Transaction;
+}
+
+/**
+ * Optional capability layered on top of `WalrusWriteAdapter`. Adapters that
+ * support driving Walrus's `writeBlobFlow` step-by-step can implement this
+ * to enable single-PTB ops like `addEntryFromBytes` / `addEncryptedEntryFromBytes`,
+ * which combine `certify_blob` with downstream contract calls in one wallet
+ * popup. Adapters without this capability fall back to the standard 2- or
+ * 3-popup paths via `uploadBlob` + downstream ops.
+ */
+export interface WalrusFlowCapable {
+	/**
+	 * Register and upload a blob without certifying it on-chain. Returns
+	 * the blob's Sui object id, content id, and the certify `Transaction`.
+	 * The caller appends further move calls to `certifyTransaction` and
+	 * submits once, combining certify + downstream ops into a single
+	 * wallet popup.
+	 */
+	startBlobUpload(
+		data: Uint8Array,
+		options: UploadBlobOptions,
+	): Promise<StartBlobUploadResult>;
+}
+
+/** Type guard for the optional flow capability. */
+export function isWalrusFlowCapable(
+	walrus: WalrusWriteAdapter,
+): walrus is WalrusWriteAdapter & WalrusFlowCapable {
+	return (
+		typeof (walrus as WalrusWriteAdapter & Partial<WalrusFlowCapable>)
+			.startBlobUpload === "function"
+	);
 }
