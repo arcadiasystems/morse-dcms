@@ -19,6 +19,7 @@ export {
 	toSuiObjectId,
 	toWalrusBlobId,
 } from "./codecs.js";
+export { TESTED_SUBSTRATE } from "./compatibility.js";
 export {
 	DEFAULT_RPC_URLS,
 	type MorseConfigOptions,

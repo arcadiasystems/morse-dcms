@@ -17,6 +17,18 @@ bun add @mysten/seal       # for DefaultSealAdapter and encrypted entries
 
 `@mysten/sui` is required: the SDK takes types from it (`Transaction`, `Signer`) and you construct the gRPC client and keypairs directly. `@mysten/walrus` and `@mysten/seal` are optional peer dependencies; you only pay the install cost for the surface you actually import.
 
+## Compatibility
+
+morse-sdk is built and tested against specific minor versions of its Mysten substrate. Newer or older versions are not validated and may produce runtime errors. The peer-dependency ranges in `package.json` enforce these bounds — `bun install` will warn if you try to use a different minor.
+
+| morse-sdk | `@mysten/sui` | `@mysten/walrus` | `@mysten/seal` | Sui network | Verified  |
+| --------- | ------------- | ---------------- | -------------- | ----------- | --------- |
+| 0.1.x     | 2.16.2-2.16.x | 1.1.6-1.1.x      | 1.1.3-1.1.x    | testnet     | 2026-05-10 |
+
+Mysten ships breaking changes inside major version boundaries. When `@mysten/walrus@1.2.0` (or any minor bump on these libraries) is released, morse-sdk needs a coordinated minor bump and re-verification before the new minor is supported. Pin via `bun add morse-sdk@~0.1.0` if you want patch updates without surprise minors.
+
+The verification protocol is documented in [`CONTRIBUTING.md`](./CONTRIBUTING.md): every Mysten dep bump runs the full `scripts/phase-N-*.ts` smoke suite against testnet before the bump lands.
+
 ## Quick start
 
 Setup once at startup:
