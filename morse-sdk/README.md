@@ -29,6 +29,18 @@ Mysten ships breaking changes inside major version boundaries. When `@mysten/wal
 
 The verification protocol is documented in [`CONTRIBUTING.md`](./CONTRIBUTING.md): every Mysten dep bump runs the full `scripts/phase-N-*.ts` smoke suite against testnet before the bump lands.
 
+### Runtime requirements
+
+morse-sdk is ESM-only (`"type": "module"` in `package.json`); CommonJS `require` is not supported.
+
+| Runtime | Supported | Notes                                                                                                                                            |
+| ------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Bun     | >= 1.2.0  | Primary development runtime. Enforced via `engines.bun`. Smoke scripts (`bun run scripts/phase-N-*.ts`) require Bun.                              |
+| Node    | >= 18.0   | Library code uses ES2022 features (private class fields, `Error.cause`), `TextEncoder` / `crypto.getRandomValues` / `BigInt` (all stable on Node 18+). |
+| Browser | Evergreen | Chrome / Edge / Firefox / Safari recent stable. Bundlers (Vite, Webpack, esbuild) handle the rest. No `require`-based polyfills needed.            |
+
+The SDK does not pull in Node-specific APIs (`fs`, `path`, `process`, `crypto` from `node:crypto`); the public surface is portable across both runtimes. A handful of `@mysten/*` substrate libraries reach into Node-shaped APIs internally — consult their documentation for browser polyfill requirements (typically zero with modern bundlers).
+
 ## Quick start
 
 Setup once at startup:
@@ -105,7 +117,7 @@ The SDK ships two ways to publish content. The high-level `addEntryFromBytes` (a
 | Decouple upload and add-entry (e.g. draft-then-attach UX) | `uploadBlob` (upload time), `addEntry` (publish time) | 2 + 1         |
 | Server pre-uploads, browser only adds entries        | `uploadBlob` (server), `addEntry` (browser)         | 0 server + 1 browser |
 
-**`addEntryFromBytes` requires `DefaultWalrusWriteAdapter`** (the optimization uses its flow-aware `startBlobUpload` API). Custom `WalrusWriteAdapter` implementations should use the split form until they implement their own equivalent. The function rejects non-default adapters with `TransportError` before any IO.
+**`addEntryFromBytes` requires a `WalrusWriteAdapter` that also implements `WalrusFlowCapable`** (the optimization uses its flow-aware `startBlobUpload` API). The default `DefaultWalrusWriteAdapter` implements both; custom adapters that don't implement the capability are rejected with `TransportError` before any IO and should use the split form.
 
 If `addEntryFromBytes` succeeds in popup 1 (register + upload) but fails in popup 2 (the combined certify + add_entry tx — user rejected, contract aborted, network blip), it throws `UncertifiedBlobError` carrying the `blobObjectId` and `blobId` of the orphaned blob. The blob is on storage nodes and you've paid for it but it's uncertified; storage releases on registration expiry. Surface the error to your user or log the IDs for support.
 
@@ -125,6 +137,90 @@ Per-concern, compile-checked illustrative code. Each file is short, focused, and
 | Reading                               | [`examples/reading.ts`](./examples/reading.ts)                      | getPublication, getEntry, getRevision, listEntries, scanEntries                       |
 | Browser wallet integration            | [`examples/wallet-standard.ts`](./examples/wallet-standard.ts)      | WalletAdapter impl against `@mysten/dapp-kit` hooks (or any wallet-standard signer)   |
 | React + dapp-kit + Suiet              | [`examples/wallet-standard-react.md`](./examples/wallet-standard-react.md) | Worked walkthrough: providers, connect button, hook, adapter wiring, Seal SessionKey  |
+
+## API reference
+
+The full public surface, grouped by concern. Every export carries a JSDoc on its definition; this table is the index, not the documentation.
+
+### Configuration
+
+| Export | Purpose |
+| --- | --- |
+| `morseConfig({ network })` | Build a `NetworkConfig` for testnet (canonical addresses baked in) or supply override fields for forks / local nodes. |
+| `Network` | Const enum-like: `"mainnet" \| "testnet" \| "localnet"`. Mainnet currently throws `ConfigurationError` (gates v1.0.0). |
+| `DEFAULT_RPC_URLS` | Public Sui fullnode URLs per network. Read-only. |
+| `TESTED_SUBSTRATE` | Mysten substrate versions verified end-to-end. Diagnostic constant. |
+
+### Domain ops (write paths)
+
+| Export | Purpose |
+| --- | --- |
+| `createPublication(adapter, config, args)` | Create + share publication; returns `{ publicationId, ownerCapId, publisherCapId }`. |
+| `transferOwnership(adapter, config, args)` | Transfer the OwnerCap to a new address. |
+| `deletePublication(reader, adapter, config, args)` | Delete an empty publication; pre-flight checks for collections. |
+| `issuePublisherCap` / `revokePublisherCap` / `destroyPublisherCap` / `transferPublisherCap` | PublisherCap lifecycle. Issue + transfer-to-holder is atomic. |
+| `createCollection` / `deleteCollection` | Collection lifecycle in blob or quilt mode. |
+| `addEntryFromBytes(adapter, config, args)` | **Recommended.** Upload + add entry in 2 wallet popups. |
+| `addEncryptedEntryFromBytes(adapter, config, args)` | Encrypt + upload + add encrypted entry in 2 wallet popups. |
+| `addEntry` / `addEncryptedEntry` | Lower-level: add entry against a pre-uploaded `blobObjectId`. |
+| `appendDraftRevision` / `appendEncryptedDraftRevision` / `publishFromDraft` / `publishDirect` | Revision lifecycle on existing entries. |
+| `deleteEntry` | Remove an entry and its revisions. |
+
+### Reader (RPC-backed)
+
+| Export | Purpose |
+| --- | --- |
+| `RpcPublicationReader.fromMorseConfig(config, client)` | Construct a reader bound to the canonical `originalPackageId` for type filters. |
+| `reader.getPublication` / `getEntry` / `getRevision` / `getPublisherCap` | Single-object reads. |
+| `reader.listPublicationsOwnedBy` / `listPublisherCapsOwnedBy` / `listEntries` | Paginated lists. |
+| `reader.scanEntries` | Async-iterator over every entry in a collection. |
+
+### Adapters
+
+| Export | Purpose |
+| --- | --- |
+| `KeypairAdapter` | Server / CLI `WalletAdapter` wrapping a raw `Ed25519Keypair`. |
+| `WalletStandardSigner.fromAccount(account, callbacks)` | Browser-side `Signer` for `@mysten/walrus` and `@mysten/seal`; wraps wallet-standard wallets without ever holding the user's key. |
+| `DefaultWalrusWriteAdapter.fromConfig(config, signer)` | Walrus uploads (blob + quilt). Implements `WalrusFlowCapable` (the 2-popup optimization). |
+| `DefaultWalrusReadAdapter.fromConfig(config)` | Walrus reads (`readBlob`, `readBlobByObjectId`, `readQuiltPatch`, `readBlobRef`). |
+| `DefaultSealAdapter.fromMorseConfig(config, options, suiClient)` | Threshold encryption / decryption. Defaults canonical testnet key servers. |
+| `WalletAdapter` / `WalrusWriteAdapter` / `WalrusReadAdapter` / `SealAdapter` | Interfaces for substituting custom implementations. |
+| `WalrusFlowCapable` / `isWalrusFlowCapable` | Optional capability for the 2-popup `addEntryFromBytes` path. |
+
+### Seal identity
+
+| Export | Purpose |
+| --- | --- |
+| `buildPublisherSealId(publicationId, nonce)` | Build a publisher-policy Seal identity (`pubId(32) \|\| tag(1) \|\| nonce`). |
+| `decodePublisherSealId(sealId)` | Inspect an existing identity. Throws `ValidationError` on tampered tags. |
+
+### Codecs (branded ID constructors)
+
+| Export | Purpose |
+| --- | --- |
+| `toPackageId` / `toRegistryId` / `toPublicationId` / `toOwnerCapId` / `toPublisherCapId` / `toBlobObjectId` / `toSuiAddress` / `toSuiObjectId` | Validate and normalize Sui object IDs to canonical 64-char hex. |
+| `toWalrusBlobId` | Validate Walrus content-addressed blob ID (43-char URL-safe-base64). |
+| `toQuiltPatchId` | Validate 37-byte quilt patch ID. |
+| `accessPolicyToU8` / `accessPolicyFromU8` / `storageModeToU8` / `storageModeFromU8` | Move enum ↔ TypeScript enum conversion. |
+| `encodeQuiltPatchId` / `decodeQuiltPatchId` / `quiltPatchIdToString` / `quiltPatchIdFromString` | Quilt patch ID structural codec (`{quiltBlobId, version, startIndex, endIndex}`). |
+
+### Errors
+
+| Export | Purpose |
+| --- | --- |
+| `MorseError` | Abstract base. Every SDK throw extends it. |
+| `ValidationError` (`field`) | Client-side input rejection. |
+| `NotFoundError` (`resource`, `identifier`) | Object missing on-chain or on Walrus. |
+| `UnauthorizedError` | Client-side auth check failed. |
+| `ContractAbortError` (`module`, `abortCode`, `reason`) | Move VM aborted; `ABORT_CODES` table maps codes to names. |
+| `SealError` (`code`) | Seal authorization or decryption failure (`no-access` / `decrypt-failed` / `session-expired` / `rate-limited`). |
+| `TransportError` | RPC, network, or response-parsing failure. |
+| `ConfigurationError` | SDK config gap (e.g. unsupported network, raw-byte sign on `WalletStandardSigner`). |
+| `UncertifiedBlobError` (`blobObjectId`, `blobId`) | `addEntryFromBytes` upload succeeded but second popup failed. |
+
+### Types
+
+`Publication`, `Collection`, `Entry`, `Revision`, `PublisherCap`, `OwnerCap`, `BlobRef`, `AccessPolicy`, `StorageMode`, `SealPolicyTag`, branded ID types (`PublicationId`, `BlobObjectId`, `WalrusBlobId`, `QuiltPatchId`, etc.).
 
 ## Conceptual model
 
@@ -260,8 +356,11 @@ bun install
 bun run lint
 bun run typecheck
 bun run test
+bun run test:coverage   # 265 tests, ~97% line / ~96% function coverage at v0.1.0
 bun run build
 ```
+
+`bun test` is the unit test runner; `bun run test:coverage` adds a per-file coverage report. CI gates require all four (lint, typecheck, test, build) to pass; coverage is informational. End-to-end testnet smokes live in `scripts/` (above).
 
 ## License
 
