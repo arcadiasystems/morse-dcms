@@ -97,13 +97,17 @@ export class WalletStandardSigner extends Signer {
 
 	/**
 	 * Build a signer from a wallet-standard `WalletAccount` plus the wallet's
-	 * `signTransaction` / `signPersonalMessage` callbacks. Decodes the
-	 * signature scheme from `account.publicKey` length and confirms the
-	 * derivation matches `account.address`.
+	 * `signTransaction` / `signPersonalMessage` callbacks. Tries every plausible
+	 * interpretation of `account.publicKey` and returns the one whose derived
+	 * address matches `account.address`.
 	 *
-	 * Supported schemes: ED25519 (32-byte raw key), Secp256k1, Secp256r1,
-	 * Passkey (all three 33-byte raw keys, disambiguated by address match),
-	 * and ZkLogin (variable-length identifier of the form
+	 * Wallet-standard does not mandate a single encoding for `publicKey`:
+	 * Suiet emits raw bytes (e.g. 32 for Ed25519), Slush emits Sui's canonical
+	 * with-flag form (e.g. `0x00 || 32-byte raw` for Ed25519). Both are
+	 * accepted; address-match disambiguates.
+	 *
+	 * Supported schemes: ED25519, Secp256k1, Secp256r1, Passkey (raw or
+	 * flag-prefixed), and ZkLogin (variable-length identifier of the form
 	 * `[1 byte iss-len][iss bytes][32 byte addressSeed]`). MultiSig is
 	 * refused.
 	 *
@@ -194,10 +198,12 @@ interface DecodedAccountKey {
 
 /**
  * Pick the `PublicKey` subclass whose Sui address matches `account.address`.
- * Wallet-standard `account.publicKey` is the raw key without a flag byte, so
- * a 33-byte payload is structurally ambiguous between Secp256k1, Secp256r1,
- * and Passkey: address derivation (which folds in the scheme flag) is the
- * only reliable disambiguator.
+ * Wallet-standard does not mandate a single encoding for `account.publicKey`:
+ * Suiet emits the raw key bytes; Slush emits Sui's canonical "with-flag" form
+ * (`flagByte || rawKey`). Both are valid, so the decoder tries every plausible
+ * (length, leading-byte) interpretation and picks the one whose address
+ * derivation matches the wallet-reported address. Address-match is the only
+ * reliable disambiguator because the scheme flag folds into the address hash.
  */
 function decodeAccountPublicKey(
 	account: WalletStandardAccount,
@@ -205,39 +211,17 @@ function decodeAccountPublicKey(
 	const bytes = new Uint8Array(Array.from(account.publicKey));
 	const expected = normalizeSuiAddress(account.address);
 
-	if (bytes.length === 32) {
-		const publicKey = new Ed25519PublicKey(bytes);
+	const candidates = candidateInterpretations(bytes);
+	for (const { scheme, build } of candidates) {
+		let publicKey: PublicKey;
+		try {
+			publicKey = build();
+		} catch {
+			continue;
+		}
 		if (normalizeSuiAddress(publicKey.toSuiAddress()) === expected) {
-			return { publicKey, keyScheme: "ED25519" };
+			return { publicKey, keyScheme: scheme };
 		}
-		throw new ConfigurationError(
-			`WalletStandardSigner: account.publicKey is 32 bytes (Ed25519) but does not derive account.address ${account.address}.`,
-		);
-	}
-
-	if (bytes.length === 33) {
-		const builders: ReadonlyArray<{
-			readonly scheme: SignatureScheme;
-			readonly build: () => PublicKey;
-		}> = [
-			{ scheme: "Secp256k1", build: () => new Secp256k1PublicKey(bytes) },
-			{ scheme: "Secp256r1", build: () => new Secp256r1PublicKey(bytes) },
-			{ scheme: "Passkey", build: () => new PasskeyPublicKey(bytes) },
-		];
-		for (const { scheme, build } of builders) {
-			let publicKey: PublicKey;
-			try {
-				publicKey = build();
-			} catch {
-				continue;
-			}
-			if (normalizeSuiAddress(publicKey.toSuiAddress()) === expected) {
-				return { publicKey, keyScheme: scheme };
-			}
-		}
-		throw new ConfigurationError(
-			`WalletStandardSigner: account.publicKey is 33 bytes but does not match Secp256k1, Secp256r1, or Passkey derivation of address ${account.address}.`,
-		);
 	}
 
 	// ZkLogin pub identifier is `[1 byte iss-len][iss bytes][32 byte addressSeed]`,
@@ -257,6 +241,71 @@ function decodeAccountPublicKey(
 	}
 
 	throw new ConfigurationError(
-		`WalletStandardSigner does not support this account: account.publicKey is ${bytes.length} bytes and does not match a zkLogin identifier for address ${account.address}. This suggests a multisig or unknown signature scheme; implement a custom Signer.`,
+		`WalletStandardSigner: account.publicKey is ${bytes.length} bytes and matches neither a raw nor a flag-prefixed (Sui canonical) form of Ed25519, Secp256k1, Secp256r1, or Passkey, nor a zkLogin identifier, for address ${account.address}. This suggests a multisig or unknown signature scheme; implement a custom Signer.`,
 	);
+}
+
+interface SchemeCandidate {
+	readonly scheme: SignatureScheme;
+	readonly build: () => PublicKey;
+}
+
+/**
+ * Build the list of (scheme, public-key-constructor) pairs to try against
+ * `account.address`. Covers raw bytes (Suiet-style) and flag-prefixed bytes
+ * (Sui canonical / Slush-style). Order is stable but irrelevant for
+ * correctness — address-match disambiguates.
+ */
+function candidateInterpretations(
+	bytes: Uint8Array,
+): readonly SchemeCandidate[] {
+	const list: SchemeCandidate[] = [];
+
+	if (bytes.length === 32) {
+		list.push({
+			scheme: "ED25519",
+			build: () => new Ed25519PublicKey(bytes),
+		});
+	}
+
+	if (bytes.length === 33) {
+		list.push(
+			{ scheme: "Secp256k1", build: () => new Secp256k1PublicKey(bytes) },
+			{ scheme: "Secp256r1", build: () => new Secp256r1PublicKey(bytes) },
+			{ scheme: "Passkey", build: () => new PasskeyPublicKey(bytes) },
+		);
+		// Sui canonical Ed25519 with-flag: 0x00 || 32-byte raw key.
+		if (bytes[0] === 0x00) {
+			const inner = bytes.slice(1);
+			list.push({
+				scheme: "ED25519",
+				build: () => new Ed25519PublicKey(inner),
+			});
+		}
+	}
+
+	if (bytes.length === 34) {
+		const inner = bytes.slice(1);
+		// Sui canonical with-flag forms: flag || 33-byte compressed point.
+		if (bytes[0] === 0x01) {
+			list.push({
+				scheme: "Secp256k1",
+				build: () => new Secp256k1PublicKey(inner),
+			});
+		}
+		if (bytes[0] === 0x02) {
+			list.push({
+				scheme: "Secp256r1",
+				build: () => new Secp256r1PublicKey(inner),
+			});
+		}
+		if (bytes[0] === 0x06) {
+			list.push({
+				scheme: "Passkey",
+				build: () => new PasskeyPublicKey(inner),
+			});
+		}
+	}
+
+	return list;
 }

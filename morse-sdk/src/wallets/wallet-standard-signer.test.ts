@@ -23,6 +23,15 @@ function secret(byte: number): Uint8Array {
 	return new Uint8Array(32).fill(byte);
 }
 
+function fromHex(hex: string): Uint8Array {
+	const stripped = hex.startsWith("0x") ? hex.slice(2) : hex;
+	const out = new Uint8Array(stripped.length / 2);
+	for (let i = 0; i < out.length; i += 1) {
+		out[i] = Number.parseInt(stripped.slice(i * 2, i * 2 + 2), 16);
+	}
+	return out;
+}
+
 function fakeClient(): ClientWithCoreApi {
 	return {
 		core: {
@@ -178,6 +187,50 @@ describe("WalletStandardSigner", () => {
 		expect(signer.toSuiAddress()).toBe(keypair.toSuiAddress());
 	});
 
+	test("fromAccount accepts Slush's flag-prefixed Ed25519 (0x00 || 32 raw)", () => {
+		// Captured from Mysten's Slush wallet on 2026-05-10 with an imported
+		// Ed25519 keypair. Slush emits Sui's canonical with-flag pubkey
+		// encoding via wallet-standard, not raw bytes; the decoder must
+		// accept this form.
+		const publicKey = fromHex(
+			"0x007aacd2412cbcd25c54ae641c7f4f178b8ecbd8f20510d687172e23b19d0305e9",
+		);
+		const address =
+			"0x830bd528f47068329ddbc9fcbd1f0ead051e01b0538897bb260c4c299f44ba3e";
+		const signer = WalletStandardSigner.fromAccount(
+			{ address, publicKey },
+			{
+				signTransaction: mock(async () => ({ bytes: "AAAA", signature: "s" })),
+				signPersonalMessage: mock(async () => ({
+					bytes: "AAAA",
+					signature: "s",
+				})),
+			},
+		);
+		expect(signer.getKeyScheme()).toBe("ED25519");
+		expect(signer.toSuiAddress()).toBe(address);
+	});
+
+	test("fromAccount accepts a flag-prefixed Secp256k1 (0x01 || 33 raw)", () => {
+		const keypair = Secp256k1Keypair.fromSecretKey(secret(0x55));
+		const raw = keypair.getPublicKey().toRawBytes();
+		const flagged = new Uint8Array(raw.length + 1);
+		flagged[0] = 0x01;
+		flagged.set(raw, 1);
+		const signer = WalletStandardSigner.fromAccount(
+			{ address: keypair.toSuiAddress(), publicKey: flagged },
+			{
+				signTransaction: mock(async () => ({ bytes: "AAAA", signature: "s" })),
+				signPersonalMessage: mock(async () => ({
+					bytes: "AAAA",
+					signature: "s",
+				})),
+			},
+		);
+		expect(signer.getKeyScheme()).toBe("Secp256k1");
+		expect(signer.toSuiAddress()).toBe(keypair.toSuiAddress());
+	});
+
 	test("fromAccount detects Secp256r1 from a 33-byte raw public key", () => {
 		const keypair = Secp256r1Keypair.fromSecretKey(secret(0x33));
 		const signer = WalletStandardSigner.fromAccount(
@@ -239,7 +292,7 @@ describe("WalletStandardSigner", () => {
 					})),
 				},
 			),
-		).toThrow(/Secp256k1, Secp256r1, or Passkey/);
+		).toThrow(/raw nor a flag-prefixed/);
 	});
 
 	test("fromAccount detects ZkLogin from a variable-length public identifier", () => {
