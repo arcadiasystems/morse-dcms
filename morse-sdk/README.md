@@ -112,16 +112,16 @@ Always construct readers and seal adapters via `fromMorseConfig` (e.g. `RpcPubli
 
 ## Wallet scheme support
 
-`WalletStandardSigner.fromAccount(account, callbacks)` takes a wallet-standard `WalletAccount` and produces a Sui `Signer` for `@mysten/walrus` and `@mysten/seal`. It decodes the signature scheme from `account.publicKey` length and confirms the derivation matches `account.address`.
+`WalletStandardSigner.fromAccount(account, callbacks)` takes a wallet-standard `WalletAccount` and produces a Sui `Signer` for `@mysten/walrus` and `@mysten/seal`. It tries every plausible interpretation of `account.publicKey` (raw bytes and Sui's canonical with-flag encoding) and picks the one whose derived address matches `account.address`.
 
-| Scheme    | Status                       | Notes                                                                                                                                                                                                |
-| --------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ED25519   | Supported                    | 32-byte raw key. Most common (Sui Wallet, Suiet, Slush keypair accounts).                                                                                                                            |
-| Secp256k1 | Supported                    | 33-byte raw key. Same `Signer` surface; signing routes through the wallet.                                                                                                                           |
-| Secp256r1 | Supported                    | 33-byte raw key. Disambiguated from Secp256k1 / Passkey by address derivation.                                                                                                                       |
-| Passkey   | Supported                    | 33-byte raw key. WebAuthn signing inside the wallet; `Signer` surface unchanged.                                                                                                                     |
-| ZkLogin   | Decoder ships, E2E unverified | Variable-length `[1 iss-len][iss][32 addressSeed]` identifier (auto-detects modern vs legacy address derivation). Walrus `register_blob` / `certify_blob` and Seal `SessionKey` flows have not been smoke-tested with zkLogin signatures; if your users see Walrus or Seal errors on these accounts, fall back to a keypair account. |
-| MultiSig  | Refused                      | Variable-length aggregation of multiple keys; signing semantics differ from `Signer` and have not been wired up.                                                                                     |
+| Scheme    | Status                        | Verified against                                                            | Notes                                                                                                                                                                                                |
+| --------- | ----------------------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ED25519   | Supported (verified)          | Slush + imported keypair, `@mysten/seal@1.1.3`, `@mysten/walrus@1.1.6`, 2026-05-10 | Accepts raw 32-byte key (Suiet) and Sui canonical `0x00 \|\| 32 raw` (Slush). Most common configuration.                                                                                              |
+| Secp256k1 | Supported (decoder)           | -                                                                           | Accepts raw 33-byte key and `0x01 \|\| 33 raw`. End-to-end behavior on Walrus + Seal not yet verified against a wallet that exposes Secp256k1 accounts.                                              |
+| Secp256r1 | Supported (decoder)           | -                                                                           | Accepts raw 33-byte key and `0x02 \|\| 33 raw`. Disambiguated from Secp256k1 / Passkey by address derivation.                                                                                        |
+| Passkey   | Supported (decoder)           | -                                                                           | Accepts raw 33-byte key and `0x06 \|\| 33 raw`. WebAuthn signing inside the wallet; `Signer` surface unchanged.                                                                                      |
+| ZkLogin   | Decoder ships, E2E unverified | -                                                                           | Variable-length `[1 iss-len][iss][32 addressSeed]` identifier (auto-detects modern vs legacy address derivation). Walrus and Seal `SessionKey` flows have not been smoke-tested with zkLogin signatures; fall back to a keypair account if you see errors. |
+| MultiSig  | Refused                       | -                                                                           | Variable-length aggregation of multiple keys; signing semantics differ from `Signer` and have not been wired up. Implement a custom `Signer` subclass if you need it.                                |
 
 Refused schemes throw `ConfigurationError` at construction time. Surface the message to your user as "this wallet account isn't supported yet" rather than letting the page crash inside Walrus or Seal later.
 
@@ -186,8 +186,8 @@ const config = morseConfig({
 - **No encrypted publish path**. The Move contract hardcodes `encrypted=false` on `publish_from_draft` and `publish_direct`. Encrypted content stays as drafts.
 - **`Subscription` access policy is reserved**, not enforced.
 - **`listEntries` ordering is dynamic-field object-store order**, not chronological. Sort by `entry.id` for insertion order.
-- **Walrus testnet flakiness**. `NotEnoughBlobConfirmationsError` from the underlying client is environmental; rerun. The SDK preserves the original error as the `cause`.
-- **Browser wallet adapter not shipped**. Implement `WalletAdapter` against your wallet-standard signer; the interface contract is the only requirement.
+- **Walrus testnet flakiness**. `NotEnoughBlobConfirmationsError` from the underlying client is environmental; rerun. The SDK preserves the original error as the `cause` (use `instanceof` for narrowing — Walrus error classes don't set `.name`). Browser consumers may additionally see `NoBlobMetadataReceivedError` on reads from testnet due to CORS gaps on a subset of Walrus storage nodes; the CLI smoke scripts hit the full node pool and are more reliable for verification.
+- **Walrus uploads need WAL, not just SUI**. Fund the address from the [Walrus testnet faucet](https://docs.walrus.site/usage/web-tool.html#testnet-tokens) in addition to the [Sui faucet](https://faucet.sui.io/). Uploads error with `Insufficient balance of ::wal::WAL` if you skip this.
 
 ## Smoke scripts
 
@@ -203,7 +203,7 @@ The `scripts/` directory has end-to-end testnet smokes that cost real WAL and SU
 | `phase-6-quilt.ts`        | Entry lifecycle in a Quilt collection              |
 | `phase-7-encrypted.ts`    | Seal encrypt + addEncryptedEntry + decrypt         |
 
-Each requires `PRIVATE_KEY` (Bech32 `suiprivkey1...`) on an address with testnet SUI; phase-5 onward also needs WAL; phase-7 needs `SEAL_KEY_SERVERS` (consult the Mysten Seal docs for the testnet allowlist).
+Each requires `PRIVATE_KEY` (Bech32 `suiprivkey1...`) on an address with testnet SUI; phase-5 onward also needs WAL on the same address. Phase-7 picks up Seal key servers from `morseConfig.sealKeyServers` (canonical testnet allowlist baked in) by default — pass `SEAL_KEY_SERVERS` only if you want to override with a custom set.
 
 ## Development
 
