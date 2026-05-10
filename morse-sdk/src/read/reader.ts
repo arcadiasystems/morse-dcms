@@ -469,9 +469,9 @@ function parsePublication(
 	const id = toPublicationId(object.objectId);
 	const name = readString(json, "name", "publication.name");
 	const slug = readString(json, "slug", "publication.slug");
-	const collections = parseCollections(json["collections"]);
+	const collections = parseCollections(json.collections);
 	const revokedPublisherCapsTableId = parseTableId(
-		json["revoked_publisher_caps"],
+		json.revoked_publisher_caps,
 		"publication.revoked_publisher_caps",
 	);
 	return {
@@ -523,7 +523,7 @@ function parseCollection(value: unknown, index: number): Collection {
 			"next_entry_id",
 			`${path}.next_entry_id`,
 		),
-		entriesTableId: parseTableId(collection["entries"], `${path}.entries`),
+		entriesTableId: parseTableId(collection.entries, `${path}.entries`),
 	};
 }
 

@@ -187,7 +187,7 @@ describe("RpcPublicationReader.getPublication", () => {
 
 	test("throws ValidationError when storage_mode is not 0 or 1", async () => {
 		const json = happyPathPublicationJson();
-		const collections = json["collections"] as { contents: unknown[] };
+		const collections = json.collections as { contents: unknown[] };
 		const first = collections.contents[0] as {
 			value: { storage_mode: number };
 		};
@@ -279,10 +279,10 @@ describe("RpcPublicationReader.listPublicationsOwnedBy", () => {
 			Array<Record<string, unknown>>
 		>;
 		const args = calls[0]?.[0] ?? {};
-		expect(args["limit"]).toBe(5);
-		expect(args["cursor"]).toBe("page-x");
-		expect(args["signal"]).toBe(controller.signal);
-		expect(args["type"]).toBe(`${PACKAGE_ID}::publication::OwnerCap`);
+		expect(args.limit).toBe(5);
+		expect(args.cursor).toBe("page-x");
+		expect(args.signal).toBe(controller.signal);
+		expect(args.type).toBe(`${PACKAGE_ID}::publication::OwnerCap`);
 	});
 
 	test("throws ValidationError when an OwnerCap is missing publication_id", async () => {
@@ -387,10 +387,10 @@ describe("RpcPublicationReader.listPublisherCapsOwnedBy", () => {
 			Array<Record<string, unknown>>
 		>;
 		const args = calls[0]?.[0] ?? {};
-		expect(args["limit"]).toBe(7);
-		expect(args["cursor"]).toBe("cap-page");
-		expect(args["signal"]).toBe(controller.signal);
-		expect(args["type"]).toBe(`${PACKAGE_ID}::publication::PublisherCap`);
+		expect(args.limit).toBe(7);
+		expect(args.cursor).toBe("cap-page");
+		expect(args.signal).toBe(controller.signal);
+		expect(args.type).toBe(`${PACKAGE_ID}::publication::PublisherCap`);
 	});
 
 	test("uses the PublisherCap type filter and returns parsed caps", async () => {
@@ -421,7 +421,7 @@ describe("RpcPublicationReader.listPublisherCapsOwnedBy", () => {
 			Array<Record<string, unknown>>
 		>;
 		const args = calls[0]?.[0] ?? {};
-		expect(args["type"]).toBe(`${PACKAGE_ID}::publication::PublisherCap`);
+		expect(args.type).toBe(`${PACKAGE_ID}::publication::PublisherCap`);
 	});
 });
 

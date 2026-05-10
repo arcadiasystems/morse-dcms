@@ -19,6 +19,7 @@
  *   bun run scripts/walrus-retry-investigation.ts
  */
 
+import { NotEnoughBlobConfirmationsError } from "@mysten/walrus";
 import { DefaultWalrusWriteAdapter } from "../src/index.js";
 import { buildSmokeContext, done, step } from "./_shared.js";
 
@@ -48,11 +49,15 @@ function describeError(err: unknown): string {
 }
 
 function isFlake(err: unknown): boolean {
+	// Walk the cause chain. @mysten/walrus's error classes don't set
+	// `this.name` in their constructors, so name-based matching always
+	// fails (the SDK agent confirmed this; regression test pinned in
+	// morse-sdk's default-adapter.test.ts). Use instanceof.
 	let cur: unknown = err;
 	let depth = 0;
 	while (cur != null && depth < 5) {
+		if (cur instanceof NotEnoughBlobConfirmationsError) return true;
 		if (cur instanceof Error) {
-			if (cur.name === "NotEnoughBlobConfirmationsError") return true;
 			cur = (cur as Error & { cause?: unknown }).cause;
 		} else {
 			cur = null;
@@ -90,9 +95,7 @@ async function main(): Promise<void> {
 					deletable: true,
 				});
 				const elapsed = ((Date.now() - start) / 1000).toFixed(1);
-				done(
-					`attempt ${attempt}: OK in ${elapsed}s -> ${blob.blobObjectId}`,
-				);
+				done(`attempt ${attempt}: OK in ${elapsed}s -> ${blob.blobObjectId}`);
 				trialResult = {
 					trial,
 					attemptsTaken: attempt,
@@ -157,8 +160,12 @@ async function main(): Promise<void> {
 			"  Try variants (backoff, fresh client, lower epochs) or check Walrus testnet status.",
 		);
 	} else if (successful.length / TRIALS >= 0.9) {
-		console.log("  >=90% success at attempt 1; the failure mode in phase-6 may have");
-		console.log("  recovered between sessions. Re-run phase-6-blob.ts to confirm.");
+		console.log(
+			"  >=90% success at attempt 1; the failure mode in phase-6 may have",
+		);
+		console.log(
+			"  recovered between sessions. Re-run phase-6-blob.ts to confirm.",
+		);
 	} else if (
 		successful.length / TRIALS >= 0.6 &&
 		(buckets.get(2) ?? 0) + (buckets.get(3) ?? 0) > 0

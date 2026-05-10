@@ -72,9 +72,7 @@ async function main(): Promise<void> {
 	console.log(`\n=== Distribution (fresh client per upload) ===`);
 	console.log(`  succeeded: ${succeeded}/${TRIALS}`);
 	console.log(`  failed:    ${failed}/${TRIALS}`);
-	console.log(
-		`  success rate: ${((succeeded / TRIALS) * 100).toFixed(0)}%`,
-	);
+	console.log(`  success rate: ${((succeeded / TRIALS) * 100).toFixed(0)}%`);
 }
 
 main().catch((error: unknown) => {
