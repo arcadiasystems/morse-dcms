@@ -50,8 +50,17 @@ export interface CreatePublicationResult {
 }
 
 /**
- * Create, share, and transfer ownership in a single atomic PTB.
- * @throws {ValidationError} If `slug` violates the on-chain format rules.
+ * Create a publication, share it, and transfer the resulting OwnerCap and
+ * the first PublisherCap to `adapter.address` — all in one atomic PTB. The
+ * caller can immediately use the returned `publisherCapId` for write ops
+ * and the `ownerCapId` for governance ops (issue/revoke caps, delete).
+ *
+ * Slug constraints (validated client-side and on-chain): non-empty,
+ * 1-64 chars, lowercase alphanumeric and hyphens, no leading or trailing
+ * hyphen. `ESlugAlreadyExists` aborts on collision with another active
+ * publication's slug.
+ *
+ * @throws {ValidationError} If `slug` violates the format rules.
  * @throws {ContractAbortError} On Move abort (e.g. slug already taken).
  * @throws {TransportError} On RPC, network, or response-parsing failure.
  */

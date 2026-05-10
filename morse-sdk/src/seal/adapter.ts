@@ -35,14 +35,29 @@ export interface SealDecryptOptions {
  * `TransportError` (network).
  */
 export interface SealAdapter {
+	/**
+	 * Encrypt `plaintext` under the supplied Seal identity. The ciphertext
+	 * envelope binds the morse package id and the TSS threshold; decrypting
+	 * later requires the same key-server set and threshold the adapter was
+	 * constructed with.
+	 *
+	 * @throws {SealError} On Seal-side encryption failure (rare).
+	 * @throws {TransportError} On network failure.
+	 */
 	encrypt(
 		plaintext: Uint8Array,
 		options: SealEncryptOptions,
 	): Promise<SealEncryptResult>;
 	/**
-	 * @throws {ValidationError} If `sealId` carries an unknown policy tag (the
-	 *   `decodePublisherSealId` step inside the adapter rejects tampered IDs).
-	 * @throws {SealError} On Seal authorization or decryption failure.
+	 * Decrypt `ciphertext` produced by an earlier `encrypt` call. The Seal
+	 * key servers verify that `publisherCapId` is active (not in the
+	 * publication's revoked denylist) before issuing decryption material;
+	 * a revoked cap surfaces as `SealError("no-access")`.
+	 *
+	 * @throws {SealError} On Seal authorization failure (`no-access`),
+	 *   decryption failure (`decrypt-failed` — also raised when `sealId` is
+	 *   malformed), session-key expiry (`session-expired`), or rate
+	 *   limiting (`rate-limited`).
 	 * @throws {TransportError} On network or PTB build failure.
 	 */
 	decrypt(
