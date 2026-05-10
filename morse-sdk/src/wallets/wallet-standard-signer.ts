@@ -143,7 +143,7 @@ export class WalletStandardSigner extends Signer {
 	}
 
 	override sign(_bytes: Uint8Array): Promise<Uint8Array<ArrayBuffer>> {
-		throw new Error(
+		throw new ConfigurationError(
 			"WalletStandardSigner does not support raw-byte signing. Wallet-standard wallets only sign transactions and personal messages.",
 		);
 	}

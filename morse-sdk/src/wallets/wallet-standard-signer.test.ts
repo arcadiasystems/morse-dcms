@@ -88,6 +88,9 @@ describe("WalletStandardSigner", () => {
 			})),
 		});
 		expect(() => signer.sign(new Uint8Array([1, 2, 3]))).toThrow(
+			ConfigurationError,
+		);
+		expect(() => signer.sign(new Uint8Array([1, 2, 3]))).toThrow(
 			/raw-byte signing/,
 		);
 	});

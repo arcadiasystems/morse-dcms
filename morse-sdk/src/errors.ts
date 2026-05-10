@@ -34,7 +34,8 @@ export type NotFoundResource =
 	| "revision"
 	| "publisher-cap"
 	| "owner-cap"
-	| "registry";
+	| "registry"
+	| "blob";
 
 /** Resource not found on-chain. */
 export class NotFoundError extends MorseError {

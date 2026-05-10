@@ -48,6 +48,11 @@ export interface WalrusReadAdapter {
 	 * object to its `blob_id` first, then reads. Use this when you have
 	 * `Revision.blobRef.blobObjectId` from `reader.getEntry(...)` and need
 	 * the bytes back (e.g. for decryption).
+	 *
+	 * `options.signal` cancels the underlying blob fetch but not the
+	 * preceding `getBlobObject` resolution; @mysten/walrus does not accept
+	 * a signal on the resolution call. Cancelling between resolve and read
+	 * lets the bytes-fetch abort.
 	 */
 	readBlobByObjectId(
 		blobObjectId: BlobObjectId,
@@ -57,6 +62,11 @@ export interface WalrusReadAdapter {
 	/**
 	 * Read a single quilt patch by its 37-byte branded id. Use this when
 	 * `BlobRef.kind === "quilt"`.
+	 *
+	 * `options.signal` is accepted for API symmetry with the other reads
+	 * but is not forwarded: @mysten/walrus's `getFiles` and the resulting
+	 * `WalrusFile.bytes()` do not accept signals at this version. Long-
+	 * running quilt-patch fetches cannot currently be cancelled.
 	 */
 	readQuiltPatch(
 		patchId: QuiltPatchId,
@@ -176,7 +186,7 @@ async function runWalrusCall<T>(call: () => Promise<T>): Promise<T> {
 			cause instanceof WalrusNotFoundError ||
 			cause instanceof NoBlobMetadataReceivedError
 		) {
-			throw new NotFoundError("entry", `Walrus blob: ${cause.message}`, {
+			throw new NotFoundError("blob", `Walrus blob: ${cause.message}`, {
 				cause,
 			});
 		}
