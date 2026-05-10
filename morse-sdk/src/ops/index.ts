@@ -49,6 +49,8 @@ export {
 	type AddEntryFromBytesResult,
 	addEncryptedEntryFromBytes,
 	addEntryFromBytes,
+	type ProgressCallback,
+	type ProgressEvent,
 } from "./entry-from-bytes.js";
 export {
 	type CreatePublicationArgs,

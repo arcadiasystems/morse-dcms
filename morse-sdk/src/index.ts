@@ -80,6 +80,8 @@ export {
 	type IssuePublisherCapArgs,
 	type IssuePublisherCapResult,
 	issuePublisherCap,
+	type ProgressCallback,
+	type ProgressEvent,
 	type PublicationConfig,
 	type PublishDirectArgs,
 	type PublishFromDraftArgs,

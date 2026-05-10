@@ -41,6 +41,30 @@ import type {
 import { DefaultWalrusWriteAdapter } from "../walrus/default-adapter.js";
 import { decodeU64ReturnValue } from "./internal.js";
 
+/**
+ * Coarse-grained progress phases emitted by `addEntryFromBytes` and
+ * `addEncryptedEntryFromBytes` for UI spinners and ETA hints.
+ *
+ * - `encrypting`: emitted once at the start of `addEncryptedEntryFromBytes`
+ *   before the Seal call. Not emitted for the unencrypted variant.
+ * - `uploading`: emitted before `register_blob` (popup 1) and again before
+ *   the off-chain upload to storage nodes; UI can keep one spinner up
+ *   across both.
+ * - `submitting`: emitted before the combined `certify_blob + add_entry`
+ *   PTB (popup 2).
+ * - `complete`: emitted after the entry has been successfully added.
+ *   Equivalent to the function's return; provided for symmetry so a single
+ *   handler can cover the full lifecycle.
+ */
+export type ProgressEvent =
+	| { readonly phase: "encrypting" }
+	| { readonly phase: "uploading" }
+	| { readonly phase: "submitting" }
+	| { readonly phase: "complete" };
+
+/** Optional callback shape for progress events. */
+export type ProgressCallback = (event: ProgressEvent) => void;
+
 /** Result of `addEntryFromBytes` / `addEncryptedEntryFromBytes`. */
 export interface AddEntryFromBytesResult {
 	readonly digest: string;
@@ -65,6 +89,13 @@ export interface AddEntryFromBytesArgs {
 	readonly contentType: string;
 	readonly upload: UploadBlobOptions;
 	readonly signal?: AbortSignal;
+	/**
+	 * Optional callback invoked at coarse-grained phase boundaries:
+	 * `uploading` before the register popup, `submitting` before the combined
+	 * certify+addEntry popup, `complete` after the entry is added. Errors
+	 * thrown by the callback are propagated.
+	 */
+	readonly onProgress?: ProgressCallback;
 }
 
 /**
@@ -86,6 +117,7 @@ export async function addEntryFromBytes(
 	args: AddEntryFromBytesArgs,
 ): Promise<AddEntryFromBytesResult> {
 	assertDefaultWalrusAdapter(args.walrus);
+	args.onProgress?.({ phase: "uploading" });
 	const upload = await args.walrus.startBlobUpload(args.bytes, args.upload);
 
 	try {
@@ -99,11 +131,14 @@ export async function addEntryFromBytes(
 			blobObjectId: upload.blobObjectId,
 			contentType: args.contentType,
 		});
-		return await submitCombinedTx(adapter, tx, {
+		args.onProgress?.({ phase: "submitting" });
+		const result = await submitCombinedTx(adapter, tx, {
 			blobObjectId: upload.blobObjectId,
 			blobId: upload.blobId,
 			...(args.signal === undefined ? {} : { signal: args.signal }),
 		});
+		args.onProgress?.({ phase: "complete" });
+		return result;
 	} catch (cause) {
 		if (cause instanceof UncertifiedBlobError) throw cause;
 		throw new UncertifiedBlobError(upload.blobObjectId, upload.blobId, {
@@ -125,6 +160,13 @@ export interface AddEncryptedEntryFromBytesArgs {
 	readonly sealId: SealId;
 	readonly upload: UploadBlobOptions;
 	readonly signal?: AbortSignal;
+	/**
+	 * Optional callback invoked at coarse-grained phase boundaries:
+	 * `encrypting` (Seal call), `uploading` (register + off-chain upload),
+	 * `submitting` (combined certify+addEntry popup), `complete`. Errors
+	 * thrown by the callback are propagated.
+	 */
+	readonly onProgress?: ProgressCallback;
 }
 
 /**
@@ -146,10 +188,12 @@ export async function addEncryptedEntryFromBytes(
 ): Promise<AddEntryFromBytesResult> {
 	assertDefaultWalrusAdapter(args.walrus);
 
+	args.onProgress?.({ phase: "encrypting" });
 	const { ciphertext } = await args.seal.encrypt(args.plaintext, {
 		sealId: args.sealId,
 	});
 
+	args.onProgress?.({ phase: "uploading" });
 	const upload = await args.walrus.startBlobUpload(ciphertext, args.upload);
 
 	try {
@@ -164,11 +208,14 @@ export async function addEncryptedEntryFromBytes(
 			contentType: args.contentType,
 			sealId: args.sealId,
 		});
-		return await submitCombinedTx(adapter, tx, {
+		args.onProgress?.({ phase: "submitting" });
+		const result = await submitCombinedTx(adapter, tx, {
 			blobObjectId: upload.blobObjectId,
 			blobId: upload.blobId,
 			...(args.signal === undefined ? {} : { signal: args.signal }),
 		});
+		args.onProgress?.({ phase: "complete" });
+		return result;
 	} catch (cause) {
 		if (cause instanceof UncertifiedBlobError) throw cause;
 		throw new UncertifiedBlobError(upload.blobObjectId, upload.blobId, {

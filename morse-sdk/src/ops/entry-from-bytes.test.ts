@@ -14,7 +14,7 @@ import {
 import { TransportError, UncertifiedBlobError } from "../errors.js";
 import type { SealAdapter } from "../seal/adapter.js";
 import { buildPublisherSealId } from "../seal/identity.js";
-import { type TxReceipt } from "../types.js";
+import type { TxReceipt } from "../types.js";
 import type {
 	SimulationReturnValues,
 	WalletAdapter,
@@ -27,6 +27,7 @@ import { DefaultWalrusWriteAdapter } from "../walrus/index.js";
 import {
 	addEncryptedEntryFromBytes,
 	addEntryFromBytes,
+	type ProgressEvent,
 } from "./entry-from-bytes.js";
 
 const PACKAGE_ID = toPackageId(
@@ -196,6 +197,33 @@ describe("addEntryFromBytes", () => {
 		expect(adapter.simulateTransaction).not.toHaveBeenCalled();
 	});
 
+	test("emits onProgress events in order: uploading, submitting, complete", async () => {
+		const adapter = adapterReturning(1);
+		const walrus = new FakeDefaultWalrus({
+			kind: "ok",
+			result: fakeUploadOk(),
+		});
+		const events: ProgressEvent[] = [];
+
+		await addEntryFromBytes(adapter, CONFIG, {
+			walrus,
+			publicationId: PUBLICATION_ID,
+			publisherCapId: PUBLISHER_CAP_ID,
+			collectionName: "blog",
+			name: "x",
+			bytes: new Uint8Array([1]),
+			contentType: "text/plain",
+			upload: { epochs: 3, deletable: true },
+			onProgress: (e) => events.push(e),
+		});
+
+		expect(events.map((e) => e.phase)).toEqual([
+			"uploading",
+			"submitting",
+			"complete",
+		]);
+	});
+
 	test("propagates upload-step failure as the underlying TransportError, not UncertifiedBlobError", async () => {
 		const original = new TransportError("walrus down");
 		const adapter = adapterReturning(0);
@@ -250,6 +278,45 @@ describe("addEncryptedEntryFromBytes", () => {
 		expect(result.revisionId).toBe(0);
 		expect(result.blobObjectId).toBe(BLOB_OBJECT_ID);
 		expect(seal.encrypt).toHaveBeenCalledTimes(1);
+	});
+
+	test("emits onProgress events in order: encrypting, uploading, submitting, complete", async () => {
+		const adapter = adapterReturning(1);
+		const walrus = new FakeDefaultWalrus({
+			kind: "ok",
+			result: fakeUploadOk(),
+		});
+		const ciphertext = new Uint8Array([0x55]);
+		const seal: SealAdapter = {
+			encrypt: mock(async () => ({ ciphertext })),
+			decrypt: mock(async () => new Uint8Array()),
+		};
+		const sealId = buildPublisherSealId(
+			PUBLICATION_ID,
+			new Uint8Array(16).fill(0xab),
+		);
+		const events: ProgressEvent[] = [];
+
+		await addEncryptedEntryFromBytes(adapter, CONFIG, {
+			walrus,
+			seal,
+			publicationId: PUBLICATION_ID,
+			publisherCapId: PUBLISHER_CAP_ID,
+			collectionName: "secret",
+			name: "x",
+			plaintext: new Uint8Array([1]),
+			contentType: "application/octet-stream",
+			sealId,
+			upload: { epochs: 3, deletable: true },
+			onProgress: (e) => events.push(e),
+		});
+
+		expect(events.map((e) => e.phase)).toEqual([
+			"encrypting",
+			"uploading",
+			"submitting",
+			"complete",
+		]);
 	});
 
 	test("encryption failure is surfaced before any wallet popup", async () => {
