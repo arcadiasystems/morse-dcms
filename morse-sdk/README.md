@@ -105,6 +105,38 @@ const fetched = await reader.getEntry(created.publicationId, "blog", entry.entry
 
 The compile-checked end-to-end version is in [`examples/quickstart.ts`](./examples/quickstart.ts).
 
+## Walrus access patterns
+
+morse-sdk ships two pairs of Walrus adapters. They implement the same interfaces (`WalrusReadAdapter`, `WalrusWriteAdapter`) and the rest of the SDK is unchanged whichever pair you pick.
+
+| Pair                                                              | Trust model      | Browser CORS    | Popup count for upload + addEntry | Storage cost paid by |
+| ----------------------------------------------------------------- | ---------------- | --------------- | --------------------------------- | -------------------- |
+| `DefaultWalrusReadAdapter` + `DefaultWalrusWriteAdapter`          | Trustless (direct fanout to ~30 storage nodes) | Spotty on testnet | 2 (with `addEntryFromBytes`) or 3 (split) | Consumer wallet (WAL + gas) |
+| `HttpAggregatorReadAdapter` + `HttpPublisherWriteAdapter`         | Operator-trusted | Reliable        | 1 (`uploadBlob` is a publisher HTTP call, only `addEntry` signs) | Publisher operator (WAL); consumer (Sui gas only) |
+
+**When to pick which:**
+- **Default direct-protocol pair**: trustless reads, full control. Best for CLI smokes, server-side dapps, or browser dapps that don't hit CORS gaps. The flow-aware optimization (`addEntryFromBytes`) cuts popups from 3 to 2.
+- **HTTP pair**: reliable browser reads (one CORS-friendly endpoint instead of ~30), and a "publisher pays storage" UX where the user signs only the on-chain `addEntry`. Trade trustless reads for operator trust; use `verifyBlobIntegrity` on the read adapter for a trust-but-verify path.
+
+The HTTP adapters are NOT compatible with `addEntryFromBytes` / `addEncryptedEntryFromBytes`. Those functions require `WalrusFlowCapable` for the 2-popup combined PTB; the publisher-paid path is naturally 1-popup through standard `uploadBlob` + `addEntry`.
+
+```ts
+// Default (direct, trustless, 2-3 popups)
+const reader = DefaultWalrusReadAdapter.fromConfig({ network: "testnet", suiClient });
+const writer = DefaultWalrusWriteAdapter.fromConfig({ network: "testnet", suiClient }, signer);
+
+// HTTP (operator-trusted, 1 popup for upload+addEntry)
+const reader = HttpAggregatorReadAdapter.fromMorseConfig(config, suiClient);
+const writer = HttpPublisherWriteAdapter.fromConfig({
+  publisherUrl: "https://walrus-testnet-publisher.nami.cloud",
+  ownerAddress: account.address,
+});
+```
+
+The aggregator URL for testnet is baked into `morseConfig.walrusEndpoints.aggregator` (Mysten's canonical service). The publisher URL is intentionally not baked in — publishers are operator-specific and consumers pick one explicitly.
+
+`HttpPublisherWriteAdapter` parses Mysten's published publisher binary (camelCase JSON) and the documented OpenAPI schema (snake_case fallback). For non-standard publisher forks that serve a different shape, pass `parseResponse` to `HttpPublisherWriteAdapter.fromConfig({ ..., parseResponse })` — it receives the raw decoded JSON and returns an `UploadBlobResult`, replacing the built-in parser. Throws from the callback propagate verbatim.
+
 ## Choosing the right entry path
 
 The SDK ships two ways to publish content. The high-level `addEntryFromBytes` (and its encrypted twin `addEncryptedEntryFromBytes`) is the recommended default; the split form (`uploadBlob` + `addEntry`) is for cases the high-level shape doesn't cover.
@@ -137,6 +169,7 @@ Per-concern, compile-checked illustrative code. Each file is short, focused, and
 | Reading                               | [`examples/reading.ts`](./examples/reading.ts)                      | getPublication, getEntry, getRevision, listEntries, scanEntries                       |
 | Browser wallet integration            | [`examples/wallet-standard.ts`](./examples/wallet-standard.ts)      | WalletAdapter impl against `@mysten/dapp-kit` hooks (or any wallet-standard signer)   |
 | React + dapp-kit + Suiet              | [`examples/wallet-standard-react.md`](./examples/wallet-standard-react.md) | Worked walkthrough: providers, connect button, hook, adapter wiring, Seal SessionKey  |
+| Walrus HTTP adapters                  | [`examples/walrus-http-adapters.ts`](./examples/walrus-http-adapters.ts) | HttpAggregatorReadAdapter + HttpPublisherWriteAdapter (browser-friendly, operator-paid storage) |
 
 ## API reference
 
@@ -183,6 +216,8 @@ The full public surface, grouped by concern. Every export carries a JSDoc on its
 | `WalletStandardSigner.fromAccount(account, callbacks)` | Browser-side `Signer` for `@mysten/walrus` and `@mysten/seal`; wraps wallet-standard wallets without ever holding the user's key. |
 | `DefaultWalrusWriteAdapter.fromConfig(config, signer)` | Walrus uploads (blob + quilt). Implements `WalrusFlowCapable` (the 2-popup optimization). |
 | `DefaultWalrusReadAdapter.fromConfig(config)` | Walrus reads (`readBlob`, `readBlobByObjectId`, `readQuiltPatch`, `readBlobRef`). |
+| `HttpPublisherWriteAdapter.fromConfig({ publisherUrl, ownerAddress })` | Walrus uploads via a publisher HTTP service (operator pays storage; 1 popup for upload + addEntry). |
+| `HttpAggregatorReadAdapter.fromMorseConfig(config, suiClient)` / `.fromConfig({ aggregatorUrl, suiClient })` | Walrus reads via a single CORS-friendly aggregator endpoint instead of fanout to ~30 storage nodes. |
 | `DefaultSealAdapter.fromMorseConfig(config, options, suiClient)` | Threshold encryption / decryption. Defaults canonical testnet key servers. |
 | `WalletAdapter` / `WalrusWriteAdapter` / `WalrusReadAdapter` / `SealAdapter` | Interfaces for substituting custom implementations. |
 | `WalrusFlowCapable` / `isWalrusFlowCapable` | Optional capability for the 2-popup `addEntryFromBytes` path. |
@@ -343,6 +378,8 @@ The `scripts/` directory has end-to-end testnet smokes that cost real WAL and SU
 | `phase-6-blob.ts`         | Entry lifecycle in a Blob collection               |
 | `phase-6-quilt.ts`        | Entry lifecycle in a Quilt collection              |
 | `phase-7-encrypted.ts`    | Seal encrypt + addEncryptedEntry + decrypt         |
+| `phase-6-blob-http.ts`    | HTTP publisher upload + aggregator read; skips when `WALRUS_PUBLISHER_URL` unset |
+| `phase-7-encrypted-http.ts` | HTTP variant of phase-7; skips when `WALRUS_PUBLISHER_URL` unset |
 
 Each requires `PRIVATE_KEY` (Bech32 `suiprivkey1...`) on an address with testnet SUI; phase-5 onward also needs WAL on the same address. Phase-7 picks up Seal key servers from `morseConfig.sealKeyServers` (canonical testnet allowlist baked in) by default — pass `SEAL_KEY_SERVERS` only if you want to override with a custom set.
 

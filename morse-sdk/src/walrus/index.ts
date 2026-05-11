@@ -28,6 +28,16 @@ export {
 	type WalrusReadOptions,
 } from "./default-read-adapter.js";
 export {
+	HttpAggregatorReadAdapter,
+	type HttpAggregatorReadAdapterOptions,
+	type WalrusBlobIntegrityCheck,
+} from "./http-aggregator-read-adapter.js";
+export {
+	HttpPublisherWriteAdapter,
+	type HttpPublisherWriteAdapterOptions,
+	type ParsePublisherResponse,
+} from "./http-publisher-write-adapter.js";
+export {
 	decodeQuiltPatchId,
 	encodeQuiltPatchId,
 	type QuiltPatchIdParts,

@@ -27,6 +27,7 @@ export {
 	morseConfig,
 	Network,
 	type NetworkConfig,
+	type WalrusEndpoints,
 } from "./config.js";
 export {
 	ABORT_CODES,
@@ -166,7 +167,12 @@ export {
 	type DefaultWalrusWriteAdapterOptions,
 	decodeQuiltPatchId,
 	encodeQuiltPatchId,
+	HttpAggregatorReadAdapter,
+	type HttpAggregatorReadAdapterOptions,
+	HttpPublisherWriteAdapter,
+	type HttpPublisherWriteAdapterOptions,
 	isWalrusFlowCapable,
+	type ParsePublisherResponse,
 	type QuiltPatchIdParts,
 	type QuiltPatchInput,
 	quiltPatchIdFromString,
@@ -178,6 +184,7 @@ export {
 	type UploadQuiltPatch,
 	type UploadQuiltResult,
 	type WalrusAdapterConfig,
+	type WalrusBlobIntegrityCheck,
 	type WalrusFlowCapable,
 	type WalrusReadAdapter,
 	type WalrusReadAdapterConfig,

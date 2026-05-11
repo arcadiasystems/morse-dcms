@@ -42,6 +42,22 @@ export const DEFAULT_RPC_URLS: Readonly<Record<Network, string>> = {
  * values causes type-filter reads (e.g. `listPublicationsOwnedBy`) to return
  * empty.
  */
+/**
+ * Walrus aggregator / publisher HTTP endpoints. The aggregator URL is the
+ * canonical Mysten-run service for the network; the publisher URL is left
+ * undefined by default because publishers are operator-specific (paid
+ * tiers, region pinning) and picking one for everyone is a trust decision
+ * the SDK should not make. Consumers using a specific publisher supply
+ * the URL explicitly via `morseConfig({ walrusEndpoints: { ... } })` or
+ * pass it directly to `HttpPublisherWriteAdapter.fromConfig`.
+ */
+export interface WalrusEndpoints {
+	/** Aggregator base URL for HTTP reads. No trailing slash. */
+	readonly aggregator: string;
+	/** Optional publisher base URL for HTTP writes. No trailing slash. */
+	readonly publisher?: string;
+}
+
 export interface NetworkConfig {
 	readonly network: Network;
 	readonly rpcUrl: string;
@@ -55,6 +71,14 @@ export interface NetworkConfig {
 	 * (e.g. mainnet pre-freeze).
 	 */
 	readonly sealKeyServers: readonly KeyServerConfig[];
+	/**
+	 * Canonical Walrus HTTP endpoints for the network. Used by
+	 * `HttpAggregatorReadAdapter.fromMorseConfig` (and the future publisher
+	 * equivalent when a "canonical" publisher exists). Aggregator is pinned
+	 * to Mysten's testnet service; publisher is intentionally left
+	 * undefined — pass `walrusEndpoints.publisher` to override.
+	 */
+	readonly walrusEndpoints: WalrusEndpoints;
 }
 
 /**
@@ -82,6 +106,7 @@ const KNOWN_DEPLOYMENTS: Partial<
 			readonly originalPackageId: PackageId;
 			readonly registryId: RegistryId;
 			readonly sealKeyServers: readonly KeyServerConfig[];
+			readonly walrusEndpoints: WalrusEndpoints;
 		}
 	>
 > = {
@@ -111,6 +136,15 @@ const KNOWN_DEPLOYMENTS: Partial<
 				weight: 1,
 			},
 		],
+		// Canonical Mysten-run Walrus testnet aggregator. Used by
+		// `HttpAggregatorReadAdapter.fromMorseConfig` for browser dapps that
+		// need a single CORS-friendly endpoint instead of the direct-protocol
+		// shard fanout (which has incomplete CORS coverage on testnet).
+		// Publisher is intentionally undefined — there is no single canonical
+		// testnet publisher; consumers wire their own (Nami, self-hosted, etc).
+		walrusEndpoints: {
+			aggregator: "https://aggregator.walrus-testnet.walrus.space",
+		},
 	},
 };
 
@@ -126,6 +160,7 @@ export interface MorseConfigOptions {
 	readonly originalPackageId?: PackageId;
 	readonly registryId?: RegistryId;
 	readonly sealKeyServers?: readonly KeyServerConfig[];
+	readonly walrusEndpoints?: WalrusEndpoints;
 }
 
 /**
@@ -159,5 +194,7 @@ export function morseConfig(options: MorseConfigOptions): NetworkConfig {
 		registryId,
 		...(originalPackageId === undefined ? {} : { originalPackageId }),
 		sealKeyServers: options.sealKeyServers ?? deployment?.sealKeyServers ?? [],
+		walrusEndpoints: options.walrusEndpoints ??
+			deployment?.walrusEndpoints ?? { aggregator: "" },
 	};
 }
