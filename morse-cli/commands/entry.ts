@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { addEntry, deleteEntry, formatMist, listEntries } from "morse-sdk";
+import { addEntry, deleteEntry, formatMist, listEntries } from "@arcadiasystems/morse-sdk";
 import type { AppContext } from "../context.ts";
 import { die } from "../utils/output.ts";
 import { readBlob, uploadBlob } from "../utils/walrus.ts";

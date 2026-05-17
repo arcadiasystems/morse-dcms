@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { addCollection, deleteCollection, listCollections } from "morse-sdk";
+import { addCollection, deleteCollection, listCollections } from "@arcadiasystems/morse-sdk";
 import type { AppContext } from "../context.ts";
 import { die } from "../utils/output.ts";
 

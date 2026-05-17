@@ -6,7 +6,7 @@ import type {
 	ObjectFetcher,
 	PublicationDeleter,
 	TransactionExecutor,
-} from "morse-sdk";
+} from "@arcadiasystems/morse-sdk";
 import {
 	addCollection,
 	addEntry,
@@ -18,7 +18,7 @@ import {
 	getPublication,
 	listCollections,
 	listPublications,
-} from "morse-sdk";
+} from "@arcadiasystems/morse-sdk";
 
 // --- shared helpers ---
 

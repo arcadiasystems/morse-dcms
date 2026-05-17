@@ -4,7 +4,7 @@ import {
 	deleteSingleton,
 	formatMist,
 	listSingletons,
-} from "morse-sdk";
+} from "@arcadiasystems/morse-sdk";
 import type { AppContext } from "../context.ts";
 import { die } from "../utils/output.ts";
 import { readBlob, uploadBlob } from "../utils/walrus.ts";

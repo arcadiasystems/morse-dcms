@@ -4,7 +4,7 @@ import {
 	deletePublication,
 	getPublication,
 	listPublications,
-} from "morse-sdk";
+} from "@arcadiasystems/morse-sdk";
 import type { AppContext } from "../context.ts";
 import { die } from "../utils/output.ts";
 
