@@ -22,13 +22,13 @@ import type {
 	PublicationId,
 	PublisherCapId,
 	SuiAddress,
-} from "morse-sdk";
+} from "@arcadiasystems/morse-sdk";
 import {
 	destroyPublisherCap,
 	issuePublisherCap,
 	revokePublisherCap,
 	transferPublisherCap,
-} from "morse-sdk";
+} from "@arcadiasystems/morse-sdk";
 import type { ExampleContext } from "./setup.js";
 
 /**

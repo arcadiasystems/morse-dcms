@@ -22,12 +22,12 @@ import type {
 	PublicationId,
 	PublisherCapId,
 	WalrusBlobId,
-} from "morse-sdk";
+} from "@arcadiasystems/morse-sdk";
 import {
 	addEntry,
 	HttpAggregatorReadAdapter,
 	HttpPublisherWriteAdapter,
-} from "morse-sdk";
+} from "@arcadiasystems/morse-sdk";
 import type { ExampleContext } from "./setup.js";
 
 /**

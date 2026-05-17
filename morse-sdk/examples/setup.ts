@@ -7,15 +7,14 @@
  * cleanup ordering).
  */
 
-import { SuiGrpcClient } from "@mysten/sui/grpc";
-import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
-
 import {
 	KeypairAdapter,
 	morseConfig,
 	type NetworkConfig,
 	RpcPublicationReader,
-} from "morse-sdk";
+} from "@arcadiasystems/morse-sdk";
+import { SuiGrpcClient } from "@mysten/sui/grpc";
+import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 
 /**
  * `keypair` is present so examples can pass a raw signer to `Walrus`/`Seal`

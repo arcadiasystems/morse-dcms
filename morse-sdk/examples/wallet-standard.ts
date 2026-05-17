@@ -23,9 +23,6 @@
  * Function and value names in this file are illustrative.
  */
 
-import type { SuiClientTypes } from "@mysten/sui/client";
-import type { Transaction } from "@mysten/sui/transactions";
-
 import {
 	type ObjectReader,
 	type SimulationReturnValues,
@@ -39,7 +36,9 @@ import {
 	toSuiAddress,
 	toSuiObjectId,
 	type WalletAdapter,
-} from "morse-sdk";
+} from "@arcadiasystems/morse-sdk";
+import type { SuiClientTypes } from "@mysten/sui/client";
+import type { Transaction } from "@mysten/sui/transactions";
 
 /**
  * Shape returned by the wallet-standard sign-and-execute API. Matches

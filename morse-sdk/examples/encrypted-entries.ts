@@ -17,8 +17,11 @@
  * Function names in this file are illustrative.
  */
 
-import type { KeyServerConfig, SessionKey } from "@mysten/seal";
-import type { PublicationId, PublisherCapId, SealId } from "morse-sdk";
+import type {
+	PublicationId,
+	PublisherCapId,
+	SealId,
+} from "@arcadiasystems/morse-sdk";
 import {
 	addEncryptedEntry,
 	addEncryptedEntryFromBytes,
@@ -26,7 +29,8 @@ import {
 	buildPublisherSealId,
 	DefaultSealAdapter,
 	DefaultWalrusWriteAdapter,
-} from "morse-sdk";
+} from "@arcadiasystems/morse-sdk";
+import type { KeyServerConfig, SessionKey } from "@mysten/seal";
 import type { ExampleContext } from "./setup.js";
 
 /**

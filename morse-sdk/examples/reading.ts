@@ -16,7 +16,12 @@
  * Function names in this file are illustrative.
  */
 
-import type { Entry, Publication, PublicationId, Revision } from "morse-sdk";
+import type {
+	Entry,
+	Publication,
+	PublicationId,
+	Revision,
+} from "@arcadiasystems/morse-sdk";
 import type { ExampleContext } from "./setup.js";
 
 /**

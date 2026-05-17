@@ -9,7 +9,7 @@ Pre-release. Testnet only. The Move contract addresses are baked in via `morseCo
 ## Install
 
 ```sh
-bun add morse-sdk @mysten/sui
+bun add @arcadiasystems/morse-sdk @mysten/sui
 # Optional - install only what you use:
 bun add @mysten/walrus     # for DefaultWalrusWriteAdapter
 bun add @mysten/seal       # for DefaultSealAdapter and encrypted entries
@@ -25,7 +25,7 @@ morse-sdk is built and tested against specific minor versions of its Mysten subs
 | --------- | ------------- | ---------------- | -------------- | ----------- | --------- |
 | 0.1.x     | 2.16.2-2.16.x | 1.1.6-1.1.x      | 1.1.3-1.1.x    | testnet     | 2026-05-10 |
 
-Mysten ships breaking changes inside major version boundaries. When `@mysten/walrus@1.2.0` (or any minor bump on these libraries) is released, morse-sdk needs a coordinated minor bump and re-verification before the new minor is supported. Pin via `bun add morse-sdk@~0.1.0` if you want patch updates without surprise minors.
+Mysten ships breaking changes inside major version boundaries. When `@mysten/walrus@1.2.0` (or any minor bump on these libraries) is released, morse-sdk needs a coordinated minor bump and re-verification before the new minor is supported. Pin via `bun add @arcadiasystems/morse-sdk@~0.1.0` if you want patch updates without surprise minors.
 
 The verification protocol is documented in [`CONTRIBUTING.md`](./CONTRIBUTING.md): every Mysten dep bump runs the full `scripts/phase-N-*.ts` smoke suite against testnet before the bump lands.
 
@@ -51,7 +51,7 @@ import {
   KeypairAdapter,
   morseConfig,
   RpcPublicationReader,
-} from "morse-sdk";
+} from "@arcadiasystems/morse-sdk";
 
 const config = morseConfig({ network: "testnet" });
 const client = new SuiGrpcClient({ network: "testnet", baseUrl: config.rpcUrl });
@@ -70,7 +70,7 @@ import {
   createPublication,
   DefaultWalrusWriteAdapter,
   StorageMode,
-} from "morse-sdk";
+} from "@arcadiasystems/morse-sdk";
 
 const created = await createPublication(adapter, config, {
   name: "My Publication",

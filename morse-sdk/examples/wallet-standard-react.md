@@ -18,7 +18,7 @@ Two pieces collaborate:
 ## Install
 
 ```sh
-bun add morse-sdk @mysten/sui @mysten/dapp-kit @tanstack/react-query react react-dom
+bun add @arcadiasystems/morse-sdk @mysten/sui @mysten/dapp-kit @tanstack/react-query react react-dom
 # Optional, depending on which morse-sdk surface you use:
 bun add @mysten/walrus @mysten/seal
 ```
@@ -91,7 +91,7 @@ import {
   morseConfig,
   RpcPublicationReader,
   WalletStandardSigner,
-} from "morse-sdk";
+} from "@arcadiasystems/morse-sdk";
 import { useMemo } from "react";
 
 import { WalletStandardAdapter } from "./WalletStandardAdapter";
@@ -154,7 +154,7 @@ rather than crashing the page.
 
 ```tsx
 // src/CreatePublicationButton.tsx
-import { createPublication } from "morse-sdk";
+import { createPublication } from "@arcadiasystems/morse-sdk";
 import { useMorseAdapter } from "./useMorseAdapter";
 
 export function CreatePublicationButton() {
@@ -187,7 +187,7 @@ popup.
 
 ```tsx
 // src/UploadButton.tsx
-import { addEntry, DefaultWalrusWriteAdapter } from "morse-sdk";
+import { addEntry, DefaultWalrusWriteAdapter } from "@arcadiasystems/morse-sdk";
 
 import { useMorse } from "./useMorseAdapter";
 
@@ -242,7 +242,7 @@ the library calls only `signer.getPublicKey().toSuiAddress()` and
 through the hooks already wired in.
 
 ```tsx
-import { DefaultSealAdapter, SessionKey } from "morse-sdk";
+import { DefaultSealAdapter, SessionKey } from "@arcadiasystems/morse-sdk";
 
 const { signer, config, client } = morse;
 

@@ -14,8 +14,12 @@
  * storage mode is independent of the name. Substitute your own.
  */
 
-import type { PublicationId, PublisherCapId } from "morse-sdk";
-import { createCollection, deleteCollection, StorageMode } from "morse-sdk";
+import type { PublicationId, PublisherCapId } from "@arcadiasystems/morse-sdk";
+import {
+	createCollection,
+	deleteCollection,
+	StorageMode,
+} from "@arcadiasystems/morse-sdk";
 import type { ExampleContext } from "./setup.js";
 
 /**

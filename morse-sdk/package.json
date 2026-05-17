@@ -1,9 +1,12 @@
 {
-	"name": "morse-sdk",
+	"name": "@arcadiasystems/morse-sdk",
 	"version": "0.1.0",
 	"description": "TypeScript SDK for Morse dCMS on the Sui blockchain.",
 	"license": "MIT",
 	"type": "module",
+	"publishConfig": {
+		"access": "public"
+	},
 	"sideEffects": false,
 	"keywords": [
 		"sui",

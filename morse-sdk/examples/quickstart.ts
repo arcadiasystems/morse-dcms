@@ -19,7 +19,7 @@ import {
 	TransportError,
 	UncertifiedBlobError,
 	ValidationError,
-} from "morse-sdk";
+} from "@arcadiasystems/morse-sdk";
 import { buildContext } from "./setup.js";
 
 export async function quickstart(privateKey: string): Promise<void> {

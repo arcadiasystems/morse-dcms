@@ -34,7 +34,11 @@
  * names in this file are illustrative.
  */
 
-import type { BlobObjectId, PublicationId, PublisherCapId } from "morse-sdk";
+import type {
+	BlobObjectId,
+	PublicationId,
+	PublisherCapId,
+} from "@arcadiasystems/morse-sdk";
 import {
 	addEntry,
 	addEntryFromBytes,
@@ -43,7 +47,7 @@ import {
 	deleteEntry,
 	publishDirect,
 	publishFromDraft,
-} from "morse-sdk";
+} from "@arcadiasystems/morse-sdk";
 import type { ExampleContext } from "./setup.js";
 
 /**

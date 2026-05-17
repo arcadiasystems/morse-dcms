@@ -10,12 +10,16 @@
  * Function names in this file are illustrative. Substitute your own.
  */
 
-import type { OwnerCapId, PublicationId, SuiAddress } from "morse-sdk";
+import type {
+	OwnerCapId,
+	PublicationId,
+	SuiAddress,
+} from "@arcadiasystems/morse-sdk";
 import {
 	createPublication,
 	deletePublication,
 	transferOwnership,
-} from "morse-sdk";
+} from "@arcadiasystems/morse-sdk";
 import type { ExampleContext } from "./setup.js";
 
 /**

@@ -27,7 +27,7 @@
 
 		"baseUrl": ".",
 		"paths": {
-			"morse-sdk": ["./src/index.ts"]
+			"@arcadiasystems/morse-sdk": ["./src/index.ts"]
 		}
 	},
 	"include": ["src/**/*", "examples/**/*", "scripts/**/*"]
