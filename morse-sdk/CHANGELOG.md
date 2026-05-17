@@ -2,6 +2,13 @@
 
 All notable changes to `morse-sdk` will be documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-05-17
+
+Metadata-only patch. No code, behavior, or API surface change.
+
+- Fixed `package.json` `repository.url` to point at the canonical Arcadia Systems org repository (`github.com/arcadiasystems/morse-dcms`) instead of the personal fork that was published on 0.1.0.
+- Added `homepage` (links to the SDK subdirectory README) and `bugs` fields so the npm page links resolve correctly.
+
 ## [0.1.0] - 2026-05-10
 
 Initial public release. Testnet only; mainnet support is gated on contract freeze and arrives with v1.0.0.
@@ -32,4 +39,5 @@ See `README.md` for the full list. Headlines:
 - Wallet schemes other than Ed25519 ship as decoders with E2E unverified; `WalletStandardSigner.fromAccount` will accept them, but `@mysten/walrus` and `@mysten/seal` round-trip is not yet smoke-tested for those configurations.
 - gRPC client only at v0.1.0; the reader and adapter interfaces are typed against `Pick<SuiGrpcClient, ...>`. JSON-RPC fallback is planned for v0.2.0.
 
-[0.1.0]: https://github.com/TheDivic/morse-dcms/releases/tag/v0.1.0
+[0.1.1]: https://github.com/arcadiasystems/morse-dcms/releases/tag/v0.1.1
+[0.1.0]: https://github.com/arcadiasystems/morse-dcms/releases/tag/v0.1.0

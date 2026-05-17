@@ -1,6 +1,6 @@
 {
 	"name": "@arcadiasystems/morse-sdk",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "TypeScript SDK for Morse dCMS on the Sui blockchain.",
 	"license": "MIT",
 	"type": "module",
@@ -18,8 +18,12 @@
 	],
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/TheDivic/morse-dcms.git",
+		"url": "git+https://github.com/arcadiasystems/morse-dcms.git",
 		"directory": "morse-sdk"
+	},
+	"homepage": "https://github.com/arcadiasystems/morse-dcms/tree/main/morse-sdk#readme",
+	"bugs": {
+		"url": "https://github.com/arcadiasystems/morse-dcms/issues"
 	},
 	"files": [
 		"dist",
