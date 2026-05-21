@@ -232,7 +232,8 @@ The full public surface, grouped by concern. Every export carries a JSDoc on its
 | --- | --- |
 | `KeypairAdapter` | Server / CLI `WalletAdapter` wrapping a raw `Ed25519Keypair`. |
 | `WalletStandardSigner.fromAccount(account, callbacks)` | Browser-side `Signer` for `@mysten/walrus` and `@mysten/seal`; wraps wallet-standard wallets without ever holding the user's key. Sync; throws `UnsupportedWalletSchemeError` on non-canonical `account.publicKey` (e.g. Phantom). |
-| `WalletStandardSigner.fromAccountAsync(account, callbacks)` | Same as `fromAccount`, with signature-based pubkey recovery for wallets that return a non-canonical `account.publicKey`. One extra wallet popup at session start for non-compliant wallets; no extra IO for compliant ones. |
+| `WalletStandardSigner.fromAccountAsync(account, callbacks, options?)` | Same as `fromAccount`, with signature-based pubkey recovery for wallets that return a non-canonical `account.publicKey` (Phantom). Pass `options.pubkeyCache` to skip the recovery probe across sessions. One extra wallet popup on first session per address; subsequent sessions are zero-popup when a cache is supplied. |
+| `BrowserStoragePubkeyCache({ storage?, prefix? })` | `PubkeyCache` backed by browser `localStorage`. Customizable storage backend (for tests, `sessionStorage`, or polyfills) and key prefix. |
 | `DefaultWalrusWriteAdapter.fromConfig(config, signer)` | Walrus uploads (blob + quilt). Implements `WalrusFlowCapable` (the 2-popup optimization). |
 | `DefaultWalrusReadAdapter.fromConfig(config)` | Walrus reads (`readBlob`, `readBlobByObjectId`, `readQuiltPatch`, `readBlobRef`). |
 | `HttpPublisherWriteAdapter.fromConfig({ publisherUrl, ownerAddress })` | Walrus uploads via a publisher HTTP service (operator pays storage; 1 popup for upload + addEntry). |
@@ -323,25 +324,34 @@ Refused schemes throw `UnsupportedWalletSchemeError` (a `ConfigurationError` sub
 
 Phantom's Sui adapter returns a 59-byte opaque blob in `account.publicKey` instead of the canonical 32 / 33-byte form mandated by wallet-standard. This is a documented Phantom quirk (see the Sui developer forum thread from August 2025), not an SDK gap.
 
-For Phantom-class wallets, use `WalletStandardSigner.fromAccountAsync` instead of `fromAccount`:
+For Phantom-class wallets, use `WalletStandardSigner.fromAccountAsync` instead of `fromAccount`, and pass a `PubkeyCache` to avoid re-prompting on every page reload:
 
 ```ts
-import { WalletStandardSigner, UnsupportedWalletSchemeError } from "@arcadiasystems/morse-sdk";
+import {
+  WalletStandardSigner,
+  BrowserStoragePubkeyCache,
+  UnsupportedWalletSchemeError,
+} from "@arcadiasystems/morse-sdk";
 
 try {
-  const signer = await WalletStandardSigner.fromAccountAsync(account, callbacks);
-  // ...
+  const signer = await WalletStandardSigner.fromAccountAsync(account, callbacks, {
+    pubkeyCache: new BrowserStoragePubkeyCache(),
+  });
 } catch (err) {
   if (err instanceof UnsupportedWalletSchemeError) {
     // Render: "Your wallet uses an unsupported scheme. Try Slush or Suiet."
-    // err.publicKeyBytes, err.address, err.walletName available.
+    // err.code, err.publicKeyBytes, err.address, err.walletName available.
   }
 }
 ```
 
 `fromAccountAsync` tries the sync decoder first (no extra IO for compliant wallets), and on failure recovers the real Ed25519 public key by asking the wallet to sign a domain-separated probe message. Sui's canonical signature is `flag || sig || pk` (97 bytes for Ed25519); the last 32 bytes are the raw key. The recovered key is verified to derive to `account.address` before the signer is constructed.
 
-Cost: one extra wallet popup at session start for Phantom users. The probe message is `"morse-sdk:wallet-pubkey-recovery:" + address`, wrapped by Sui's `signPersonalMessage` `"Sui Message:"` prefix, so it cannot collide with a real transaction. Compliant wallets pay no extra cost; they take the sync `fromAccount` path inside `fromAccountAsync` and skip the probe.
+Without a cache, the probe popup fires every session (every page reload, every component remount). With a `BrowserStoragePubkeyCache`, the popup fires once per address; subsequent sessions read from `localStorage` and skip the probe. The cached pubkey is still verified to derive to `account.address` on every load, so stale entries (wallet switch, planted bytes) heal automatically: the SDK calls `cache.clear?.(address)` and re-probes.
+
+For non-browser contexts (SSR, Node, native), implement the `PubkeyCache` interface against IndexedDB, Redis, or any KV store. Methods may be sync or async.
+
+The probe message is `"morse-sdk:wallet-pubkey-recovery:" + address`, wrapped by Sui's `signPersonalMessage` `"Sui Message:"` prefix, so it cannot collide with a real transaction. Compliant wallets pay no extra cost; they take the sync `fromAccount` path inside `fromAccountAsync` and skip both the probe and the cache.
 
 ## Error taxonomy
 

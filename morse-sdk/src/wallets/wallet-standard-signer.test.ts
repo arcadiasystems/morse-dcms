@@ -8,7 +8,28 @@ import { Transaction } from "@mysten/sui/transactions";
 import { toZkLoginPublicIdentifier } from "@mysten/sui/zklogin";
 
 import { ConfigurationError, UnsupportedWalletSchemeError } from "../errors.js";
-import { WalletStandardSigner } from "./wallet-standard-signer.js";
+import {
+	type BrowserStorageLike,
+	BrowserStoragePubkeyCache,
+	type PubkeyCache,
+	WalletStandardSigner,
+} from "./wallet-standard-signer.js";
+
+function makeFakeStorage(): BrowserStorageLike & {
+	snapshot(): Record<string, string>;
+} {
+	const data = new Map<string, string>();
+	return {
+		getItem: (key: string) => data.get(key) ?? null,
+		setItem: (key: string, value: string) => {
+			data.set(key, value);
+		},
+		removeItem: (key: string) => {
+			data.delete(key);
+		},
+		snapshot: () => Object.fromEntries(data),
+	};
+}
 
 function bytesToBase64(bytes: Uint8Array): string {
 	let binary = "";
@@ -606,5 +627,314 @@ describe("WalletStandardSigner.fromAccountAsync", () => {
 				},
 			),
 		).rejects.toBeInstanceOf(UserRejected);
+	});
+});
+
+describe("fromAccountAsync with pubkeyCache", () => {
+	test("cache hit (valid bytes): skips probe and constructs signer from cached pubkey", async () => {
+		const keypair = Ed25519Keypair.fromSecretKey(secret(0xa1));
+		const address = keypair.getPublicKey().toSuiAddress();
+		const cache: PubkeyCache = {
+			get: mock(async () => keypair.getPublicKey().toRawBytes()),
+			set: mock(async () => {}),
+			clear: mock(async () => {}),
+		};
+		const probe = mock(async () => ({
+			bytes: "AAAA",
+			signature: ed25519SigBlob(keypair.getPublicKey().toRawBytes()),
+		}));
+		const signer = await WalletStandardSigner.fromAccountAsync(
+			{ address, publicKey: new Uint8Array(59).fill(0xd3) },
+			{
+				signTransaction: mock(async () => ({
+					bytes: "AAAA",
+					signature: "s",
+				})),
+				signPersonalMessage: probe,
+			},
+			{ pubkeyCache: cache },
+		);
+		expect(signer.getKeyScheme()).toBe("ED25519");
+		expect(signer.toSuiAddress()).toBe(address);
+		expect(cache.get).toHaveBeenCalledWith(address);
+		expect(probe).not.toHaveBeenCalled();
+		expect(cache.set).not.toHaveBeenCalled();
+	});
+
+	test("cache miss: probes, then persists recovered pubkey via set", async () => {
+		const keypair = Ed25519Keypair.fromSecretKey(secret(0xa2));
+		const address = keypair.getPublicKey().toSuiAddress();
+		const rawPubkey = keypair.getPublicKey().toRawBytes();
+		const setSpy = mock(async () => {});
+		const cache: PubkeyCache = {
+			get: mock(async () => null),
+			set: setSpy,
+			clear: mock(async () => {}),
+		};
+		const probe = mock(async () => ({
+			bytes: "AAAA",
+			signature: ed25519SigBlob(rawPubkey),
+		}));
+		await WalletStandardSigner.fromAccountAsync(
+			{ address, publicKey: new Uint8Array(59).fill(0xd3) },
+			{
+				signTransaction: mock(async () => ({
+					bytes: "AAAA",
+					signature: "s",
+				})),
+				signPersonalMessage: probe,
+			},
+			{ pubkeyCache: cache },
+		);
+		expect(probe).toHaveBeenCalledTimes(1);
+		expect(setSpy).toHaveBeenCalledTimes(1);
+		const setArgs = (setSpy as ReturnType<typeof mock>).mock.calls[0] as [
+			string,
+			Uint8Array,
+		];
+		expect(setArgs[0]).toBe(address);
+		expect(Array.from(setArgs[1])).toEqual(Array.from(rawPubkey));
+	});
+
+	test("cache hit (stale bytes that derive elsewhere): clears, re-probes, overwrites", async () => {
+		const realKeypair = Ed25519Keypair.fromSecretKey(secret(0xa3));
+		const staleKeypair = Ed25519Keypair.fromSecretKey(secret(0xa4));
+		const address = realKeypair.getPublicKey().toSuiAddress();
+		const clearSpy = mock(async () => {});
+		const setSpy = mock(async () => {});
+		const cache: PubkeyCache = {
+			get: mock(async () => staleKeypair.getPublicKey().toRawBytes()),
+			set: setSpy,
+			clear: clearSpy,
+		};
+		const probe = mock(async () => ({
+			bytes: "AAAA",
+			signature: ed25519SigBlob(realKeypair.getPublicKey().toRawBytes()),
+		}));
+		const signer = await WalletStandardSigner.fromAccountAsync(
+			{ address, publicKey: new Uint8Array(59).fill(0xd3) },
+			{
+				signTransaction: mock(async () => ({
+					bytes: "AAAA",
+					signature: "s",
+				})),
+				signPersonalMessage: probe,
+			},
+			{ pubkeyCache: cache },
+		);
+		expect(clearSpy).toHaveBeenCalledWith(address);
+		expect(probe).toHaveBeenCalledTimes(1);
+		expect(setSpy).toHaveBeenCalledTimes(1);
+		expect(signer.toSuiAddress()).toBe(address);
+	});
+
+	test("cache hit (corrupt length): clears entry, re-probes, returns valid signer", async () => {
+		const keypair = Ed25519Keypair.fromSecretKey(secret(0xa5));
+		const address = keypair.getPublicKey().toSuiAddress();
+		const clearSpy = mock(async () => {});
+		const cache: PubkeyCache = {
+			// 16 bytes: too short for any valid Ed25519 raw key
+			get: mock(async () => new Uint8Array(16)),
+			set: mock(async () => {}),
+			clear: clearSpy,
+		};
+		const probe = mock(async () => ({
+			bytes: "AAAA",
+			signature: ed25519SigBlob(keypair.getPublicKey().toRawBytes()),
+		}));
+		const signer = await WalletStandardSigner.fromAccountAsync(
+			{ address, publicKey: new Uint8Array(59).fill(0xd3) },
+			{
+				signTransaction: mock(async () => ({
+					bytes: "AAAA",
+					signature: "s",
+				})),
+				signPersonalMessage: probe,
+			},
+			{ pubkeyCache: cache },
+		);
+		expect(clearSpy).toHaveBeenCalledWith(address);
+		expect(probe).toHaveBeenCalledTimes(1);
+		expect(signer.toSuiAddress()).toBe(address);
+	});
+
+	test("sync cache (get returns Uint8Array directly): works without await", async () => {
+		const keypair = Ed25519Keypair.fromSecretKey(secret(0xa6));
+		const address = keypair.getPublicKey().toSuiAddress();
+		const cache: PubkeyCache = {
+			get: () => keypair.getPublicKey().toRawBytes(),
+			set: () => {},
+		};
+		const probe = mock(async () => ({
+			bytes: "AAAA",
+			signature: ed25519SigBlob(new Uint8Array(32)),
+		}));
+		const signer = await WalletStandardSigner.fromAccountAsync(
+			{ address, publicKey: new Uint8Array(59).fill(0xd3) },
+			{
+				signTransaction: mock(async () => ({
+					bytes: "AAAA",
+					signature: "s",
+				})),
+				signPersonalMessage: probe,
+			},
+			{ pubkeyCache: cache },
+		);
+		expect(signer.toSuiAddress()).toBe(address);
+		expect(probe).not.toHaveBeenCalled();
+	});
+
+	test("cache hit with no clear method: stale entry falls through without error", async () => {
+		const realKeypair = Ed25519Keypair.fromSecretKey(secret(0xa7));
+		const staleKeypair = Ed25519Keypair.fromSecretKey(secret(0xa8));
+		const address = realKeypair.getPublicKey().toSuiAddress();
+		const cache: PubkeyCache = {
+			get: () => staleKeypair.getPublicKey().toRawBytes(),
+			set: () => {},
+			// `clear` intentionally omitted
+		};
+		const probe = mock(async () => ({
+			bytes: "AAAA",
+			signature: ed25519SigBlob(realKeypair.getPublicKey().toRawBytes()),
+		}));
+		const signer = await WalletStandardSigner.fromAccountAsync(
+			{ address, publicKey: new Uint8Array(59).fill(0xd3) },
+			{
+				signTransaction: mock(async () => ({
+					bytes: "AAAA",
+					signature: "s",
+				})),
+				signPersonalMessage: probe,
+			},
+			{ pubkeyCache: cache },
+		);
+		expect(probe).toHaveBeenCalledTimes(1);
+		expect(signer.toSuiAddress()).toBe(address);
+	});
+
+	test("compliant wallet (sync path): cache is not consulted", async () => {
+		const keypair = Ed25519Keypair.fromSecretKey(secret(0xa9));
+		const cache: PubkeyCache = {
+			get: mock(async () => null),
+			set: mock(async () => {}),
+		};
+		const signer = await WalletStandardSigner.fromAccountAsync(
+			{
+				address: keypair.getPublicKey().toSuiAddress(),
+				publicKey: keypair.getPublicKey().toRawBytes(),
+			},
+			{
+				signTransaction: mock(async () => ({
+					bytes: "AAAA",
+					signature: "s",
+				})),
+				signPersonalMessage: mock(async () => ({
+					bytes: "AAAA",
+					signature: "s",
+				})),
+			},
+			{ pubkeyCache: cache },
+		);
+		expect(cache.get).not.toHaveBeenCalled();
+		expect(cache.set).not.toHaveBeenCalled();
+		expect(signer.toSuiAddress()).toBe(keypair.getPublicKey().toSuiAddress());
+	});
+});
+
+describe("BrowserStoragePubkeyCache", () => {
+	test("round-trip: set then get returns the same bytes", () => {
+		const storage = makeFakeStorage();
+		const cache = new BrowserStoragePubkeyCache({ storage });
+		const pubkey = new Uint8Array(32).fill(0xab);
+		cache.set("0xabc", pubkey);
+		const got = cache.get("0xabc");
+		expect(got).not.toBeNull();
+		expect(Array.from(got as Uint8Array)).toEqual(Array.from(pubkey));
+	});
+
+	test("get on missing key returns null", () => {
+		const storage = makeFakeStorage();
+		const cache = new BrowserStoragePubkeyCache({ storage });
+		expect(cache.get("0xnope")).toBeNull();
+	});
+
+	test("clear removes the entry", () => {
+		const storage = makeFakeStorage();
+		const cache = new BrowserStoragePubkeyCache({ storage });
+		cache.set("0xabc", new Uint8Array(32).fill(0x11));
+		cache.clear("0xabc");
+		expect(cache.get("0xabc")).toBeNull();
+	});
+
+	test("custom prefix namespaces entries", () => {
+		const storage = makeFakeStorage();
+		const cache = new BrowserStoragePubkeyCache({
+			storage,
+			prefix: "test:",
+		});
+		cache.set("0xabc", new Uint8Array(32).fill(0x22));
+		expect(storage.snapshot()).toEqual({
+			"test:0xabc": expect.any(String) as string,
+		});
+	});
+
+	test("corrupt entry (non-base64) returns null without throwing", () => {
+		const storage = makeFakeStorage();
+		storage.setItem("morse-sdk:wallet-pubkey:0xabc", "not-valid-base64!@#$");
+		const cache = new BrowserStoragePubkeyCache({ storage });
+		expect(cache.get("0xabc")).toBeNull();
+	});
+
+	test("getItem returning empty string is treated as miss (shim compat)", () => {
+		const shimStorage: BrowserStorageLike = {
+			getItem: () => "",
+			setItem: () => {},
+			removeItem: () => {},
+		};
+		const cache = new BrowserStoragePubkeyCache({ storage: shimStorage });
+		expect(cache.get("0xabc")).toBeNull();
+	});
+
+	test("constructor throws when localStorage is unavailable and no storage passed", () => {
+		const originalLocalStorage = globalThis.localStorage;
+		// @ts-expect-error - intentionally remove for the test
+		globalThis.localStorage = undefined;
+		try {
+			expect(() => new BrowserStoragePubkeyCache()).toThrow(ConfigurationError);
+		} finally {
+			Object.defineProperty(globalThis, "localStorage", {
+				value: originalLocalStorage,
+				configurable: true,
+			});
+		}
+	});
+
+	test("end-to-end: cache survives across two fromAccountAsync calls (only one probe)", async () => {
+		const storage = makeFakeStorage();
+		const cache = new BrowserStoragePubkeyCache({ storage });
+		const keypair = Ed25519Keypair.fromSecretKey(secret(0xaa));
+		const address = keypair.getPublicKey().toSuiAddress();
+		const probe = mock(async () => ({
+			bytes: "AAAA",
+			signature: ed25519SigBlob(keypair.getPublicKey().toRawBytes()),
+		}));
+		const callbacks = {
+			signTransaction: mock(async () => ({
+				bytes: "AAAA",
+				signature: "s",
+			})),
+			signPersonalMessage: probe,
+		};
+		const account = {
+			address,
+			publicKey: new Uint8Array(59).fill(0xd3),
+		};
+		await WalletStandardSigner.fromAccountAsync(account, callbacks, {
+			pubkeyCache: cache,
+		});
+		await WalletStandardSigner.fromAccountAsync(account, callbacks, {
+			pubkeyCache: cache,
+		});
+		expect(probe).toHaveBeenCalledTimes(1);
 	});
 });

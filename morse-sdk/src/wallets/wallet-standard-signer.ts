@@ -143,6 +143,12 @@ export class WalletStandardSigner extends Signer {
 	 * verifies it derives to `account.address`. One extra wallet popup for
 	 * Phantom-class wallets; compliant wallets pay no extra cost.
 	 *
+	 * Pass `options.pubkeyCache` to skip the probe on subsequent sessions:
+	 * the SDK reads cached bytes, verifies they derive to `account.address`,
+	 * and on mismatch calls `clear` (if defined) and re-probes. Successful
+	 * probes write back via `set`. See `BrowserStoragePubkeyCache` for a
+	 * `localStorage`-backed default.
+	 *
 	 * Recovery handles Ed25519 only; other schemes throw
 	 * `UnsupportedWalletSchemeError` with `code: "recovery-non-ed25519"`.
 	 *
@@ -154,6 +160,7 @@ export class WalletStandardSigner extends Signer {
 	static async fromAccountAsync(
 		account: WalletStandardAccount,
 		callbacks: WalletStandardSignerCallbacks,
+		options?: { pubkeyCache?: PubkeyCache },
 	): Promise<WalletStandardSigner> {
 		try {
 			return WalletStandardSigner.fromAccount(account, callbacks);
@@ -164,10 +171,32 @@ export class WalletStandardSigner extends Signer {
 			) {
 				throw error;
 			}
+			const cache = options?.pubkeyCache;
+			if (cache !== undefined) {
+				const cached = await cache.get(account.address);
+				if (cached !== null) {
+					const verified = verifyCachedEd25519PubKey(cached, account.address);
+					if (verified !== null) {
+						return new WalletStandardSigner({
+							publicKey: verified,
+							keyScheme: "ED25519",
+							signTransaction: callbacks.signTransaction,
+							signPersonalMessage: callbacks.signPersonalMessage,
+						});
+					}
+					// Cached bytes did not derive to account.address (stale entry,
+					// wallet switch, or planted bytes). Drop it and fall through
+					// to a fresh probe.
+					await cache.clear?.(account.address);
+				}
+			}
 			const recovered = await recoverEd25519PublicKeyFromSignature(
 				account,
 				callbacks.signPersonalMessage,
 			);
+			if (cache !== undefined) {
+				await cache.set(account.address, recovered.toRawBytes());
+			}
 			return new WalletStandardSigner({
 				publicKey: recovered,
 				keyScheme: "ED25519",
@@ -370,6 +399,28 @@ interface SchemeCandidate {
 }
 
 /**
+ * Validate cached pubkey bytes: must be exactly 32 bytes and must derive to
+ * the expected Sui address. Returns the constructed key on success, null
+ * on any failure so the caller can clear and re-probe.
+ */
+function verifyCachedEd25519PubKey(
+	bytes: Uint8Array,
+	expectedAddress: string,
+): Ed25519PublicKey | null {
+	if (bytes.length !== 32) {
+		return null;
+	}
+	try {
+		const publicKey = new Ed25519PublicKey(bytes);
+		const derived = normalizeSuiAddress(publicKey.toSuiAddress());
+		const expected = normalizeSuiAddress(expectedAddress);
+		return derived === expected ? publicKey : null;
+	} catch {
+		return null;
+	}
+}
+
+/**
  * Build the list of (scheme, public-key-constructor) pairs to try against
  * `account.address`. Covers raw bytes (Suiet-style) and flag-prefixed bytes
  * (Sui canonical / Slush-style). Order is stable but irrelevant for
@@ -427,4 +478,89 @@ function candidateInterpretations(
 	}
 
 	return list;
+}
+
+/**
+ * Pluggable storage for pubkeys recovered by `fromAccountAsync`. Used to
+ * skip the probe `signPersonalMessage` popup on subsequent sessions for
+ * wallets that return a non-canonical `account.publicKey` (Phantom).
+ * Methods may be sync or async to support browser `localStorage` (sync),
+ * `IndexedDB` (async), and server-side KV stores (async).
+ *
+ * Cache hits are still verified to derive to `account.address` before being
+ * trusted; on mismatch the SDK calls `clear` (if defined) and re-probes.
+ */
+export interface PubkeyCache {
+	get(address: string): Uint8Array | null | Promise<Uint8Array | null>;
+	set(address: string, pubkey: Uint8Array): void | Promise<void>;
+	clear?(address: string): void | Promise<void>;
+}
+
+/** Subset of the DOM `Storage` interface that `BrowserStoragePubkeyCache` needs. */
+export interface BrowserStorageLike {
+	getItem(key: string): string | null;
+	setItem(key: string, value: string): void;
+	removeItem(key: string): void;
+}
+
+export interface BrowserStoragePubkeyCacheOptions {
+	/** Defaults to `globalThis.localStorage`. Pass a custom backend for tests or `sessionStorage`. */
+	readonly storage?: BrowserStorageLike;
+	/** Key prefix to namespace inside the storage. Defaults to `"morse-sdk:wallet-pubkey:"`. */
+	readonly prefix?: string;
+}
+
+/**
+ * Sync `PubkeyCache` backed by browser `localStorage` (or any DOM
+ * `Storage`-like). Pubkeys are stored as base64 strings under
+ * `<prefix><address>`. Throws `ConfigurationError` on construction if
+ * `globalThis.localStorage` is unavailable and no `storage` was passed
+ * (e.g. SSR/Node without polyfill); inject a storage backend or use a
+ * different cache implementation in non-browser contexts.
+ */
+export class BrowserStoragePubkeyCache implements PubkeyCache {
+	readonly #storage: BrowserStorageLike;
+	readonly #prefix: string;
+
+	constructor(options: BrowserStoragePubkeyCacheOptions = {}) {
+		const storage = options.storage ?? globalThis.localStorage;
+		if (!storage) {
+			throw new ConfigurationError(
+				"BrowserStoragePubkeyCache: globalThis.localStorage is not available. In SSR / Node contexts, guard construction with `typeof localStorage !== 'undefined'`, defer to a client-only component, or pass an explicit `storage` backend (e.g. a Redis-backed PubkeyCache implementation).",
+			);
+		}
+		this.#storage = storage;
+		this.#prefix = options.prefix ?? "morse-sdk:wallet-pubkey:";
+	}
+
+	get(address: string): Uint8Array | null {
+		const value = this.#storage.getItem(this.#prefix + address);
+		// Some Storage shims (jsdom variants, RN AsyncStorage wrappers) return
+		// "" instead of null on a missing key; treat both as a miss.
+		if (!value) {
+			return null;
+		}
+		try {
+			return fromBase64(value);
+		} catch {
+			// Corrupt entry; treat as miss. SDK will re-probe and overwrite.
+			return null;
+		}
+	}
+
+	set(address: string, pubkey: Uint8Array): void {
+		this.#storage.setItem(this.#prefix + address, toBase64(pubkey));
+	}
+
+	clear(address: string): void {
+		this.#storage.removeItem(this.#prefix + address);
+	}
+}
+
+function toBase64(bytes: Uint8Array): string {
+	let binary = "";
+	for (let i = 0; i < bytes.length; i += 1) {
+		binary += String.fromCharCode(bytes[i] ?? 0);
+	}
+	return btoa(binary);
 }

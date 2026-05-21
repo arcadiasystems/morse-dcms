@@ -157,7 +157,11 @@ export {
 	type WalrusBlobId,
 } from "./types.js";
 export {
+	type BrowserStorageLike,
+	BrowserStoragePubkeyCache,
+	type BrowserStoragePubkeyCacheOptions,
 	KeypairAdapter,
+	type PubkeyCache,
 	type SimulationReturnValues,
 	type WalletAdapter,
 	type WalletSignPersonalMessage,

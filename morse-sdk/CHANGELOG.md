@@ -2,6 +2,41 @@
 
 All notable changes to `morse-sdk` will be documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] - 2026-05-21
+
+Pluggable `PubkeyCache` for `fromAccountAsync` so Phantom users do not re-sign a probe message on every page reload.
+
+### Added
+
+- **`PubkeyCache` interface** with `get`, `set`, optional `clear`. Methods may be sync or async, so the same interface backs browser `localStorage`, IndexedDB, and server-side KV stores. Pass via the new `options.pubkeyCache` arg on `fromAccountAsync`.
+- **`BrowserStoragePubkeyCache`**: ready-to-use `PubkeyCache` backed by a DOM `Storage`-like interface (defaults to `globalThis.localStorage`). Customizable `prefix` for namespacing. Throws `ConfigurationError` at construction when `localStorage` is unavailable and no `storage` was injected (SSR / Node without polyfill).
+- **`BrowserStorageLike` / `BrowserStoragePubkeyCacheOptions`** exported types for consumers building their own storage adapters or tests.
+
+### Changed
+
+- **`fromAccountAsync(account, callbacks, options?)`**: third parameter added. Cache hits are still verified to derive to `account.address` before the signer is trusted; on mismatch the SDK calls `cache.clear?.(address)` and falls through to a fresh probe, then writes the recovered pubkey back via `cache.set`. Stale entries, planted bytes, and wallet rotation all heal automatically. Compliant wallets (sync `fromAccount` path) skip the cache entirely; `get`/`set` are not called.
+
+### Consumer migration
+
+Before (probe popup on every mount):
+
+```ts
+const signer = await WalletStandardSigner.fromAccountAsync(account, callbacks);
+```
+
+After (probe popup once per address):
+
+```ts
+import { BrowserStoragePubkeyCache } from "@arcadiasystems/morse-sdk";
+const signer = await WalletStandardSigner.fromAccountAsync(account, callbacks, {
+  pubkeyCache: new BrowserStoragePubkeyCache(),
+});
+```
+
+### Unchanged
+
+No behavior change for callers who do not pass `pubkeyCache`. No behavior change for compliant wallets. `fromAccount` (sync) is unchanged; the cache only applies to the async recovery path. Error classes, public types, and the rest of the SDK surface are byte-identical to 0.1.3.
+
 ## [0.1.3] - 2026-05-21
 
 Phantom (Sui) wallet support, plus a structured error class so consumer dapps can render proper UX for unsupported wallets.
@@ -96,6 +131,7 @@ See `README.md` for the full list. Headlines:
 - Wallet schemes other than Ed25519 ship as decoders with E2E unverified; `WalletStandardSigner.fromAccount` will accept them, but `@mysten/walrus` and `@mysten/seal` round-trip is not yet smoke-tested for those configurations.
 - gRPC client only at v0.1.0; the reader and adapter interfaces are typed against `Pick<SuiGrpcClient, ...>`. JSON-RPC fallback is planned for v0.2.0.
 
+[0.1.4]: https://github.com/arcadiasystems/morse-dcms/releases/tag/v0.1.4
 [0.1.3]: https://github.com/arcadiasystems/morse-dcms/releases/tag/v0.1.3
 [0.1.2]: https://github.com/arcadiasystems/morse-dcms/releases/tag/v0.1.2
 [0.1.1]: https://github.com/arcadiasystems/morse-dcms/releases/tag/v0.1.1
