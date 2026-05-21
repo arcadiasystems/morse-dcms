@@ -2,6 +2,27 @@
 
 All notable changes to `morse-sdk` will be documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] - 2026-05-21
+
+Phantom (Sui) wallet support, plus a structured error class so consumer dapps can render proper UX for unsupported wallets.
+
+### Added
+
+- **`WalletStandardSigner.fromAccountAsync(account, callbacks)`**: async variant of `fromAccount` that recovers the real Ed25519 public key from a probe signature when `account.publicKey` is non-canonical. Compliant wallets (Slush, Suiet) go through the sync path with no extra IO; non-canonical wallets (Phantom) get one extra wallet popup at session start for the recovery. The probe message is domain-separated (`"morse-sdk:wallet-pubkey-recovery:" + address`) so it cannot collide with a real transaction. The recovered key is verified to derive to `account.address` before the signer is constructed; a wallet bug that signs with a different key is caught and rejected.
+- **`UnsupportedWalletSchemeError extends ConfigurationError`** with structured fields `code: UnsupportedWalletSchemeCode`, `publicKeyBytes: Readonly<Uint8Array>`, `address: string`, optional `walletName?: string`. The `code` discriminates the failure mode: `non-canonical-pubkey` (sync decode failed, recovery applicable), `malformed-zklogin` (zkLogin-shaped but not decodable, recovery not applicable), `recovery-sig-length` / `recovery-non-ed25519` / `recovery-address-mismatch` (recovery flow failed). Consumer dapps switch on `code` to render the appropriate CTA without parsing message strings.
+
+### Changed
+
+- **`fromAccount` now throws `UnsupportedWalletSchemeError`** (still a `ConfigurationError` subclass) instead of plain `ConfigurationError` on unrecognized public-key shapes. Existing consumers narrowing on `ConfigurationError` continue to work without modification; consumers who want structured fields opt in via `instanceof UnsupportedWalletSchemeError`. The error message also updates the suggested remediation from "implement a custom Signer" to "retry with WalletStandardSigner.fromAccountAsync".
+
+### Context
+
+Phantom's Sui adapter returns a 59-byte opaque blob in `account.publicKey` instead of the canonical 32 / 33-byte form mandated by wallet-standard. This is a known, undocumented quirk (confirmed in the Sui developer forum; the Sui team's response was "reach out to Phantom"). Earlier versions of `WalletStandardSigner` refused these accounts entirely. The recovery flow added here works because Phantom's `signPersonalMessage` does return Sui's canonical 97-byte `flag || sig || pk` signature blob, so the real public key can be extracted from the last 32 bytes of any signature the wallet produces. We do not trust `account.publicKey` at all on the async path.
+
+### Unchanged
+
+No behavior changes for compliant wallets (Slush, Suiet, keypair-backed). `fromAccount` is still synchronous; `fromAccountAsync` is purely additive. Other error classes, public types, and the rest of the SDK surface are byte-identical to 0.1.2.
+
 ## [0.1.2] - 2026-05-21
 
 Additive UI-translation helper plus three bug fixes in the reader's error mapping. Pre-1.0 patch-bump per the project's pragmatic versioning policy; semver-strict consumers can treat as a minor (one new export, one new optional field, one corrected throw class).
@@ -75,6 +96,7 @@ See `README.md` for the full list. Headlines:
 - Wallet schemes other than Ed25519 ship as decoders with E2E unverified; `WalletStandardSigner.fromAccount` will accept them, but `@mysten/walrus` and `@mysten/seal` round-trip is not yet smoke-tested for those configurations.
 - gRPC client only at v0.1.0; the reader and adapter interfaces are typed against `Pick<SuiGrpcClient, ...>`. JSON-RPC fallback is planned for v0.2.0.
 
+[0.1.3]: https://github.com/arcadiasystems/morse-dcms/releases/tag/v0.1.3
 [0.1.2]: https://github.com/arcadiasystems/morse-dcms/releases/tag/v0.1.2
 [0.1.1]: https://github.com/arcadiasystems/morse-dcms/releases/tag/v0.1.1
 [0.1.0]: https://github.com/arcadiasystems/morse-dcms/releases/tag/v0.1.0

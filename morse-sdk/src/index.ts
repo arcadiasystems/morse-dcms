@@ -48,6 +48,8 @@ export {
 	UNKNOWN_ABORT_NAME,
 	UnauthorizedError,
 	UncertifiedBlobError,
+	type UnsupportedWalletSchemeCode,
+	UnsupportedWalletSchemeError,
 	ValidationError,
 } from "./errors.js";
 export {

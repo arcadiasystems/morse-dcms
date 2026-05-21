@@ -33,7 +33,7 @@ import type { Transaction } from "@mysten/sui/transactions";
 import { normalizeSuiAddress } from "@mysten/sui/utils";
 import { ZkLoginPublicIdentifier } from "@mysten/sui/zklogin";
 
-import { ConfigurationError } from "../errors.js";
+import { ConfigurationError, UnsupportedWalletSchemeError } from "../errors.js";
 
 /**
  * Callback shape returned by dapp-kit's `useSignTransaction.mutateAsync`.
@@ -118,8 +118,11 @@ export class WalletStandardSigner extends Signer {
 	 * Walrus signature errors on zkLogin accounts, fall back to a
 	 * keypair account.
 	 *
-	 * @throws {ConfigurationError} If the account uses multisig, or if no
-	 *   candidate scheme produces an address matching `account.address`.
+	 * @throws {UnsupportedWalletSchemeError} If the account uses multisig, or
+	 *   if no candidate scheme produces an address matching `account.address`.
+	 *   The error carries the raw `publicKeyBytes` and `address` so consumers
+	 *   can either fall back to `fromAccountAsync` (which recovers the real
+	 *   pubkey from a probe signature) or render a wallet-specific CTA.
 	 */
 	static fromAccount(
 		account: WalletStandardAccount,
@@ -132,6 +135,46 @@ export class WalletStandardSigner extends Signer {
 			signTransaction: callbacks.signTransaction,
 			signPersonalMessage: callbacks.signPersonalMessage,
 		});
+	}
+
+	/**
+	 * Async variant of `fromAccount`. On `code === "non-canonical-pubkey"`,
+	 * recovers the real Ed25519 key from a probe `signPersonalMessage` and
+	 * verifies it derives to `account.address`. One extra wallet popup for
+	 * Phantom-class wallets; compliant wallets pay no extra cost.
+	 *
+	 * Recovery handles Ed25519 only; other schemes throw
+	 * `UnsupportedWalletSchemeError` with `code: "recovery-non-ed25519"`.
+	 *
+	 * @throws {UnsupportedWalletSchemeError} On recovery failure (sig
+	 *   length, non-Ed25519 flag, address mismatch). Other failure modes
+	 *   from `fromAccount` (zkLogin shape mismatch, etc.) propagate
+	 *   verbatim without firing the probe.
+	 */
+	static async fromAccountAsync(
+		account: WalletStandardAccount,
+		callbacks: WalletStandardSignerCallbacks,
+	): Promise<WalletStandardSigner> {
+		try {
+			return WalletStandardSigner.fromAccount(account, callbacks);
+		} catch (error) {
+			if (
+				!(error instanceof UnsupportedWalletSchemeError) ||
+				error.code !== "non-canonical-pubkey"
+			) {
+				throw error;
+			}
+			const recovered = await recoverEd25519PublicKeyFromSignature(
+				account,
+				callbacks.signPersonalMessage,
+			);
+			return new WalletStandardSigner({
+				publicKey: recovered,
+				keyScheme: "ED25519",
+				signTransaction: callbacks.signTransaction,
+				signPersonalMessage: callbacks.signPersonalMessage,
+			});
+		}
 	}
 
 	override getKeyScheme(): SignatureScheme {
@@ -240,9 +283,85 @@ function decodeAccountPublicKey(
 		}
 	}
 
-	throw new ConfigurationError(
-		`WalletStandardSigner: account.publicKey is ${bytes.length} bytes and matches neither a raw nor a flag-prefixed (Sui canonical) form of Ed25519, Secp256k1, Secp256r1, or Passkey, nor a zkLogin identifier, for address ${account.address}. This suggests a multisig or unknown signature scheme; implement a custom Signer.`,
+	// A 0x05-prefixed buffer longer than 33 bytes is shape-consistent with a
+	// zkLogin identifier; we already attempted decode above and it failed.
+	// Tag it distinctly so the async recovery flow does not fire a probe
+	// (zkLogin signs via ZK proof, not Ed25519 — the probe cannot succeed).
+	const looksLikeMalformedZkLogin = bytes.length > 33 && bytes[0] === 0x05;
+	throw new UnsupportedWalletSchemeError(
+		looksLikeMalformedZkLogin
+			? `WalletStandardSigner: account.publicKey is ${bytes.length} bytes with a zkLogin-shaped prefix but does not decode to a valid zkLogin identifier for address ${account.address}. The wallet may be misreporting its zkLogin identifier; signature-based recovery is not applicable (zkLogin signs via ZK proof, not Ed25519). Implement a custom Signer.`
+			: `WalletStandardSigner: account.publicKey is ${bytes.length} bytes and matches neither a raw nor a flag-prefixed (Sui canonical) form of Ed25519, Secp256k1, Secp256r1, or Passkey, nor a zkLogin identifier, for address ${account.address}. The wallet may be using a non-canonical publicKey encoding (e.g. Phantom's Sui adapter); retry with WalletStandardSigner.fromAccountAsync to recover the real key from a probe signature, or implement a custom Signer.`,
+		{
+			code: looksLikeMalformedZkLogin
+				? "malformed-zklogin"
+				: "non-canonical-pubkey",
+			publicKeyBytes: bytes,
+			address: account.address,
+		},
 	);
+}
+
+/**
+ * Length of a canonical Sui Ed25519 signature blob: 1-byte flag (0x00) +
+ * 64-byte signature + 32-byte raw pubkey.
+ */
+const ED25519_SIGNATURE_BLOB_LENGTH = 97;
+const ED25519_FLAG = 0x00;
+const PROBE_MESSAGE_PREFIX = "morse-sdk:wallet-pubkey-recovery:";
+
+/**
+ * Recover the Ed25519 public key by extracting it from a probe signature.
+ * Sui's signature blob is `flag || sig || pk` (97 bytes for Ed25519); the
+ * last 32 bytes are the raw key. The recovered key is verified to derive
+ * to `account.address` before being trusted.
+ */
+async function recoverEd25519PublicKeyFromSignature(
+	account: WalletStandardAccount,
+	signPersonalMessage: WalletSignPersonalMessage,
+): Promise<Ed25519PublicKey> {
+	const probe = new TextEncoder().encode(
+		PROBE_MESSAGE_PREFIX + account.address,
+	);
+	const { signature } = await signPersonalMessage({ message: probe });
+	const sigBytes = fromBase64(signature);
+
+	if (sigBytes.length !== ED25519_SIGNATURE_BLOB_LENGTH) {
+		throw new UnsupportedWalletSchemeError(
+			`Wallet returned a ${sigBytes.length}-byte signature; expected ${ED25519_SIGNATURE_BLOB_LENGTH} bytes (Ed25519 canonical: flag || sig || pk). Recovery from this signature shape is not supported.`,
+			{
+				code: "recovery-sig-length",
+				publicKeyBytes: new Uint8Array(Array.from(account.publicKey)),
+				address: account.address,
+			},
+		);
+	}
+	if (sigBytes[0] !== ED25519_FLAG) {
+		throw new UnsupportedWalletSchemeError(
+			`Wallet signed with non-Ed25519 scheme (signature flag 0x${sigBytes[0]?.toString(16).padStart(2, "0")}); recovery is only implemented for Ed25519.`,
+			{
+				code: "recovery-non-ed25519",
+				publicKeyBytes: new Uint8Array(Array.from(account.publicKey)),
+				address: account.address,
+			},
+		);
+	}
+
+	const recoveredRaw = sigBytes.slice(65, 97);
+	const publicKey = new Ed25519PublicKey(recoveredRaw);
+	const derived = normalizeSuiAddress(publicKey.toSuiAddress());
+	const expected = normalizeSuiAddress(account.address);
+	if (derived !== expected) {
+		throw new UnsupportedWalletSchemeError(
+			`Pubkey recovered from probe signature derives to ${derived}, which does not match account.address ${expected}. The wallet may have signed with a different key than it advertises.`,
+			{
+				code: "recovery-address-mismatch",
+				publicKeyBytes: new Uint8Array(Array.from(account.publicKey)),
+				address: account.address,
+			},
+		);
+	}
+	return publicKey;
 }
 
 interface SchemeCandidate {

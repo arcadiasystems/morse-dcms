@@ -93,6 +93,55 @@ export class TransportError extends MorseError {
 /** SDK configuration gap (e.g. asking for a network with no canonical deployment). */
 export class ConfigurationError extends MorseError {}
 
+/**
+ * Discriminator for `UnsupportedWalletSchemeError`. `non-canonical-pubkey`
+ * means `account.publicKey` did not decode at construction time; the rest
+ * mean the async recovery flow failed for a specific reason. Consumers
+ * branch on `code` rather than message strings, and `fromAccountAsync`
+ * only attempts recovery when `code === "non-canonical-pubkey"`.
+ */
+export type UnsupportedWalletSchemeCode =
+	| "non-canonical-pubkey"
+	| "malformed-zklogin"
+	| "recovery-sig-length"
+	| "recovery-non-ed25519"
+	| "recovery-address-mismatch";
+
+/**
+ * Raised by `WalletStandardSigner.fromAccount` and `fromAccountAsync` when
+ * the account's public key cannot be resolved to a verified Ed25519/Secp/
+ * Passkey/ZkLogin key matching `account.address`. Narrow on `code` to
+ * distinguish the failure mode; carries the raw bytes and reported address
+ * for support telemetry and CTA copy. Phantom's Sui adapter is the known
+ * source: it returns a 59-byte opaque blob in `account.publicKey`, which
+ * surfaces as `code: "non-canonical-pubkey"`.
+ */
+export class UnsupportedWalletSchemeError extends ConfigurationError {
+	readonly code: UnsupportedWalletSchemeCode;
+	readonly publicKeyBytes: Readonly<Uint8Array>;
+	readonly address: string;
+	readonly walletName?: string;
+
+	constructor(
+		message: string,
+		fields: {
+			code: UnsupportedWalletSchemeCode;
+			publicKeyBytes: Uint8Array;
+			address: string;
+			walletName?: string;
+		},
+		options?: { cause?: unknown },
+	) {
+		super(message, options);
+		this.code = fields.code;
+		this.publicKeyBytes = fields.publicKeyBytes;
+		this.address = fields.address;
+		if (fields.walletName !== undefined) {
+			this.walletName = fields.walletName;
+		}
+	}
+}
+
 // Uncertified blob
 
 /**

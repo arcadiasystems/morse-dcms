@@ -7,8 +7,25 @@ import { Secp256r1Keypair } from "@mysten/sui/keypairs/secp256r1";
 import { Transaction } from "@mysten/sui/transactions";
 import { toZkLoginPublicIdentifier } from "@mysten/sui/zklogin";
 
-import { ConfigurationError } from "../errors.js";
+import { ConfigurationError, UnsupportedWalletSchemeError } from "../errors.js";
 import { WalletStandardSigner } from "./wallet-standard-signer.js";
+
+function bytesToBase64(bytes: Uint8Array): string {
+	let binary = "";
+	for (let i = 0; i < bytes.length; i += 1) {
+		binary += String.fromCharCode(bytes[i] ?? 0);
+	}
+	return btoa(binary);
+}
+
+// Signature portion zeroed; recovery only verifies the last 32 bytes via
+// address-match, so the inner signature need not be cryptographically valid.
+function ed25519SigBlob(rawPubkey: Uint8Array): string {
+	const blob = new Uint8Array(97);
+	blob[0] = 0x00;
+	blob.set(rawPubkey, 65);
+	return bytesToBase64(blob);
+}
 
 const ADDRESS =
 	"0xe9a29a9bdeed3dfc033ce42886eccebcda94bc2ad31c380d5aed19391e0ba9fd";
@@ -322,12 +339,14 @@ describe("WalletStandardSigner", () => {
 	});
 
 	test("fromAccount refuses non-conforming variable-length public keys", () => {
+		// 0xff-filled 61-byte buffer: not a zkLogin shape (first byte != 0x05),
+		// so it routes through the generic non-canonical-pubkey terminus.
 		expect(() =>
 			WalletStandardSigner.fromAccount(
 				{
 					address:
 						"0x0000000000000000000000000000000000000000000000000000000000000003",
-					publicKey: new Uint8Array(61).fill(0x05),
+					publicKey: new Uint8Array(61).fill(0xff),
 				},
 				{
 					signTransaction: mock(async () => ({
@@ -340,7 +359,7 @@ describe("WalletStandardSigner", () => {
 					})),
 				},
 			),
-		).toThrow(/multisig or unknown/);
+		).toThrow(/non-canonical publicKey encoding/);
 	});
 
 	test("signAndExecuteTransaction does not override an explicitly-set sender", async () => {
@@ -365,5 +384,227 @@ describe("WalletStandardSigner", () => {
 		await signer.signAndExecuteTransaction({ transaction: tx, client });
 
 		expect(tx.getData().sender).toBe(otherAddress);
+	});
+});
+
+describe("UnsupportedWalletSchemeError", () => {
+	test("carries code, raw bytes, and address from the rejecting wallet", () => {
+		const junk = new Uint8Array(59).fill(0xd3);
+		const address =
+			"0x0000000000000000000000000000000000000000000000000000000000000099";
+		try {
+			WalletStandardSigner.fromAccount(
+				{ address, publicKey: junk },
+				{
+					signTransaction: mock(async () => ({
+						bytes: "AAAA",
+						signature: "s",
+					})),
+					signPersonalMessage: mock(async () => ({
+						bytes: "AAAA",
+						signature: "s",
+					})),
+				},
+			);
+			throw new Error("expected throw");
+		} catch (error) {
+			expect(error).toBeInstanceOf(UnsupportedWalletSchemeError);
+			expect(error).toBeInstanceOf(ConfigurationError);
+			const err = error as UnsupportedWalletSchemeError;
+			expect(err.code).toBe("non-canonical-pubkey");
+			expect(Array.from(err.publicKeyBytes)).toEqual(Array.from(junk));
+			expect(err.address).toBe(address);
+		}
+	});
+});
+
+describe("WalletStandardSigner.fromAccountAsync", () => {
+	test("compliant wallet (32-byte Ed25519): does not invoke signPersonalMessage", async () => {
+		const keypair = Ed25519Keypair.fromSecretKey(secret(0xaa));
+		const probe = mock(async () => ({ bytes: "AAAA", signature: "s" }));
+		const signer = await WalletStandardSigner.fromAccountAsync(
+			{
+				address: keypair.getPublicKey().toSuiAddress(),
+				publicKey: keypair.getPublicKey().toRawBytes(),
+			},
+			{
+				signTransaction: mock(async () => ({
+					bytes: "AAAA",
+					signature: "s",
+				})),
+				signPersonalMessage: probe,
+			},
+		);
+		expect(signer.getKeyScheme()).toBe("ED25519");
+		expect(signer.toSuiAddress()).toBe(keypair.getPublicKey().toSuiAddress());
+		expect(probe).not.toHaveBeenCalled();
+	});
+
+	test("non-canonical publicKey (Phantom-shape): recovers Ed25519 pubkey from probe signature", async () => {
+		const keypair = Ed25519Keypair.fromSecretKey(secret(0xbb));
+		const realPubkey = keypair.getPublicKey().toRawBytes();
+		const address = keypair.getPublicKey().toSuiAddress();
+		// 59-byte opaque blob mimicking Phantom's account.publicKey
+		const phantomGarbage = new Uint8Array(59).fill(0xd3);
+		const probe = mock(async () => ({
+			bytes: "AAAA",
+			signature: ed25519SigBlob(realPubkey),
+		}));
+		const signer = await WalletStandardSigner.fromAccountAsync(
+			{ address, publicKey: phantomGarbage },
+			{
+				signTransaction: mock(async () => ({
+					bytes: "AAAA",
+					signature: "s",
+				})),
+				signPersonalMessage: probe,
+			},
+		);
+		expect(signer.getKeyScheme()).toBe("ED25519");
+		expect(signer.toSuiAddress()).toBe(address);
+		expect(probe).toHaveBeenCalledTimes(1);
+		const probeCall = (probe as ReturnType<typeof mock>).mock.calls[0]?.[0] as {
+			message: Uint8Array;
+		};
+		const probeMessage = new TextDecoder().decode(probeCall.message);
+		expect(probeMessage).toContain("morse-sdk:wallet-pubkey-recovery:");
+		expect(probeMessage).toContain(address);
+	});
+
+	test("rejects with code=recovery-sig-length when probe signature is wrong length", async () => {
+		const keypair = Ed25519Keypair.fromSecretKey(secret(0xcc));
+		const address = keypair.getPublicKey().toSuiAddress();
+		const probe = mock(async () => ({
+			bytes: "AAAA",
+			// 64-byte raw signature, no flag/pubkey appended
+			signature: bytesToBase64(new Uint8Array(64)),
+		}));
+		try {
+			await WalletStandardSigner.fromAccountAsync(
+				{ address, publicKey: new Uint8Array(59).fill(0xd3) },
+				{
+					signTransaction: mock(async () => ({
+						bytes: "AAAA",
+						signature: "s",
+					})),
+					signPersonalMessage: probe,
+				},
+			);
+			throw new Error("expected throw");
+		} catch (error) {
+			expect(error).toBeInstanceOf(UnsupportedWalletSchemeError);
+			expect((error as UnsupportedWalletSchemeError).code).toBe(
+				"recovery-sig-length",
+			);
+		}
+	});
+
+	test("rejects with code=recovery-non-ed25519 when probe signature uses other flag", async () => {
+		const keypair = Ed25519Keypair.fromSecretKey(secret(0xdd));
+		const address = keypair.getPublicKey().toSuiAddress();
+		const sig = new Uint8Array(97);
+		sig[0] = 0x01;
+		const probe = mock(async () => ({
+			bytes: "AAAA",
+			signature: bytesToBase64(sig),
+		}));
+		try {
+			await WalletStandardSigner.fromAccountAsync(
+				{ address, publicKey: new Uint8Array(59).fill(0xd3) },
+				{
+					signTransaction: mock(async () => ({
+						bytes: "AAAA",
+						signature: "s",
+					})),
+					signPersonalMessage: probe,
+				},
+			);
+			throw new Error("expected throw");
+		} catch (error) {
+			expect(error).toBeInstanceOf(UnsupportedWalletSchemeError);
+			expect((error as UnsupportedWalletSchemeError).code).toBe(
+				"recovery-non-ed25519",
+			);
+		}
+	});
+
+	test("rejects with code=recovery-address-mismatch when recovered pubkey derives elsewhere", async () => {
+		const realKeypair = Ed25519Keypair.fromSecretKey(secret(0xee));
+		const otherKeypair = Ed25519Keypair.fromSecretKey(secret(0xef));
+		const probe = mock(async () => ({
+			bytes: "AAAA",
+			signature: ed25519SigBlob(otherKeypair.getPublicKey().toRawBytes()),
+		}));
+		try {
+			await WalletStandardSigner.fromAccountAsync(
+				{
+					address: realKeypair.getPublicKey().toSuiAddress(),
+					publicKey: new Uint8Array(59).fill(0xd3),
+				},
+				{
+					signTransaction: mock(async () => ({
+						bytes: "AAAA",
+						signature: "s",
+					})),
+					signPersonalMessage: probe,
+				},
+			);
+			throw new Error("expected throw");
+		} catch (error) {
+			expect(error).toBeInstanceOf(UnsupportedWalletSchemeError);
+			expect((error as UnsupportedWalletSchemeError).code).toBe(
+				"recovery-address-mismatch",
+			);
+		}
+	});
+
+	test("non-recoverable shape (zkLogin-length) propagates without firing the probe", async () => {
+		// 61-byte buffer with 0x05 prefix mimics a malformed zkLogin identifier.
+		// fromAccount throws UnsupportedWalletSchemeError but the code prevents
+		// fromAccountAsync from escalating to a signPersonalMessage probe.
+		const probe = mock(async () => ({
+			bytes: "AAAA",
+			signature: ed25519SigBlob(new Uint8Array(32)),
+		}));
+		await expect(
+			WalletStandardSigner.fromAccountAsync(
+				{
+					address:
+						"0x0000000000000000000000000000000000000000000000000000000000000077",
+					publicKey: new Uint8Array(61).fill(0x05),
+				},
+				{
+					signTransaction: mock(async () => ({
+						bytes: "AAAA",
+						signature: "s",
+					})),
+					signPersonalMessage: probe,
+				},
+			),
+		).rejects.toBeInstanceOf(UnsupportedWalletSchemeError);
+		expect(probe).not.toHaveBeenCalled();
+	});
+
+	test("forwards unrelated errors (e.g. user rejected probe popup)", async () => {
+		const keypair = Ed25519Keypair.fromSecretKey(secret(0xf0));
+		class UserRejected extends Error {}
+		const probe = mock(async () => {
+			throw new UserRejected("user rejected");
+		});
+		await expect(
+			WalletStandardSigner.fromAccountAsync(
+				{
+					address: keypair.getPublicKey().toSuiAddress(),
+					publicKey: new Uint8Array(59).fill(0xd3),
+				},
+				{
+					signTransaction: mock(async () => ({
+						bytes: "AAAA",
+						signature: "s",
+					})),
+					signPersonalMessage: probe,
+				},
+			),
+		).rejects.toBeInstanceOf(UserRejected);
 	});
 });

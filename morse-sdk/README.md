@@ -231,7 +231,8 @@ The full public surface, grouped by concern. Every export carries a JSDoc on its
 | Export | Purpose |
 | --- | --- |
 | `KeypairAdapter` | Server / CLI `WalletAdapter` wrapping a raw `Ed25519Keypair`. |
-| `WalletStandardSigner.fromAccount(account, callbacks)` | Browser-side `Signer` for `@mysten/walrus` and `@mysten/seal`; wraps wallet-standard wallets without ever holding the user's key. |
+| `WalletStandardSigner.fromAccount(account, callbacks)` | Browser-side `Signer` for `@mysten/walrus` and `@mysten/seal`; wraps wallet-standard wallets without ever holding the user's key. Sync; throws `UnsupportedWalletSchemeError` on non-canonical `account.publicKey` (e.g. Phantom). |
+| `WalletStandardSigner.fromAccountAsync(account, callbacks)` | Same as `fromAccount`, with signature-based pubkey recovery for wallets that return a non-canonical `account.publicKey`. One extra wallet popup at session start for non-compliant wallets; no extra IO for compliant ones. |
 | `DefaultWalrusWriteAdapter.fromConfig(config, signer)` | Walrus uploads (blob + quilt). Implements `WalrusFlowCapable` (the 2-popup optimization). |
 | `DefaultWalrusReadAdapter.fromConfig(config)` | Walrus reads (`readBlob`, `readBlobByObjectId`, `readQuiltPatch`, `readBlobRef`). |
 | `HttpPublisherWriteAdapter.fromConfig({ publisherUrl, ownerAddress })` | Walrus uploads via a publisher HTTP service (operator pays storage; 1 popup for upload + addEntry). |
@@ -314,8 +315,33 @@ Always construct readers and seal adapters via `fromMorseConfig` (e.g. `RpcPubli
 | Passkey   | Supported (decoder)           | -                                                                           | Accepts raw 33-byte key and `0x06 \|\| 33 raw`. WebAuthn signing inside the wallet; `Signer` surface unchanged.                                                                                      |
 | ZkLogin   | Decoder ships, E2E unverified | -                                                                           | Variable-length `[1 iss-len][iss][32 addressSeed]` identifier (auto-detects modern vs legacy address derivation). Walrus and Seal `SessionKey` flows have not been smoke-tested with zkLogin signatures; fall back to a keypair account if you see errors. |
 | MultiSig  | Refused                       | -                                                                           | Variable-length aggregation of multiple keys; signing semantics differ from `Signer` and have not been wired up. Implement a custom `Signer` subclass if you need it.                                |
+| Phantom (Sui) | Supported via `fromAccountAsync` | 2026-05-21                                                              | Phantom returns a 59-byte non-canonical blob in `account.publicKey`. `fromAccount` rejects it; `fromAccountAsync` recovers the real Ed25519 key from a probe signature. See subsection below.        |
 
-Refused schemes throw `ConfigurationError` at construction time. Surface the message to your user as "this wallet account isn't supported yet" rather than letting the page crash inside Walrus or Seal later.
+Refused schemes throw `UnsupportedWalletSchemeError` (a `ConfigurationError` subclass) at construction time. The error carries the raw `publicKeyBytes`, the reported `address`, and an optional `walletName`, so consumer dapps can render a wallet-specific CTA without parsing message strings.
+
+### Wallets with non-canonical `publicKey` (Phantom)
+
+Phantom's Sui adapter returns a 59-byte opaque blob in `account.publicKey` instead of the canonical 32 / 33-byte form mandated by wallet-standard. This is a documented Phantom quirk (see the Sui developer forum thread from August 2025), not an SDK gap.
+
+For Phantom-class wallets, use `WalletStandardSigner.fromAccountAsync` instead of `fromAccount`:
+
+```ts
+import { WalletStandardSigner, UnsupportedWalletSchemeError } from "@arcadiasystems/morse-sdk";
+
+try {
+  const signer = await WalletStandardSigner.fromAccountAsync(account, callbacks);
+  // ...
+} catch (err) {
+  if (err instanceof UnsupportedWalletSchemeError) {
+    // Render: "Your wallet uses an unsupported scheme. Try Slush or Suiet."
+    // err.publicKeyBytes, err.address, err.walletName available.
+  }
+}
+```
+
+`fromAccountAsync` tries the sync decoder first (no extra IO for compliant wallets), and on failure recovers the real Ed25519 public key by asking the wallet to sign a domain-separated probe message. Sui's canonical signature is `flag || sig || pk` (97 bytes for Ed25519); the last 32 bytes are the raw key. The recovered key is verified to derive to `account.address` before the signer is constructed.
+
+Cost: one extra wallet popup at session start for Phantom users. The probe message is `"morse-sdk:wallet-pubkey-recovery:" + address`, wrapped by Sui's `signPersonalMessage` `"Sui Message:"` prefix, so it cannot collide with a real transaction. Compliant wallets pay no extra cost; they take the sync `fromAccount` path inside `fromAccountAsync` and skip the probe.
 
 ## Error taxonomy
 
@@ -330,6 +356,7 @@ All errors extend `MorseError`. Narrow by class:
 | `SealError`          | `code` (`no-access` / `decrypt-failed` / `session-expired` / `rate-limited`) | Seal authorization or decryption failed. |
 | `TransportError`     | `operation?` (e.g. `sui.getObject`, `walrus.publisher.uploadBlob`, `seal.decrypt`) | RPC, network, or response-parsing failure. |
 | `ConfigurationError` | -                                | SDK config gap (e.g. unsupported network).                           |
+| `UnsupportedWalletSchemeError` | `code` (`non-canonical-pubkey` / `malformed-zklogin` / `recovery-sig-length` / `recovery-non-ed25519` / `recovery-address-mismatch`), `publicKeyBytes`, `address`, optional `walletName` | `WalletStandardSigner.fromAccount` rejected the account's `publicKey` shape, or the async recovery flow could not extract a key that derives to `account.address`. |
 | `UncertifiedBlobError` | `blobObjectId`, `blobId`       | `addEntryFromBytes` upload succeeded but the combined certify+add_entry tx failed; the blob is uploaded but uncertified. |
 
 ```ts
