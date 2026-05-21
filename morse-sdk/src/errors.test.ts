@@ -54,6 +54,16 @@ describe("MorseError hierarchy", () => {
 		expect(error.name).toBe("TransportError");
 	});
 
+	test("TransportError.operation is undefined when omitted", () => {
+		const error = new TransportError("oops");
+		expect(error.operation).toBeUndefined();
+	});
+
+	test("TransportError.operation carries the discriminator when provided", () => {
+		const error = new TransportError("oops", { operation: "sui.getObject" });
+		expect(error.operation).toBe("sui.getObject");
+	});
+
 	test("ConfigurationError extends MorseError", () => {
 		const error = new ConfigurationError("no deployment");
 		expect(error).toBeInstanceOf(ConfigurationError);

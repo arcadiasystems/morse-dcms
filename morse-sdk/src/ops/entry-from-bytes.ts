@@ -228,6 +228,7 @@ function assertFlowCapable(
 	if (!isWalrusFlowCapable(walrus)) {
 		throw new TransportError(
 			"addEntryFromBytes / addEncryptedEntryFromBytes require a WalrusWriteAdapter that implements WalrusFlowCapable (i.e. exposes startBlobUpload). The default DefaultWalrusWriteAdapter does. Custom adapters that do not implement the capability should compose walrus.uploadBlob + addEntry (3 popups) instead.",
+			{ operation: "sdk.addEntryFromBytes" },
 		);
 	}
 }

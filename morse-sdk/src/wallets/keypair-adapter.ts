@@ -145,7 +145,10 @@ async function callClient<T>(
 		if (mapped) {
 			throw mapped;
 		}
-		throw new TransportError(`${operation} failed`, { cause });
+		throw new TransportError(`${operation} failed`, {
+			cause,
+			operation: `sui.${operation}`,
+		});
 	}
 }
 
@@ -174,6 +177,7 @@ function parseReceipt(final: TxResult): TxReceipt {
 	if (final.$kind !== "Transaction") {
 		throw new TransportError(
 			"Transaction result missing after waitForTransaction",
+			{ operation: "sui.waitForTransaction" },
 		);
 	}
 	const tx = final.Transaction;
@@ -181,6 +185,7 @@ function parseReceipt(final: TxResult): TxReceipt {
 	if (!effects) {
 		throw new TransportError(
 			"Transaction effects missing; client did not return them despite include flag",
+			{ operation: "sui.waitForTransaction" },
 		);
 	}
 	const objectTypes = tx.objectTypes ?? {};
@@ -252,9 +257,12 @@ function mapFailedTransaction(
 		}
 		return new TransportError(
 			`Transaction execution failed: ${status.error.message}`,
+			{ operation: "sui.executeTransaction" },
 		);
 	}
-	return new TransportError("Transaction failed without effects status");
+	return new TransportError("Transaction failed without effects status", {
+		operation: "sui.executeTransaction",
+	});
 }
 
 /**
@@ -286,12 +294,15 @@ function parseSimulationReturnValues(
 	result: SimResult,
 ): SimulationReturnValues {
 	if (result.$kind !== "Transaction") {
-		throw new TransportError("Simulate did not return a Transaction result");
+		throw new TransportError("Simulate did not return a Transaction result", {
+			operation: "sui.simulateTransaction",
+		});
 	}
 	const commandResults = result.commandResults;
 	if (!commandResults) {
 		throw new TransportError(
 			"Simulation result missing commandResults despite include flag",
+			{ operation: "sui.simulateTransaction" },
 		);
 	}
 	return commandResults.map((cmd) => cmd.returnValues.map((rv) => rv.bcs));

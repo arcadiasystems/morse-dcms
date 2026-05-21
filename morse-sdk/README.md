@@ -8,11 +8,29 @@ Pre-release. Testnet only. The Move contract addresses are baked in via `morseCo
 
 ## Install
 
+Bun:
+
 ```sh
 bun add @arcadiasystems/morse-sdk @mysten/sui
 # Optional - install only what you use:
 bun add @mysten/walrus     # for DefaultWalrusWriteAdapter
 bun add @mysten/seal       # for DefaultSealAdapter and encrypted entries
+```
+
+npm:
+
+```sh
+npm install @arcadiasystems/morse-sdk @mysten/sui
+npm install @mysten/walrus    # optional
+npm install @mysten/seal      # optional
+```
+
+pnpm:
+
+```sh
+pnpm add @arcadiasystems/morse-sdk @mysten/sui
+pnpm add @mysten/walrus       # optional
+pnpm add @mysten/seal         # optional
 ```
 
 `@mysten/sui` is required: the SDK takes types from it (`Transaction`, `Signer`) and you construct the gRPC client and keypairs directly. `@mysten/walrus` and `@mysten/seal` are optional peer dependencies; you only pay the install cost for the surface you actually import.
@@ -36,7 +54,7 @@ morse-sdk is ESM-only (`"type": "module"` in `package.json`); CommonJS `require`
 | Runtime | Supported | Notes                                                                                                                                            |
 | ------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Bun     | >= 1.2.0  | Primary development runtime. Enforced via `engines.bun`. Smoke scripts (`bun run scripts/phase-N-*.ts`) require Bun.                              |
-| Node    | >= 18.0   | Library code uses ES2022 features (private class fields, `Error.cause`), `TextEncoder` / `crypto.getRandomValues` / `BigInt` (all stable on Node 18+). |
+| Node    | >= 18.0   | Enforced via `engines.node`. Library code uses ES2022 features (private class fields, `Error.cause`), `TextEncoder` / `crypto.getRandomValues` / `BigInt` (all stable on Node 18+). Consumers install with `npm install @arcadiasystems/morse-sdk` or `pnpm add`. |
 | Browser | Evergreen | Chrome / Edge / Firefox / Safari recent stable. Bundlers (Vite, Webpack, esbuild) handle the rest. No `require`-based polyfills needed.            |
 
 The SDK does not pull in Node-specific APIs (`fs`, `path`, `process`, `crypto` from `node:crypto`); the public surface is portable across both runtimes. A handful of `@mysten/*` substrate libraries reach into Node-shaped APIs internally — consult their documentation for browser polyfill requirements (typically zero with modern bundlers).
@@ -310,7 +328,7 @@ All errors extend `MorseError`. Narrow by class:
 | `UnauthorizedError`  | -                                | Client-side auth check failed before submit.                         |
 | `ContractAbortError` | `module`, `abortCode`, `reason`  | Move VM aborted (e.g. `ESlugAlreadyExists`).                         |
 | `SealError`          | `code` (`no-access` / `decrypt-failed` / `session-expired` / `rate-limited`) | Seal authorization or decryption failed. |
-| `TransportError`     | -                                | RPC, network, or response-parsing failure.                           |
+| `TransportError`     | `operation?` (e.g. `sui.getObject`, `walrus.publisher.uploadBlob`, `seal.decrypt`) | RPC, network, or response-parsing failure. |
 | `ConfigurationError` | -                                | SDK config gap (e.g. unsupported network).                           |
 | `UncertifiedBlobError` | `blobObjectId`, `blobId`       | `addEntryFromBytes` upload succeeded but the combined certify+add_entry tx failed; the blob is uploaded but uncertified. |
 
@@ -325,12 +343,34 @@ try {
   } else if (err instanceof NotFoundError && err.resource === "entry") {
     // entry was deleted between read and write
   } else if (err instanceof TransportError) {
-    // network blip - retry
+    // network blip - retry; err.operation names the failing call (e.g. "sui.getObject")
   } else {
     throw err;
   }
 }
 ```
+
+### `formatUserMessage`: UI-ready translation
+
+For consumer dapps that surface SDK errors in toasts, dialogs, or banners, `formatUserMessage(err)` translates any throw (`MorseError` or otherwise) into a `{ title, description, cause }` triple with domain-neutral copy. Use it as the default branch after your own domain-specific handlers:
+
+```ts
+import { formatUserMessage } from "@arcadiasystems/morse-sdk";
+
+try {
+  await addEntryFromBytes(adapter, config, args);
+} catch (err) {
+  if (err instanceof SealError && err.code === "no-access") {
+    toast.error("You don't have permission", { description: "Ask the author for access." });
+    return;
+  }
+  const { title, description } = formatUserMessage(err);
+  toast.error(title, { description });
+  // `cause` is preserved on the formatted object for logging.
+}
+```
+
+Copy uses the protocol's own terminology ("publication", "entry", "PublisherCap"). For consumer domains (blog → post, gallery → image, docs → article), narrow on the error class first and write your own message; `formatUserMessage` is the fallback for everything else.
 
 ## Network configuration
 

@@ -124,11 +124,13 @@ export class DefaultWalrusReadAdapter implements WalrusReadAdapter {
 		blobId: WalrusBlobId,
 		options: WalrusReadOptions = {},
 	): Promise<Uint8Array> {
-		return runWalrusCall(() =>
-			this.client.readBlob({
-				blobId,
-				...(options.signal === undefined ? {} : { signal: options.signal }),
-			}),
+		return runWalrusCall(
+			() =>
+				this.client.readBlob({
+					blobId,
+					...(options.signal === undefined ? {} : { signal: options.signal }),
+				}),
+			"walrus.readBlob",
 		);
 	}
 
@@ -136,14 +138,17 @@ export class DefaultWalrusReadAdapter implements WalrusReadAdapter {
 		blobObjectId: BlobObjectId,
 		options: WalrusReadOptions = {},
 	): Promise<Uint8Array> {
-		const blob = await runWalrusCall(() =>
-			this.client.getBlobObject(blobObjectId),
+		const blob = await runWalrusCall(
+			() => this.client.getBlobObject(blobObjectId),
+			"walrus.getBlobObject",
 		);
-		return runWalrusCall(() =>
-			this.client.readBlob({
-				blobId: blob.blob_id,
-				...(options.signal === undefined ? {} : { signal: options.signal }),
-			}),
+		return runWalrusCall(
+			() =>
+				this.client.readBlob({
+					blobId: blob.blob_id,
+					...(options.signal === undefined ? {} : { signal: options.signal }),
+				}),
+			"walrus.readBlob",
 		);
 	}
 
@@ -152,16 +157,18 @@ export class DefaultWalrusReadAdapter implements WalrusReadAdapter {
 		_options: WalrusReadOptions = {},
 	): Promise<Uint8Array> {
 		const id = quiltPatchIdToString(patchId);
-		const files = await runWalrusCall(() =>
-			this.client.getFiles({ ids: [id] }),
+		const files = await runWalrusCall(
+			() => this.client.getFiles({ ids: [id] }),
+			"walrus.getFiles",
 		);
 		const file = files[0];
 		if (!file) {
 			throw new TransportError(
 				`Walrus getFiles returned no entry for quilt patch ${id}`,
+				{ operation: "walrus.getFiles" },
 			);
 		}
-		return runWalrusCall(() => file.bytes());
+		return runWalrusCall(() => file.bytes(), "walrus.readQuiltPatch");
 	}
 
 	async readBlobRef(
@@ -175,7 +182,10 @@ export class DefaultWalrusReadAdapter implements WalrusReadAdapter {
 	}
 }
 
-async function runWalrusCall<T>(call: () => Promise<T>): Promise<T> {
+async function runWalrusCall<T>(
+	call: () => Promise<T>,
+	operation = "walrus.read",
+): Promise<T> {
 	try {
 		return await call();
 	} catch (cause) {
@@ -190,7 +200,7 @@ async function runWalrusCall<T>(call: () => Promise<T>): Promise<T> {
 				cause,
 			});
 		}
-		throw new TransportError(walrusErrorMessage(cause), { cause });
+		throw new TransportError(walrusErrorMessage(cause), { cause, operation });
 	}
 }
 

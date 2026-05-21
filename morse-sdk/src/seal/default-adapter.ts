@@ -187,14 +187,16 @@ export class DefaultSealAdapter implements SealAdapter {
 		options: SealEncryptOptions,
 	): Promise<SealEncryptResult> {
 		const id = bytesToHex(options.sealId);
-		const result = await runSealCall(() =>
-			this.client.encrypt({
-				threshold: this.threshold,
-				packageId: this.packageId,
-				id,
-				data: plaintext,
-				...(options.aad === undefined ? {} : { aad: options.aad }),
-			}),
+		const result = await runSealCall(
+			() =>
+				this.client.encrypt({
+					threshold: this.threshold,
+					packageId: this.packageId,
+					id,
+					data: plaintext,
+					...(options.aad === undefined ? {} : { aad: options.aad }),
+				}),
+			"seal.encrypt",
 		);
 		return { ciphertext: result.encryptedObject };
 	}
@@ -225,12 +227,14 @@ export class DefaultSealAdapter implements SealAdapter {
 			options.sealId,
 			options.sessionKey,
 		);
-		return runSealCall(() =>
-			this.client.decrypt({
-				data: ciphertext,
-				sessionKey: options.sessionKey,
-				txBytes,
-			}),
+		return runSealCall(
+			() =>
+				this.client.decrypt({
+					data: ciphertext,
+					sessionKey: options.sessionKey,
+					txBytes,
+				}),
+			"seal.decrypt",
 		);
 	}
 
@@ -256,12 +260,18 @@ export class DefaultSealAdapter implements SealAdapter {
 				onlyTransactionKind: true,
 			});
 		} catch (cause) {
-			throw new TransportError("Failed to build seal_approve PTB", { cause });
+			throw new TransportError("Failed to build seal_approve PTB", {
+				cause,
+				operation: "seal.buildApproveTx",
+			});
 		}
 	}
 }
 
-async function runSealCall<T>(call: () => Promise<T>): Promise<T> {
+async function runSealCall<T>(
+	call: () => Promise<T>,
+	operation = "seal.call",
+): Promise<T> {
 	try {
 		return await call();
 	} catch (cause) {
@@ -269,7 +279,7 @@ async function runSealCall<T>(call: () => Promise<T>): Promise<T> {
 		if (mapped) {
 			throw mapped;
 		}
-		throw new TransportError(sealErrorMessage(cause), { cause });
+		throw new TransportError(sealErrorMessage(cause), { cause, operation });
 	}
 }
 

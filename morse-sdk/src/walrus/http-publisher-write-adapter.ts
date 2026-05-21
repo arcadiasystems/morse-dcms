@@ -201,10 +201,14 @@ export class HttpPublisherWriteAdapter implements WalrusWriteAdapter {
 			url,
 			data as unknown as BodyInit,
 			options.signal,
+			"walrus.publisher.uploadBlob",
 		);
 		return this.#parseResponse !== undefined
 			? await this.#parseResponse(result)
-			: parseBlobStoreResult(result as BlobStoreResultLike);
+			: parseBlobStoreResult(
+					result as BlobStoreResultLike,
+					"walrus.publisher.uploadBlob",
+				);
 	}
 
 	async uploadQuilt(
@@ -260,11 +264,13 @@ export class HttpPublisherWriteAdapter implements WalrusWriteAdapter {
 			url,
 			form as unknown as BodyInit,
 			options.signal,
+			"walrus.publisher.uploadQuilt",
 		);
 
 		if (result.blobStoreResult === undefined) {
 			throw new TransportError(
 				"Walrus publisher quilt response missing blobStoreResult field",
+				{ operation: "walrus.publisher.uploadQuilt" },
 			);
 		}
 		// The outer QuiltStoreResult envelope (blobStoreResult + storedQuiltBlobs)
@@ -275,7 +281,10 @@ export class HttpPublisherWriteAdapter implements WalrusWriteAdapter {
 		const parent =
 			this.#parseResponse !== undefined
 				? await this.#parseResponse(result.blobStoreResult)
-				: parseBlobStoreResult(result.blobStoreResult);
+				: parseBlobStoreResult(
+						result.blobStoreResult,
+						"walrus.publisher.uploadQuilt",
+					);
 		const storedPatches = result.storedQuiltBlobs ?? [];
 		const patchesOut: UploadQuiltPatch[] = storedPatches.map((p) => {
 			if (
@@ -333,6 +342,7 @@ export class HttpPublisherWriteAdapter implements WalrusWriteAdapter {
 		url: string,
 		body: BodyInit,
 		signal: AbortSignal | undefined,
+		operation: string,
 	): Promise<T> {
 		let response: Awaited<ReturnType<FetchLike>>;
 		try {
@@ -345,7 +355,7 @@ export class HttpPublisherWriteAdapter implements WalrusWriteAdapter {
 		} catch (cause) {
 			throw new TransportError(
 				`Walrus publisher request failed: ${cause instanceof Error ? cause.message : String(cause)}`,
-				{ cause },
+				{ cause, operation },
 			);
 		}
 		if (!response.ok) {
@@ -357,6 +367,7 @@ export class HttpPublisherWriteAdapter implements WalrusWriteAdapter {
 			}
 			throw new TransportError(
 				`Walrus publisher returned HTTP ${response.status} ${response.statusText}${detail ? `: ${detail}` : ""}`,
+				{ operation },
 			);
 		}
 		try {
@@ -364,13 +375,16 @@ export class HttpPublisherWriteAdapter implements WalrusWriteAdapter {
 		} catch (cause) {
 			throw new TransportError(
 				`Walrus publisher response is not valid JSON: ${cause instanceof Error ? cause.message : String(cause)}`,
-				{ cause },
+				{ cause, operation },
 			);
 		}
 	}
 }
 
-function parseBlobStoreResult(result: BlobStoreResultLike): UploadBlobResult {
+function parseBlobStoreResult(
+	result: BlobStoreResultLike,
+	operation: string,
+): UploadBlobResult {
 	if (result.newlyCreated !== undefined) {
 		const blob =
 			result.newlyCreated.blobObject ?? result.newlyCreated.blob_object;
@@ -407,6 +421,7 @@ function parseBlobStoreResult(result: BlobStoreResultLike): UploadBlobResult {
 			// actionable hint.
 			throw new TransportError(
 				"Walrus publisher reports the blob is already certified by another party; no owned Sui object is available. Pass `force=true` as a query param (via custom headers escape hatch or a forked adapter), or compose with `DefaultWalrusWriteAdapter` if you need to register your own Blob object.",
+				{ operation },
 			);
 		}
 		return {
@@ -421,15 +436,19 @@ function parseBlobStoreResult(result: BlobStoreResultLike): UploadBlobResult {
 			"(unknown)";
 		throw new TransportError(
 			`Walrus publisher returned markedInvalid for blob ${id}; the blob is known to Walrus but was rejected (storage-node bug, malicious quorum, or invalid encoding).`,
+			{ operation },
 		);
 	}
 	if (result.error !== undefined) {
 		const message =
 			result.error.errorMsg ?? result.error.error_msg ?? "(no message)";
-		throw new TransportError(`Walrus publisher returned error: ${message}`);
+		throw new TransportError(`Walrus publisher returned error: ${message}`, {
+			operation,
+		});
 	}
 	throw new TransportError(
 		"Walrus publisher response did not match newlyCreated / alreadyCertified / markedInvalid / error",
+		{ operation },
 	);
 }
 

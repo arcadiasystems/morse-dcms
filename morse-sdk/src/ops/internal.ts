@@ -24,6 +24,7 @@ export function findCreatedId(
 	if (!created) {
 		throw new TransportError(
 			`Receipt is missing a created object of type ${expectedType}`,
+			{ operation: "sdk.findCreatedId" },
 		);
 	}
 	return created.objectId;
@@ -45,12 +46,14 @@ export function decodeU64ReturnValue(
 	if (!command) {
 		throw new TransportError(
 			`Simulation has no command at index ${commandIndex} (got ${values.length} commands)`,
+			{ operation: "sdk.decodeU64ReturnValue" },
 		);
 	}
 	const bytes = command[returnIndex];
 	if (!bytes) {
 		throw new TransportError(
 			`Simulation command ${commandIndex} has no return value at index ${returnIndex} (got ${command.length} return values)`,
+			{ operation: "sdk.decodeU64ReturnValue" },
 		);
 	}
 	const decoded = bcs.u64().parse(bytes);
@@ -58,6 +61,7 @@ export function decodeU64ReturnValue(
 	if (!Number.isSafeInteger(asNumber)) {
 		throw new TransportError(
 			`Simulated u64 return value ${decoded} exceeds Number.MAX_SAFE_INTEGER`,
+			{ operation: "sdk.decodeU64ReturnValue" },
 		);
 	}
 	return asNumber;

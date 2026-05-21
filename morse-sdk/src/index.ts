@@ -30,6 +30,10 @@ export {
 	type WalrusEndpoints,
 } from "./config.js";
 export {
+	type FormattedError,
+	formatUserMessage,
+} from "./errors.format.js";
+export {
 	ABORT_CODES,
 	type AbortEntry,
 	type AbortModule,

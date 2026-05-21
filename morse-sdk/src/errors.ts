@@ -60,8 +60,33 @@ export class UnauthorizedError extends MorseError {}
 
 // Transport
 
-/** RPC transport, network, or response-parsing failure. Distinct from contract aborts. */
-export class TransportError extends MorseError {}
+/**
+ * RPC transport, network, or response-parsing failure. Distinct from contract
+ * aborts. Optionally carries an `operation` discriminator naming the RPC
+ * method, HTTP endpoint, or SDK call that failed. Consumers can switch on
+ * it without parsing the message string. Conventions:
+ *
+ * - Sui RPC reads: `sui.getObject`, `sui.listOwnedObjects`, etc.
+ * - Walrus direct: `walrus.uploadBlob`, `walrus.startBlobUpload`, `walrus.readBlob`, etc.
+ * - Walrus HTTP: `walrus.publisher.uploadBlob`, `walrus.aggregator.readBlob`, etc.
+ * - Seal: `seal.encrypt`, `seal.decrypt`, `seal.buildApproveTx`.
+ *
+ * Operation is optional for backward compatibility; pre-0.1.2 throw sites
+ * may surface a `TransportError` without it.
+ */
+export class TransportError extends MorseError {
+	readonly operation?: string;
+
+	constructor(
+		message: string,
+		options?: { cause?: unknown; operation?: string },
+	) {
+		super(message, options);
+		if (options?.operation !== undefined) {
+			this.operation = options.operation;
+		}
+	}
+}
 
 // Configuration
 

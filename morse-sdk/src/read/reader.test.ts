@@ -161,7 +161,7 @@ describe("RpcPublicationReader.getPublication", () => {
 		);
 	});
 
-	test("throws ValidationError when JSON is missing", async () => {
+	test("throws NotFoundError when JSON is missing (gRPC stub for nonexistent object)", async () => {
 		const client = makeReader({
 			getObject: mock(async () => ({
 				object: { objectId: PUBLICATION_ID, json: null },
@@ -169,7 +169,7 @@ describe("RpcPublicationReader.getPublication", () => {
 		});
 		const reader = new RpcPublicationReader(client, PACKAGE_ID);
 		await expect(reader.getPublication(PUBLICATION_ID)).rejects.toThrow(
-			ValidationError,
+			NotFoundError,
 		);
 	});
 
@@ -877,5 +877,200 @@ describe("RpcPublicationReader.fromMorseConfig", () => {
 		// uses it (listPublicationsOwnedBy) and confirm the type filter is built
 		// from the supplied packageId.
 		expect(reader).toBeInstanceOf(RpcPublicationReader);
+	});
+});
+
+describe("RpcPublicationReader:getPublisherCap missing JSON", () => {
+	test("throws NotFoundError when object has no .json (gRPC stub)", async () => {
+		const client = makeReader({
+			getObject: mock(async () => ({
+				object: { objectId: PUBLISHER_CAP_ID, json: null },
+			})),
+		});
+		const reader = new RpcPublicationReader(client, PACKAGE_ID);
+		await expect(reader.getPublisherCap(PUBLISHER_CAP_ID)).rejects.toThrow(
+			NotFoundError,
+		);
+	});
+});
+
+describe("RpcPublicationReader:listPublicationsOwnedBy missing JSON", () => {
+	test("throws NotFoundError when an owned object has no .json", async () => {
+		const client = makeReader({
+			listOwnedObjects: mock(async () => ({
+				objects: [
+					{
+						objectId:
+							"0x0000000000000000000000000000000000000000000000000000000000000222",
+						type: `${PACKAGE_ID}::publication::OwnerCap`,
+						json: null,
+					},
+				],
+				hasNextPage: false,
+				cursor: null,
+			})),
+		});
+		const reader = new RpcPublicationReader(client, PACKAGE_ID);
+		await expect(reader.listPublicationsOwnedBy(ADDRESS)).rejects.toThrow(
+			NotFoundError,
+		);
+	});
+});
+
+describe("RpcPublicationReader:fail-fast ID validation (no network IO)", () => {
+	test("getPublication rejects malformed id before calling getObject", async () => {
+		const getObject = mock(async () => ({ object: null }));
+		const client = makeReader({ getObject });
+		const reader = new RpcPublicationReader(client, PACKAGE_ID);
+		// Cast bypasses the brand at the type level; the reader must still
+		// validate at runtime so a typo or JS caller fails fast as
+		// ValidationError instead of round-tripping to gRPC.
+		await expect(
+			reader.getPublication("not-an-id" as unknown as typeof PUBLICATION_ID),
+		).rejects.toBeInstanceOf(ValidationError);
+		expect(getObject).not.toHaveBeenCalled();
+	});
+
+	test("getPublisherCap rejects malformed id before calling getObject", async () => {
+		const getObject = mock(async () => ({ object: null }));
+		const client = makeReader({ getObject });
+		const reader = new RpcPublicationReader(client, PACKAGE_ID);
+		await expect(
+			reader.getPublisherCap("0xZZZ" as unknown as typeof PUBLISHER_CAP_ID),
+		).rejects.toBeInstanceOf(ValidationError);
+		expect(getObject).not.toHaveBeenCalled();
+	});
+
+	test("listPublicationsOwnedBy rejects malformed address before listing", async () => {
+		const listOwnedObjects = mock(async () => ({
+			objects: [],
+			hasNextPage: false,
+			cursor: null,
+		}));
+		const client = makeReader({ listOwnedObjects });
+		const reader = new RpcPublicationReader(client, PACKAGE_ID);
+		await expect(
+			reader.listPublicationsOwnedBy("bogus" as unknown as typeof ADDRESS),
+		).rejects.toBeInstanceOf(ValidationError);
+		expect(listOwnedObjects).not.toHaveBeenCalled();
+	});
+
+	test("listPublisherCapsOwnedBy rejects malformed address before listing", async () => {
+		const listOwnedObjects = mock(async () => ({
+			objects: [],
+			hasNextPage: false,
+			cursor: null,
+		}));
+		const client = makeReader({ listOwnedObjects });
+		const reader = new RpcPublicationReader(client, PACKAGE_ID);
+		await expect(
+			reader.listPublisherCapsOwnedBy("0x" as unknown as typeof ADDRESS),
+		).rejects.toBeInstanceOf(ValidationError);
+		expect(listOwnedObjects).not.toHaveBeenCalled();
+	});
+
+	test("getEntry rejects malformed publication id before any RPC", async () => {
+		const getObject = mock(async () => ({ object: null }));
+		const getDynamicField = mock(async () => ({
+			dynamicField: { value: { bcs: new Uint8Array() } },
+		}));
+		const client = makeReader({ getObject, getDynamicField });
+		const reader = new RpcPublicationReader(client, PACKAGE_ID);
+		await expect(
+			reader.getEntry(
+				"not-an-id" as unknown as typeof PUBLICATION_ID,
+				"blog",
+				0,
+			),
+		).rejects.toBeInstanceOf(ValidationError);
+		expect(getObject).not.toHaveBeenCalled();
+		expect(getDynamicField).not.toHaveBeenCalled();
+	});
+
+	test("getEntry rejects negative entryId before any RPC", async () => {
+		const getObject = mock(async () => ({ object: null }));
+		const client = makeReader({ getObject });
+		const reader = new RpcPublicationReader(client, PACKAGE_ID);
+		await expect(
+			reader.getEntry(PUBLICATION_ID, "blog", -1),
+		).rejects.toBeInstanceOf(ValidationError);
+		expect(getObject).not.toHaveBeenCalled();
+	});
+
+	test("getEntry rejects non-integer entryId before any RPC", async () => {
+		const getObject = mock(async () => ({ object: null }));
+		const client = makeReader({ getObject });
+		const reader = new RpcPublicationReader(client, PACKAGE_ID);
+		await expect(
+			reader.getEntry(PUBLICATION_ID, "blog", 1.5),
+		).rejects.toBeInstanceOf(ValidationError);
+		await expect(
+			reader.getEntry(PUBLICATION_ID, "blog", Number.NaN),
+		).rejects.toBeInstanceOf(ValidationError);
+		expect(getObject).not.toHaveBeenCalled();
+	});
+
+	test("getRevision rejects malformed publicationId via getEntry delegation", async () => {
+		const getObject = mock(async () => ({ object: null }));
+		const client = makeReader({ getObject });
+		const reader = new RpcPublicationReader(client, PACKAGE_ID);
+		await expect(
+			reader.getRevision(
+				"not-an-id" as unknown as typeof PUBLICATION_ID,
+				"blog",
+				0,
+				0,
+			),
+		).rejects.toBeInstanceOf(ValidationError);
+		expect(getObject).not.toHaveBeenCalled();
+	});
+
+	test("getRevision rejects negative revisionId before any RPC", async () => {
+		const getObject = mock(async () => ({ object: null }));
+		const client = makeReader({ getObject });
+		const reader = new RpcPublicationReader(client, PACKAGE_ID);
+		await expect(
+			reader.getRevision(PUBLICATION_ID, "blog", 0, -1),
+		).rejects.toBeInstanceOf(ValidationError);
+		expect(getObject).not.toHaveBeenCalled();
+	});
+
+	test("listEntries rejects malformed publication id before any RPC", async () => {
+		const getObject = mock(async () => ({ object: null }));
+		const client = makeReader({ getObject });
+		const reader = new RpcPublicationReader(client, PACKAGE_ID);
+		await expect(
+			reader.listEntries("0xZZ" as unknown as typeof PUBLICATION_ID, "blog"),
+		).rejects.toBeInstanceOf(ValidationError);
+		expect(getObject).not.toHaveBeenCalled();
+	});
+
+	test("scanEntries rejects malformed publication id before any RPC", async () => {
+		const getObject = mock(async () => ({ object: null }));
+		const client = makeReader({ getObject });
+		const reader = new RpcPublicationReader(client, PACKAGE_ID);
+		const iter = reader
+			.scanEntries("bogus" as unknown as typeof PUBLICATION_ID, "blog")
+			[Symbol.asyncIterator]();
+		await expect(iter.next()).rejects.toBeInstanceOf(ValidationError);
+		expect(getObject).not.toHaveBeenCalled();
+	});
+});
+
+describe("RpcPublicationReader:TransportError.operation discriminator", () => {
+	test("RPC failures surface with sui.* operation tag", async () => {
+		const client = makeReader({
+			getObject: mock(async () => {
+				throw new Error("rpc down");
+			}),
+		});
+		const reader = new RpcPublicationReader(client, PACKAGE_ID);
+		try {
+			await reader.getPublication(PUBLICATION_ID);
+			throw new Error("expected throw");
+		} catch (error) {
+			expect(error).toBeInstanceOf(TransportError);
+			expect((error as TransportError).operation).toBe("sui.getObject");
+		}
 	});
 });

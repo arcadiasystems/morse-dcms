@@ -183,7 +183,7 @@ export class HttpAggregatorReadAdapter implements WalrusReadAdapter {
 			} catch (cause) {
 				throw new TransportError(
 					`Walrus aggregator returned bytes that fail blob-integrity check for ${blobId}: ${cause instanceof Error ? cause.message : String(cause)}`,
-					{ cause },
+					{ cause, operation: "walrus.aggregator.readBlob" },
 				);
 			}
 		}
@@ -226,6 +226,10 @@ export class HttpAggregatorReadAdapter implements WalrusReadAdapter {
 		identifier: string,
 		signal: AbortSignal | undefined,
 	): Promise<Uint8Array> {
+		const operation =
+			kind === "blob"
+				? "walrus.aggregator.readBlob"
+				: "walrus.aggregator.readQuiltPatch";
 		let response: Awaited<ReturnType<FetchLike>>;
 		try {
 			response = await this.#fetch(url, {
@@ -235,7 +239,7 @@ export class HttpAggregatorReadAdapter implements WalrusReadAdapter {
 		} catch (cause) {
 			throw new TransportError(
 				`Walrus aggregator request failed: ${cause instanceof Error ? cause.message : String(cause)}`,
-				{ cause },
+				{ cause, operation },
 			);
 		}
 
@@ -249,6 +253,7 @@ export class HttpAggregatorReadAdapter implements WalrusReadAdapter {
 		if (!response.ok) {
 			throw new TransportError(
 				`Walrus aggregator returned HTTP ${response.status} ${response.statusText} for ${kind} ${identifier}`,
+				{ operation },
 			);
 		}
 
@@ -258,7 +263,7 @@ export class HttpAggregatorReadAdapter implements WalrusReadAdapter {
 		} catch (cause) {
 			throw new TransportError(
 				`Walrus aggregator response body could not be read: ${cause instanceof Error ? cause.message : String(cause)}`,
-				{ cause },
+				{ cause, operation },
 			);
 		}
 	}
@@ -277,7 +282,7 @@ export class HttpAggregatorReadAdapter implements WalrusReadAdapter {
 		} catch (cause) {
 			throw new TransportError(
 				`Sui getObject failed for blob ${blobObjectId}: ${cause instanceof Error ? cause.message : String(cause)}`,
-				{ cause },
+				{ cause, operation: "sui.getObject" },
 			);
 		}
 		const object = response.object;

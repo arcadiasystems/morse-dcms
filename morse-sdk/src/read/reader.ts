@@ -223,11 +223,12 @@ export class RpcPublicationReader implements PublicationReader {
 		id: PublicationId,
 		signal?: AbortSignal,
 	): Promise<Publication> {
+		const validated = toPublicationId(id);
 		let response: Awaited<ReturnType<ObjectReader["getObject"]>>;
 		try {
 			response = await this.callClient("getObject", () =>
 				this.client.getObject({
-					objectId: id,
+					objectId: validated,
 					include: { json: true },
 					...(signal === undefined ? {} : { signal }),
 				}),
@@ -235,15 +236,17 @@ export class RpcPublicationReader implements PublicationReader {
 		} catch (error) {
 			if (
 				error instanceof TransportError &&
-				isObjectNotFoundError(error.cause, id)
+				isObjectNotFoundError(error.cause, validated)
 			) {
-				throw new NotFoundError("publication", id, { cause: error.cause });
+				throw new NotFoundError("publication", validated, {
+					cause: error.cause,
+				});
 			}
 			throw error;
 		}
 		const object = response.object;
 		if (!object) {
-			throw new NotFoundError("publication", id);
+			throw new NotFoundError("publication", validated);
 		}
 		return parsePublication(object);
 	}
@@ -252,11 +255,12 @@ export class RpcPublicationReader implements PublicationReader {
 		address: SuiAddress,
 		options: ListPublicationsOptions = {},
 	): Promise<PublicationListPage> {
+		const validated = toSuiAddress(address);
 		const { limit = DEFAULT_PAGE_LIMIT, cursor, signal } = options;
 		const ownerCapType = `${this.originalPackageId}::publication::OwnerCap`;
 		const response = await this.callClient("listOwnedObjects", () =>
 			this.client.listOwnedObjects({
-				owner: address,
+				owner: validated,
 				type: ownerCapType,
 				limit,
 				cursor: cursor ?? null,
@@ -274,11 +278,12 @@ export class RpcPublicationReader implements PublicationReader {
 		id: PublisherCapId,
 		signal?: AbortSignal,
 	): Promise<PublisherCap> {
+		const validated = toPublisherCapId(id);
 		let response: Awaited<ReturnType<ObjectReader["getObject"]>>;
 		try {
 			response = await this.callClient("getObject", () =>
 				this.client.getObject({
-					objectId: id,
+					objectId: validated,
 					include: { json: true },
 					...(signal === undefined ? {} : { signal }),
 				}),
@@ -286,15 +291,17 @@ export class RpcPublicationReader implements PublicationReader {
 		} catch (error) {
 			if (
 				error instanceof TransportError &&
-				isObjectNotFoundError(error.cause, id)
+				isObjectNotFoundError(error.cause, validated)
 			) {
-				throw new NotFoundError("publisher-cap", id, { cause: error.cause });
+				throw new NotFoundError("publisher-cap", validated, {
+					cause: error.cause,
+				});
 			}
 			throw error;
 		}
 		const object = response.object;
 		if (!object) {
-			throw new NotFoundError("publisher-cap", id);
+			throw new NotFoundError("publisher-cap", validated);
 		}
 		return parsePublisherCap(object);
 	}
@@ -303,11 +310,12 @@ export class RpcPublicationReader implements PublicationReader {
 		address: SuiAddress,
 		options: ListPublisherCapsOptions = {},
 	): Promise<PublisherCapListPage> {
+		const validated = toSuiAddress(address);
 		const { limit = DEFAULT_PAGE_LIMIT, cursor, signal } = options;
 		const publisherCapType = `${this.originalPackageId}::publication::PublisherCap`;
 		const response = await this.callClient("listOwnedObjects", () =>
 			this.client.listOwnedObjects({
-				owner: address,
+				owner: validated,
 				type: publisherCapType,
 				limit,
 				cursor: cursor ?? null,
@@ -325,8 +333,10 @@ export class RpcPublicationReader implements PublicationReader {
 		entryId: number,
 		signal?: AbortSignal,
 	): Promise<Entry> {
+		const validatedPublication = toPublicationId(publicationId);
+		assertEntryId(entryId);
 		const tableId = await this.entriesTableId(
-			publicationId,
+			validatedPublication,
 			collectionName,
 			signal,
 		);
@@ -361,6 +371,7 @@ export class RpcPublicationReader implements PublicationReader {
 		revisionId: number,
 		signal?: AbortSignal,
 	): Promise<Revision> {
+		assertRevisionIndex(revisionId);
 		const entry = await this.getEntry(
 			publicationId,
 			collectionName,
@@ -382,9 +393,10 @@ export class RpcPublicationReader implements PublicationReader {
 		collectionName: string,
 		options: ListEntriesOptions = {},
 	): Promise<EntryListPage> {
+		const validatedPublication = toPublicationId(publicationId);
 		const { limit = DEFAULT_PAGE_LIMIT, cursor, signal } = options;
 		const tableId = await this.entriesTableId(
-			publicationId,
+			validatedPublication,
 			collectionName,
 			signal,
 		);
@@ -408,14 +420,19 @@ export class RpcPublicationReader implements PublicationReader {
 		collectionName: string,
 		options: ScanEntriesOptions = {},
 	): AsyncIterable<Entry> {
+		const validatedPublication = toPublicationId(publicationId);
 		const { pageSize = DEFAULT_PAGE_LIMIT, signal } = options;
 		let cursor: string | undefined;
 		while (true) {
-			const page = await this.listEntries(publicationId, collectionName, {
-				limit: pageSize,
-				...(cursor === undefined ? {} : { cursor }),
-				...(signal === undefined ? {} : { signal }),
-			});
+			const page = await this.listEntries(
+				validatedPublication,
+				collectionName,
+				{
+					limit: pageSize,
+					...(cursor === undefined ? {} : { cursor }),
+					...(signal === undefined ? {} : { signal }),
+				},
+			);
 			for (const entry of page.results) {
 				yield entry;
 			}
@@ -451,8 +468,29 @@ export class RpcPublicationReader implements PublicationReader {
 		try {
 			return await call();
 		} catch (cause) {
-			throw new TransportError(`${operation} failed`, { cause });
+			throw new TransportError(`${operation} failed`, {
+				cause,
+				operation: `sui.${operation}`,
+			});
 		}
+	}
+}
+
+function assertEntryId(entryId: number): void {
+	if (!Number.isInteger(entryId) || entryId < 0) {
+		throw new ValidationError(
+			`Invalid entryId: expected a non-negative integer, got ${JSON.stringify(entryId)}`,
+			"entryId",
+		);
+	}
+}
+
+function assertRevisionIndex(revisionId: number): void {
+	if (!Number.isInteger(revisionId) || revisionId < 0) {
+		throw new ValidationError(
+			`Invalid revisionId: expected a non-negative integer, got ${JSON.stringify(revisionId)}`,
+			"revisionId",
+		);
 	}
 }
 
@@ -461,10 +499,14 @@ function parsePublication(
 ): Publication {
 	const json = object.json;
 	if (!json) {
-		throw new ValidationError(
-			`Publication ${object.objectId} has no parsed JSON content`,
-			"publication.json",
-		);
+		// gRPC returns an object stub without `.json` when the requested id
+		// does not resolve to a real Publication (wrong type, mid-deletion,
+		// or never existed and the backend returns an empty envelope rather
+		// than throwing "Object {id} not found"). Surface as NotFoundError to
+		// match the documented contract for getPublication. ValidationError
+		// is reserved for genuinely malformed responses (json present, wrong
+		// shape) on the per-field branches below.
+		throw new NotFoundError("publication", object.objectId);
 	}
 	const id = toPublicationId(object.objectId);
 	const name = readString(json, "name", "publication.name");
@@ -532,10 +574,8 @@ function parsePublisherCap(
 ): PublisherCap {
 	const json = object.json;
 	if (!json || typeof json !== "object") {
-		throw new ValidationError(
-			`PublisherCap ${object.objectId} has no parsed JSON content`,
-			"publisherCap.json",
-		);
+		// Same not-found semantics as parsePublication; see comment there.
+		throw new NotFoundError("publisher-cap", object.objectId);
 	}
 	// Move `ID` and `address` fields serialize as bare hex strings.
 	// Move `UID` (e.g. the struct's own `id` field) serializes as `{ id: "0x..." }`;
@@ -565,10 +605,8 @@ function parseOwnedPublication(
 ): OwnedPublication {
 	const json = object.json;
 	if (!json || typeof json !== "object") {
-		throw new ValidationError(
-			`OwnerCap ${object.objectId} has no parsed JSON content`,
-			"ownerCap.json",
-		);
+		// Same not-found semantics as parsePublication; see comment there.
+		throw new NotFoundError("owner-cap", object.objectId);
 	}
 	const publicationIdRaw = (json as { publication_id?: unknown })
 		.publication_id;

@@ -121,15 +121,17 @@ export class DefaultWalrusWriteAdapter
 		data: Uint8Array,
 		options: UploadBlobOptions,
 	): Promise<UploadBlobResult> {
-		const result = await runWalrusCall(() =>
-			this.client.writeBlob({
-				blob: data,
-				deletable: options.deletable,
-				epochs: options.epochs,
-				signer: this.signer,
-				...(options.owner === undefined ? {} : { owner: options.owner }),
-				...(options.signal === undefined ? {} : { signal: options.signal }),
-			}),
+		const result = await runWalrusCall(
+			() =>
+				this.client.writeBlob({
+					blob: data,
+					deletable: options.deletable,
+					epochs: options.epochs,
+					signer: this.signer,
+					...(options.owner === undefined ? {} : { owner: options.owner }),
+					...(options.signal === undefined ? {} : { signal: options.signal }),
+				}),
+			"walrus.uploadBlob",
 		);
 
 		return {
@@ -181,7 +183,7 @@ export class DefaultWalrusWriteAdapter
 				blobId: toWalrusBlobId(registered.blobId),
 				certifyTransaction,
 			};
-		});
+		}, "walrus.startBlobUpload");
 	}
 
 	async uploadQuilt(
@@ -194,19 +196,21 @@ export class DefaultWalrusWriteAdapter
 				"patches",
 			);
 		}
-		const result = await runWalrusCall(() =>
-			this.client.writeQuilt({
-				blobs: patches.map((p) => ({
-					contents: p.contents,
-					identifier: p.identifier,
-					...(p.tags === undefined ? {} : { tags: { ...p.tags } }),
-				})),
-				deletable: options.deletable,
-				epochs: options.epochs,
-				signer: this.signer,
-				...(options.owner === undefined ? {} : { owner: options.owner }),
-				...(options.signal === undefined ? {} : { signal: options.signal }),
-			}),
+		const result = await runWalrusCall(
+			() =>
+				this.client.writeQuilt({
+					blobs: patches.map((p) => ({
+						contents: p.contents,
+						identifier: p.identifier,
+						...(p.tags === undefined ? {} : { tags: { ...p.tags } }),
+					})),
+					deletable: options.deletable,
+					epochs: options.epochs,
+					signer: this.signer,
+					...(options.owner === undefined ? {} : { owner: options.owner }),
+					...(options.signal === undefined ? {} : { signal: options.signal }),
+				}),
+			"walrus.uploadQuilt",
 		);
 
 		const blobId: WalrusBlobId = toWalrusBlobId(result.blobId);
@@ -228,7 +232,10 @@ export class DefaultWalrusWriteAdapter
 	}
 }
 
-async function runWalrusCall<T>(call: () => Promise<T>): Promise<T> {
+async function runWalrusCall<T>(
+	call: () => Promise<T>,
+	operation = "walrus.call",
+): Promise<T> {
 	try {
 		return await call();
 	} catch (cause) {
@@ -236,9 +243,12 @@ async function runWalrusCall<T>(call: () => Promise<T>): Promise<T> {
 			throw cause;
 		}
 		if (cause instanceof UserAbortError) {
-			throw new TransportError("Walrus call aborted by caller", { cause });
+			throw new TransportError("Walrus call aborted by caller", {
+				cause,
+				operation,
+			});
 		}
-		throw new TransportError(walrusErrorMessage(cause), { cause });
+		throw new TransportError(walrusErrorMessage(cause), { cause, operation });
 	}
 }
 
