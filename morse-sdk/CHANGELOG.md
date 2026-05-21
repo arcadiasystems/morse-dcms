@@ -75,5 +75,6 @@ See `README.md` for the full list. Headlines:
 - Wallet schemes other than Ed25519 ship as decoders with E2E unverified; `WalletStandardSigner.fromAccount` will accept them, but `@mysten/walrus` and `@mysten/seal` round-trip is not yet smoke-tested for those configurations.
 - gRPC client only at v0.1.0; the reader and adapter interfaces are typed against `Pick<SuiGrpcClient, ...>`. JSON-RPC fallback is planned for v0.2.0.
 
+[0.1.2]: https://github.com/arcadiasystems/morse-dcms/releases/tag/v0.1.2
 [0.1.1]: https://github.com/arcadiasystems/morse-dcms/releases/tag/v0.1.1
 [0.1.0]: https://github.com/arcadiasystems/morse-dcms/releases/tag/v0.1.0
