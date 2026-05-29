@@ -26,26 +26,28 @@
 		"url": "https://github.com/arcadiasystems/morse-dcms/issues"
 	},
 	"bin": {
-		"morse": "./src/index.ts"
+		"morse": "./dist/index.js"
 	},
 	"files": [
-		"src",
+		"dist",
 		"docs",
 		"README.md",
 		"LICENSE",
 		"CHANGELOG.md"
 	],
 	"engines": {
+		"node": ">=18",
 		"bun": ">=1.2.0"
 	},
 	"scripts": {
 		"start": "bun src/index.ts",
+		"build": "bun build src/index.ts --target node --packages external --outfile dist/index.js",
 		"typecheck": "tsc --noEmit",
 		"lint": "biome check .",
 		"lint:fix": "biome check --write .",
 		"test": "bun test",
 		"test:coverage": "bun test --coverage",
-		"prepublishOnly": "tsc --noEmit && biome check . && bun test"
+		"prepublishOnly": "tsc --noEmit && biome check . && bun test && bun run build"
 	},
 	"dependencies": {
 		"@arcadiasystems/morse-sdk": "^0.1.4",

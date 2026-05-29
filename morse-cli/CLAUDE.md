@@ -10,14 +10,17 @@ as a stable public contract.
 
 ## Runtime
 
-Bun is required at runtime (`#!/usr/bin/env bun`, `engines.bun >= 1.2`). Prefer
-Bun-native APIs: `Bun.file`/`Bun.write` over `node:fs`, `Bun.spawn` over
-`node:child_process`, `Bun.$` over `execa`. Bun loads `.env` automatically; do
-not add `dotenv`.
+The shipped CLI runs under both Node (>= 18) and Bun: `bun run build` bundles
+`src/` to `dist/index.js` (Node-targeted, `#!/usr/bin/env node`, deps external),
+which is the published `bin`. Development runs the source directly with Bun
+(`bun src/index.ts`), and `bun test` is the test runner.
 
-One deliberate exception: keystore crypto uses Web Crypto / `node:crypto`
-(scrypt + AES-256-GCM). The security-critical path stays on standard, audited
-primitives, not a Bun-only API.
+Because the artifact must run on Node, shipped `src/` uses cross-runtime APIs,
+not Bun-only globals: file and stdin IO goes through `cli/io.ts` (over
+`node:fs/promises` + `process.stdin`); keystore crypto uses `node:crypto`
+(scrypt + AES-256-GCM). Do not call `Bun.file`/`Bun.write`/`Bun.spawn`/`Bun.$`
+in shipped `src/` (they are fine in tests, which always run under Bun). Do not
+add `dotenv`.
 
 ## Architecture and layering
 

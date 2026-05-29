@@ -3,6 +3,7 @@
 import { extname } from "node:path";
 
 import { UsageError } from "./errors.ts";
+import { fileExists, readBytes, readStdin } from "./io.ts";
 
 export interface ContentInputOptions {
 	readonly file?: string;
@@ -43,16 +44,15 @@ export async function readContentBytes(
 
 async function readRaw(options: ContentInputOptions): Promise<Uint8Array> {
 	if (options.stdin || options.file === "-") {
-		return new Uint8Array(await Bun.stdin.arrayBuffer());
+		return readStdin();
 	}
 	if (options.file === undefined) {
 		throw new UsageError("Provide content with --file <path> or --stdin.");
 	}
-	const file = Bun.file(options.file);
-	if (!(await file.exists())) {
+	if (!(await fileExists(options.file))) {
 		throw new UsageError(`File not found: ${options.file}`);
 	}
-	return new Uint8Array(await file.arrayBuffer());
+	return readBytes(options.file);
 }
 
 /**

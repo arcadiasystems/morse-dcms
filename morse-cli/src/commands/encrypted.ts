@@ -14,6 +14,7 @@ import type { Command } from "commander";
 import { buildDecryptContext, buildEncryptContext } from "../cli/context.ts";
 import { UsageError } from "../cli/errors.ts";
 import { readContentBytes, resolveContentType } from "../cli/input.ts";
+import { writeFileContents } from "../cli/io.ts";
 import { resolveCollection, resolvePublication } from "../cli/target.ts";
 import {
 	type ContentOptions,
@@ -151,7 +152,7 @@ export function registerEncryptedEntryCommands(entry: Command): void {
 				publisherCapId,
 			});
 			if (options.out !== undefined) {
-				await Bun.write(options.out, plaintext);
+				await writeFileContents(options.out, plaintext);
 				ctx.output.result(
 					`Wrote ${plaintext.length} bytes to ${options.out}.`,
 					{

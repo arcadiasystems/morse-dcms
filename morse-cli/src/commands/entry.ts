@@ -15,6 +15,7 @@ import {
 } from "../cli/context.ts";
 import { cancelled, UsageError } from "../cli/errors.ts";
 import { readContentBytes, resolveContentType } from "../cli/input.ts";
+import { writeFileContents } from "../cli/io.ts";
 import { confirm } from "../cli/prompts.ts";
 import { globalOptions } from "../cli/runtime.ts";
 import { resolveCollection, resolvePublication } from "../cli/target.ts";
@@ -241,7 +242,7 @@ export function registerEntryCommands(program: Command): void {
 				signal: ctx.signal,
 			});
 			if (options.out !== undefined) {
-				await Bun.write(options.out, bytes);
+				await writeFileContents(options.out, bytes);
 				ctx.output.result(`Wrote ${bytes.length} bytes to ${options.out}.`, {
 					entryId: numericEntryId,
 					revisionId: revisionIndex,

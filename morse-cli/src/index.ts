@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 
 import { handleError } from "./cli/errors.ts";
 import { buildProgram, type GlobalOptions } from "./cli/program.ts";

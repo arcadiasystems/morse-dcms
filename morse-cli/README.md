@@ -11,7 +11,8 @@ with [Seal](https://github.com/MystenLabs/seal).
 
 ## Requirements
 
-- [Bun](https://bun.sh) >= 1.2 (required at runtime)
+- [Node.js](https://nodejs.org) >= 18, or [Bun](https://bun.sh) >= 1.2. The
+  published CLI runs under either.
 - A funded Sui testnet address for gas, and testnet WAL for Walrus storage when
   adding content. Get SUI from the [Sui faucet](https://faucet.sui.io/) and WAL
   from the [Walrus testnet faucet](https://docs.walrus.site/usage/web-tool.html).
@@ -19,11 +20,17 @@ with [Seal](https://github.com/MystenLabs/seal).
 ## Install
 
 ```sh
-bun add -g @arcadiasystems/morse-cli
+npm i -g @arcadiasystems/morse-cli   # or: bun add -g, pnpm add -g
 morse --help
 ```
 
-Or run from a clone without installing:
+Or run without installing:
+
+```sh
+npx @arcadiasystems/morse-cli --help   # or: bunx @arcadiasystems/morse-cli
+```
+
+From a clone (development), run the source with Bun:
 
 ```sh
 bun morse-cli/src/index.ts --help
@@ -272,11 +279,15 @@ bun add -g @arcadiasystems/morse-cli   # or: npm i -g @arcadiasystems/morse-cli
 bunx @arcadiasystems/morse-cli --help  # or: npx, run without installing
 ```
 
-Release steps: bump the version in `package.json`, move the `[Unreleased]`
-CHANGELOG entries under the new version, then `npm publish` (the package is
-`publishConfig.access: public`). `bun pm pack --dry-run` shows exactly what ships
-(`src`, `docs`, `README.md`, `LICENSE`, `CHANGELOG.md`). Bun is required at
-runtime; that is declared in `engines`.
+The shipped `bin` is `dist/index.js`, a Node-targeted bundle (`bun run build`)
+with a `#!/usr/bin/env node` shebang and external dependencies, so installs run
+under Node or Bun. `prepublishOnly` runs typecheck, lint, tests, and the build,
+so the published `dist/` is always fresh.
+
+Release steps: bump the version in `package.json`, stamp the CHANGELOG date,
+then `npm publish` (the package is `publishConfig.access: public`). `npm publish`
+ships `dist`, `docs`, `README.md`, `LICENSE`, and `CHANGELOG.md` (see the `files`
+allowlist). Publish the SDK first; the CLI depends on `@arcadiasystems/morse-sdk`.
 
 ## License
 

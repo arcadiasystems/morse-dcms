@@ -11,6 +11,7 @@ import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 
 import { CliError, KeystoreError, UsageError } from "../cli/errors.ts";
 import { ExitCode } from "../cli/exit-codes.ts";
+import { fileExists, readJson, writeFileContents } from "../cli/io.ts";
 import { keystoreDir } from "../config/paths.ts";
 import {
 	decryptSecret,
@@ -90,13 +91,12 @@ export async function listAddresses(): Promise<string[]> {
 }
 
 export async function hasKeystore(address: string): Promise<boolean> {
-	return Bun.file(keystorePath(address)).exists();
+	return fileExists(keystorePath(address));
 }
 
 export async function loadKeystore(address: string): Promise<KeystoreFile> {
 	const path = keystorePath(address);
-	const file = Bun.file(path);
-	if (!(await file.exists())) {
+	if (!(await fileExists(path))) {
 		throw new CliError(
 			`No keystore for ${address}. Import it with: morse account import`,
 			ExitCode.NotFound,
@@ -105,7 +105,7 @@ export async function loadKeystore(address: string): Promise<KeystoreFile> {
 	await assertSecurePermissions(path);
 	let raw: unknown;
 	try {
-		raw = await file.json();
+		raw = await readJson(path);
 	} catch (cause) {
 		throw new KeystoreError(`Keystore at ${path} is not valid JSON.`, {
 			cause,
@@ -122,7 +122,7 @@ async function writeKeystore(
 	await mkdir(dir, { recursive: true, mode: 0o700 });
 	const path = keystorePath(address);
 	const tmp = `${path}.tmp-${process.pid}-${crypto.randomUUID()}`;
-	await Bun.write(tmp, `${JSON.stringify(file, null, 2)}\n`);
+	await writeFileContents(tmp, `${JSON.stringify(file, null, 2)}\n`);
 	await chmod(tmp, 0o600);
 	await rename(tmp, path);
 }

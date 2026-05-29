@@ -8,6 +8,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Runs under Node (>= 18) or Bun. The published `bin` is a Node-targeted bundle
+  (`dist/index.js`, built with `bun run build`); file/stdin IO goes through a
+  cross-runtime layer (`cli/io.ts`) so `npm i -g` works without Bun.
 - Active context: `morse use <slug|id> [collection]`, `morse use --clear`, and
   `morse status`. Publication and collection commands default to the active
   context and accept `-P, --publication <slug|id>` and `-C, --collection <name>`
