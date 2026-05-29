@@ -1,0 +1,176 @@
+/**
+ * The single place that builds SDK clients from resolved settings and the key
+ * source. `buildReadContext` covers reads; `buildWriteContext` adds a signing
+ * adapter by unlocking the active account.
+ */
+
+import {
+	DefaultSealAdapter,
+	DefaultWalrusReadAdapter,
+	DefaultWalrusWriteAdapter,
+	KeypairAdapter,
+	morseConfig,
+	type NetworkConfig,
+	RpcPublicationReader,
+	type SuiAddress,
+} from "@arcadiasystems/morse-sdk";
+import { SuiGrpcClient } from "@mysten/sui/grpc";
+import type { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
+import type { Command } from "commander";
+import { type ResolvedSettings, resolveSettings } from "../config/profile.ts";
+import { loadConfig } from "../config/store.ts";
+import { accountAddress, resolveSigner } from "../keystore/source.ts";
+import { CliError } from "./errors.ts";
+import { ExitCode } from "./exit-codes.ts";
+import type { Output } from "./output.ts";
+import { sigintSignal } from "./prompts.ts";
+import { globalOptions, outputFor } from "./runtime.ts";
+
+export interface ReadContext {
+	readonly output: Output;
+	readonly settings: ResolvedSettings;
+	readonly config: NetworkConfig;
+	readonly client: SuiGrpcClient;
+	readonly reader: RpcPublicationReader;
+	readonly ownerAddress: SuiAddress | undefined;
+	readonly signal: AbortSignal;
+}
+
+export async function buildReadContext(command: Command): Promise<ReadContext> {
+	const opts = globalOptions(command);
+	const output = outputFor(command);
+	const settings = resolveSettings(opts, await loadConfig());
+	const config = morseConfig({
+		network: settings.network,
+		...(settings.rpcUrl === undefined ? {} : { rpcUrl: settings.rpcUrl }),
+	});
+	const client = new SuiGrpcClient({
+		network: settings.network,
+		baseUrl: config.rpcUrl,
+	});
+	const reader = RpcPublicationReader.fromMorseConfig(config, client);
+	return {
+		output,
+		settings,
+		config,
+		client,
+		reader,
+		ownerAddress: accountAddress(settings.account),
+		signal: sigintSignal(),
+	};
+}
+
+export interface WriteContext extends ReadContext {
+	readonly adapter: KeypairAdapter;
+	readonly address: SuiAddress;
+}
+
+interface SignedBase {
+	readonly base: ReadContext;
+	readonly keypair: Ed25519Keypair;
+	readonly address: SuiAddress;
+}
+
+async function buildSignedBase(command: Command): Promise<SignedBase> {
+	const base = await buildReadContext(command);
+	const signer = await resolveSigner(
+		base.settings.account,
+		process.env,
+		base.signal,
+	);
+	return { base, keypair: signer.keypair, address: signer.address };
+}
+
+export async function buildWriteContext(
+	command: Command,
+): Promise<WriteContext> {
+	const { base, keypair, address } = await buildSignedBase(command);
+	return {
+		...base,
+		adapter: new KeypairAdapter(keypair, base.client),
+		address,
+	};
+}
+
+export interface ContentContext extends WriteContext {
+	readonly walrus: DefaultWalrusWriteAdapter;
+}
+
+export async function buildContentContext(
+	command: Command,
+): Promise<ContentContext> {
+	const { base, keypair, address } = await buildSignedBase(command);
+	const network = base.settings.network;
+	if (network === "localnet") {
+		throw new CliError(
+			"Walrus content uploads are not available on localnet. Use testnet or mainnet.",
+			ExitCode.Usage,
+		);
+	}
+	const adapter = new KeypairAdapter(keypair, base.client);
+	const walrus = DefaultWalrusWriteAdapter.fromConfig(
+		{ network, suiClient: base.client },
+		keypair,
+	);
+	return { ...base, adapter, address, walrus };
+}
+
+export interface EncryptContext extends ContentContext {
+	readonly seal: DefaultSealAdapter;
+}
+
+export async function buildEncryptContext(
+	command: Command,
+): Promise<EncryptContext> {
+	const ctx = await buildContentContext(command);
+	const seal = DefaultSealAdapter.fromMorseConfig(ctx.config, {}, ctx.client);
+	return { ...ctx, seal };
+}
+
+export interface ReadContentContext extends ReadContext {
+	readonly walrusRead: DefaultWalrusReadAdapter;
+}
+
+export async function buildReadContentContext(
+	command: Command,
+): Promise<ReadContentContext> {
+	const base = await buildReadContext(command);
+	const network = base.settings.network;
+	if (network === "localnet") {
+		throw new CliError(
+			"Walrus reads are not available on localnet. Use testnet or mainnet.",
+			ExitCode.Usage,
+		);
+	}
+	const walrusRead = DefaultWalrusReadAdapter.fromConfig({
+		network,
+		suiClient: base.client,
+	});
+	return { ...base, walrusRead };
+}
+
+export interface DecryptContext extends ReadContext {
+	readonly keypair: Ed25519Keypair;
+	readonly address: SuiAddress;
+	readonly seal: DefaultSealAdapter;
+	readonly walrusRead: DefaultWalrusReadAdapter;
+}
+
+export async function buildDecryptContext(
+	command: Command,
+): Promise<DecryptContext> {
+	const { base, keypair, address } = await buildSignedBase(command);
+	const network = base.settings.network;
+	if (network === "localnet") {
+		throw new CliError(
+			"Seal decryption is not available on localnet. Use testnet or mainnet.",
+			ExitCode.Usage,
+		);
+	}
+	const seal = DefaultSealAdapter.fromMorseConfig(base.config, {}, base.client);
+	const walrusRead = DefaultWalrusReadAdapter.fromConfig({
+		network,
+		suiClient: base.client,
+	});
+	return { ...base, keypair, address, seal, walrusRead };
+}
