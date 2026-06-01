@@ -24,7 +24,6 @@ import { resolvePublisherCap } from "./resolve.ts";
 import { parseId, parsePositiveInt } from "./shared.ts";
 
 interface ResolvedTarget {
-	readonly ctx: ContentContext;
 	readonly publicationId: PublicationId;
 	readonly collection: string;
 }
@@ -42,20 +41,19 @@ function revisionOptions(command: Command): Command {
 }
 
 async function resolveTarget(
-	command: Command,
+	ctx: ContentContext,
 	options: ContentOptions,
 ): Promise<ResolvedTarget> {
-	const ctx = await buildContentContext(command);
 	const publicationId = await resolvePublication(ctx, options.publication);
 	const collection = resolveCollection(ctx, options.collection);
-	return { ctx, publicationId, collection };
+	return { publicationId, collection };
 }
 
 async function prepareContent(
-	target: ResolvedTarget,
+	ctx: ContentContext,
+	publicationId: PublicationId,
 	options: ContentOptions,
 ): Promise<PreparedContent> {
-	const { ctx, publicationId } = target;
 	const epochs = parsePositiveInt(options.epochs, "--epochs");
 	const bytes = await readContentBytes(options);
 	const contentType = resolveContentType(
@@ -82,6 +80,78 @@ async function prepareContent(
 	return { blobObjectId: upload.blobObjectId, contentType, publisherCapId };
 }
 
+export async function runRevisionPublishDirect(
+	ctx: ContentContext,
+	entryId: string,
+	options: ContentOptions,
+): Promise<void> {
+	const { publicationId, collection } = await resolveTarget(ctx, options);
+	const numericEntryId = parseId(entryId, "entryId");
+	const prepared = await prepareContent(ctx, publicationId, options);
+	const result = await publishDirect(ctx.adapter, ctx.config, {
+		publicationId,
+		publisherCapId: prepared.publisherCapId,
+		collectionName: collection,
+		entryId: numericEntryId,
+		blobObjectId: prepared.blobObjectId,
+		contentType: prepared.contentType,
+		signal: ctx.signal,
+	});
+	ctx.output.result(
+		`Published revision #${result.revisionId} on entry #${numericEntryId}. (tx: ${result.digest})`,
+		result,
+	);
+}
+
+export async function runRevisionAppendDraft(
+	ctx: ContentContext,
+	entryId: string,
+	options: ContentOptions,
+): Promise<void> {
+	const { publicationId, collection } = await resolveTarget(ctx, options);
+	const numericEntryId = parseId(entryId, "entryId");
+	const prepared = await prepareContent(ctx, publicationId, options);
+	const result = await appendDraftRevision(ctx.adapter, ctx.config, {
+		publicationId,
+		publisherCapId: prepared.publisherCapId,
+		collectionName: collection,
+		entryId: numericEntryId,
+		blobObjectId: prepared.blobObjectId,
+		contentType: prepared.contentType,
+		signal: ctx.signal,
+	});
+	ctx.output.result(
+		`Appended draft revision #${result.revisionId} on entry #${numericEntryId}. (tx: ${result.digest})`,
+		result,
+	);
+}
+
+export async function runRevisionPublishFromDraft(
+	ctx: ContentContext,
+	entryId: string,
+	draftRevisionId: string,
+	options: ContentOptions,
+): Promise<void> {
+	const { publicationId, collection } = await resolveTarget(ctx, options);
+	const numericEntryId = parseId(entryId, "entryId");
+	const draftId = parseId(draftRevisionId, "draftRevisionId");
+	const prepared = await prepareContent(ctx, publicationId, options);
+	const result = await publishFromDraft(ctx.adapter, ctx.config, {
+		publicationId,
+		publisherCapId: prepared.publisherCapId,
+		collectionName: collection,
+		entryId: numericEntryId,
+		draftRevisionId: draftId,
+		blobObjectId: prepared.blobObjectId,
+		contentType: prepared.contentType,
+		signal: ctx.signal,
+	});
+	ctx.output.result(
+		`Published revision #${result.revisionId} from draft #${draftId} on entry #${numericEntryId}. (tx: ${result.digest})`,
+		result,
+	);
+}
+
 export function registerRevisionCommands(program: Command): void {
 	const revision = program
 		.command("revision")
@@ -93,25 +163,10 @@ export function registerRevisionCommands(program: Command): void {
 			.description("Upload content and append it as a public revision"),
 	).action(
 		async (entryId: string, options: ContentOptions, command: Command) => {
-			const target = await resolveTarget(command, options);
-			const numericEntryId = parseId(entryId, "entryId");
-			const prepared = await prepareContent(target, options);
-			const result = await publishDirect(
-				target.ctx.adapter,
-				target.ctx.config,
-				{
-					publicationId: target.publicationId,
-					publisherCapId: prepared.publisherCapId,
-					collectionName: target.collection,
-					entryId: numericEntryId,
-					blobObjectId: prepared.blobObjectId,
-					contentType: prepared.contentType,
-					signal: target.ctx.signal,
-				},
-			);
-			target.ctx.output.result(
-				`Published revision #${result.revisionId} on entry #${numericEntryId}. (tx: ${result.digest})`,
-				result,
+			await runRevisionPublishDirect(
+				await buildContentContext(command),
+				entryId,
+				options,
 			);
 		},
 	);
@@ -122,25 +177,10 @@ export function registerRevisionCommands(program: Command): void {
 			.description("Upload content and append it as a draft revision"),
 	).action(
 		async (entryId: string, options: ContentOptions, command: Command) => {
-			const target = await resolveTarget(command, options);
-			const numericEntryId = parseId(entryId, "entryId");
-			const prepared = await prepareContent(target, options);
-			const result = await appendDraftRevision(
-				target.ctx.adapter,
-				target.ctx.config,
-				{
-					publicationId: target.publicationId,
-					publisherCapId: prepared.publisherCapId,
-					collectionName: target.collection,
-					entryId: numericEntryId,
-					blobObjectId: prepared.blobObjectId,
-					contentType: prepared.contentType,
-					signal: target.ctx.signal,
-				},
-			);
-			target.ctx.output.result(
-				`Appended draft revision #${result.revisionId} on entry #${numericEntryId}. (tx: ${result.digest})`,
-				result,
+			await runRevisionAppendDraft(
+				await buildContentContext(command),
+				entryId,
+				options,
 			);
 		},
 	);
@@ -158,27 +198,11 @@ export function registerRevisionCommands(program: Command): void {
 			options: ContentOptions,
 			command: Command,
 		) => {
-			const target = await resolveTarget(command, options);
-			const numericEntryId = parseId(entryId, "entryId");
-			const draftId = parseId(draftRevisionId, "draftRevisionId");
-			const prepared = await prepareContent(target, options);
-			const result = await publishFromDraft(
-				target.ctx.adapter,
-				target.ctx.config,
-				{
-					publicationId: target.publicationId,
-					publisherCapId: prepared.publisherCapId,
-					collectionName: target.collection,
-					entryId: numericEntryId,
-					draftRevisionId: draftId,
-					blobObjectId: prepared.blobObjectId,
-					contentType: prepared.contentType,
-					signal: target.ctx.signal,
-				},
-			);
-			target.ctx.output.result(
-				`Published revision #${result.revisionId} from draft #${draftId} on entry #${numericEntryId}. (tx: ${result.digest})`,
-				result,
+			await runRevisionPublishFromDraft(
+				await buildContentContext(command),
+				entryId,
+				draftRevisionId,
+				options,
 			);
 		},
 	);

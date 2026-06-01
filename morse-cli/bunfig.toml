@@ -1,0 +1,20 @@
+[test]
+# Force a non-interactive context so confirmation prompts never block on stdin
+# in a dev terminal (see the preload for why).
+preload = ["./test/support/preload.ts"]
+# Measure only shipped source: drop the test files and the linked SDK from the
+# coverage denominator so the number reflects this package's own code.
+coverageSkipTestFiles = true
+# The floor is enforced by scripts/coverage-gate.ts (run via `bun run coverage`):
+# Bun reads these settings but does not fail the process on a threshold miss.
+coveragePathIgnorePatterns = [
+	"test/**",
+	"**/morse-sdk/**",
+	"**/node_modules/**",
+	# Interactive-only modules: hidden password and confirm prompts that require a
+	# real TTY. Covered by the spawn smoke layer and the manual walkthrough, not by
+	# the hermetic gate, so they are out of the gate's coverage denominator.
+	"src/cli/prompts.ts",
+	"src/keystore/unlock.ts",
+]
+coverageReporter = ["text"]

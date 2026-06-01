@@ -13,11 +13,28 @@ import { CommanderError } from "commander";
 
 import {
 	CliError,
+	cancelled,
 	handleError,
 	resolveExitCode,
 	UsageError,
 } from "../src/cli/errors.ts";
 import { ExitCode } from "../src/cli/exit-codes.ts";
+
+/** Run with process.stderr.write swallowed; return the value and what was written. */
+function captureStderr<T>(fn: () => T): { value: T; stderr: string } {
+	let buffer = "";
+	const original = process.stderr.write.bind(process.stderr);
+	(process.stderr as { write: unknown }).write = (text: string): boolean => {
+		buffer += text;
+		return true;
+	};
+	try {
+		const value = fn();
+		return { value, stderr: buffer };
+	} finally {
+		(process.stderr as { write: unknown }).write = original;
+	}
+}
 
 describe("resolveExitCode", () => {
 	test("CliError carries its own code", () => {
@@ -100,5 +117,47 @@ describe("handleError commander codes", () => {
 		expect(handleError(unknown, { json: false, debug: false })).toBe(
 			ExitCode.Usage,
 		);
+	});
+});
+
+describe("renderError via handleError", () => {
+	test("plain mode writes a CliError message to stderr", () => {
+		const { value, stderr } = captureStderr(() =>
+			handleError(new UsageError("bad input"), { json: false, debug: false }),
+		);
+		expect(value).toBe(ExitCode.Usage);
+		expect(stderr).toContain("Error: bad input");
+	});
+
+	test("json mode writes a structured error document to stderr", () => {
+		const { value, stderr } = captureStderr(() =>
+			handleError(new NotFoundError("publication", "0x1"), {
+				json: true,
+				debug: false,
+			}),
+		);
+		expect(value).toBe(ExitCode.NotFound);
+		const parsed = JSON.parse(stderr) as {
+			error: { exitCode: number; title: string };
+		};
+		expect(parsed.error.exitCode).toBe(ExitCode.NotFound);
+		expect(parsed.error.title).toBeDefined();
+	});
+
+	test("debug mode appends a stack trace, following the cause chain", () => {
+		const err = new CliError("outer", ExitCode.Generic, {
+			cause: new Error("inner cause"),
+		});
+		const { stderr } = captureStderr(() =>
+			handleError(err, { json: false, debug: true }),
+		);
+		expect(stderr).toContain("Error: outer");
+		expect(stderr).toContain("Caused by:");
+	});
+});
+
+describe("cancelled", () => {
+	test("throws a usage error", () => {
+		expect(() => cancelled()).toThrow(/Cancelled/);
 	});
 });

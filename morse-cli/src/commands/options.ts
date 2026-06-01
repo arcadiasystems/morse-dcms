@@ -30,6 +30,13 @@ export function ownerCapOption(command: Command): Command {
 	);
 }
 
+export function viaAggregatorOption(command: Command): Command {
+	return command.option(
+		"--via-aggregator",
+		"Fetch content via the Walrus aggregator HTTP service. More reliable when storage nodes are flaky; no client-side blob verification.",
+	);
+}
+
 export function contentOptions(command: Command): Command {
 	return command
 		.option("-f, --file <path>", "File to upload (or - for stdin)")

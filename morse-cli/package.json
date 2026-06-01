@@ -46,8 +46,13 @@
 		"lint": "biome check .",
 		"lint:fix": "biome check --write .",
 		"test": "bun test",
+		"test:unit": "bun test test/*.test.ts",
+		"test:cli": "bun test test/cli/",
 		"test:coverage": "bun test --coverage",
-		"prepublishOnly": "tsc --noEmit && biome check . && bun test && bun run build"
+		"test:e2e": "MORSE_E2E=1 bun test test/e2e/",
+		"coverage": "bun scripts/coverage-gate.ts",
+		"check": "tsc --noEmit && biome check . && bun scripts/coverage-gate.ts",
+		"prepublishOnly": "bun run check && bun run build"
 	},
 	"dependencies": {
 		"@arcadiasystems/morse-sdk": "^0.1.4",

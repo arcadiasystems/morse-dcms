@@ -187,13 +187,13 @@ and `-C, --collection <name>`, both defaulting to the active context.
 | Command | Purpose |
 | --- | --- |
 | `entry get <entryId> [-P …] [-C …]` | Fetch a single entry's metadata. |
-| `entry read <entryId> [revisionIndex] [--out <path>] [-P …] [-C …]` | Fetch a public entry's content to stdout or a file. |
+| `entry read <entryId> [revisionIndex] [--out <path>] [--via-aggregator] [-P …] [-C …]` | Fetch a public entry's content to stdout or a file. |
 | `entry list [-P …] [-C …]` | List entries (paginated). |
 | `entry scan [-P …] [-C …]` | List every entry (auto-paginated). |
 | `entry add <name> --file <path> [-P …] [-C …]` | Upload content and add a new entry; prints a viewable link. |
 | `entry delete <entryId> [-P …] [-C …]` | Delete an entry. |
 | `entry add-encrypted <name> --file <path> [-P …] [-C …]` | Encrypt, upload, and add a new entry. |
-| `entry decrypt <entryId> [revisionIndex] [--out <path>] [-P …] [-C …]` | Decrypt an encrypted revision. |
+| `entry decrypt <entryId> [revisionIndex] [--out <path>] [--via-aggregator] [-P …] [-C …]` | Decrypt an encrypted revision. |
 
 `add`, `add-encrypted`, and the revision commands accept `--file <path>` (or `-`
 for stdin), `--stdin`, and `--content-type <type>` (inferred from the file
@@ -266,6 +266,11 @@ OwnerCap and PublisherCap IDs are auto-resolved from the active account when the
   retrieved with `entry decrypt`, not `entry read`. A shareable Walrus link is
   printed by `entry add` (the `viewUrl` field), since the content id is known at
   upload time.
+- `entry read` and `entry decrypt` default to reading from Walrus storage nodes,
+  which verifies the bytes against the on-chain blob id. Pass `--via-aggregator`
+  to read through the Walrus aggregator HTTP service instead: more reliable when
+  storage nodes are flaky (common on testnet), at the cost of trusting the
+  aggregator's bytes (no client-side verification).
 - Mainnet is not yet deployed; use `testnet`.
 
 ## Publishing
@@ -288,6 +293,23 @@ Release steps: bump the version in `package.json`, stamp the CHANGELOG date,
 then `npm publish` (the package is `publishConfig.access: public`). `npm publish`
 ships `dist`, `docs`, `README.md`, `LICENSE`, and `CHANGELOG.md` (see the `files`
 allowlist). Publish the SDK first; the CLI depends on `@arcadiasystems/morse-sdk`.
+
+## Development
+
+| Command | What it does |
+| --- | --- |
+| `bun run test:unit` | In-process tests only (no subprocesses); ~2s, for a tight edit loop. |
+| `bun run test:cli` | Subprocess CLI-smoke tests (`test/cli/`); spawns the real bin. |
+| `bun test` | The full hermetic suite (unit + CLI smoke), no network. |
+| `bun run typecheck` | `tsc --noEmit`. |
+| `bun run lint` | Biome check. |
+| `bun run coverage` | Run the suite with coverage and enforce the floor. |
+| `bun run check` | Typecheck, lint, and the coverage gate (the CI gate). |
+| `bun run test:e2e` | Live testnet lifecycle. Opt-in: needs `MORSE_PRIVATE_KEY` (or `.env.testnet`) funded with testnet SUI and WAL. Set `MORSE_E2E_AGGREGATOR=1` to route the read steps through `--via-aggregator`. |
+
+The test layering, coverage policy, and anti-flake rules are described in
+`CLAUDE.md`. CI runs `check` and `build` on every push and PR that touches the
+package (`.github/workflows/cli-ci.yml`); the live e2e is excluded from CI.
 
 ## License
 

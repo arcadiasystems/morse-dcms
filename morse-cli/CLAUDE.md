@@ -131,16 +131,51 @@ muting), table rendering, and ANSI helpers. Reuse SDK codecs for ID validation.
 
 ## Testing
 
-Run after every change: `bun tsc --noEmit`, then `bun test`, then `biome check .`.
+Run after every change: `bun run typecheck`, then `bun test`, then `biome check .`.
 
-- Unit-test pure logic: keystore crypto round-trip and wrong-password rejection,
-  config precedence and atomic writes, error class-to-exit-code mapping, JSON
-  output shape.
-- Command-level tests spawn the CLI (`Bun.spawn`) and assert the stdout/stderr
-  split and exit code: success, bad flag (2), not found (3), unlock failure (4).
-- Mock SDK clients with `Pick<SuiGrpcClient, ...>` interfaces. Concrete mocks use
-  `as unknown as Interface` because the picked generic method signatures cannot
-  be satisfied structurally by a plain mock.
+The suite is a four-layer pyramid. Put each test at the lowest layer that can
+prove the behavior, and prove each behavior at exactly one layer.
+
+1. Unit (pure logic, in process). Keystore crypto round-trip and wrong-password
+   rejection, config precedence and atomic writes, error class-to-exit-code
+   mapping, JSON output shape, id/slug/cap resolution. Fast and deterministic.
+2. Handler cores (in process, mocked SDK boundary). Each command action is split
+   into a thin `.action()` wrapper and an exported `run*` core that takes its
+   resolved dependencies (a context, parsed options, and `GlobalOptions` only
+   where confirm/active-profile need it). Tests drive the cores with a capturing
+   `Output` (inject `writeOut`/`writeErr`), a `Pick`-mocked reader on the
+   context, and the SDK write ops intercepted by `test/support/sdk-mock.ts`
+   (`mock.module` spreading the real module so branded codecs stay genuine).
+   Assert: the right op with the right args, the rendered human and `--json`
+   output, the confirm/cancel gating, the active-profile select/clear, and the
+   error-to-exit mapping. This is where most coverage lives.
+3. Program dispatch and CLI smoke (subprocess). `test/program.test.ts` builds the
+   assembled program and routes argv through commander into fast-fail guards
+   (no RPC) to cover registration, global-option plumbing, and the context
+   builders. The `*-cli.test.ts` files spawn the real bin (`runCli`/`runDist`)
+   for a representative sample of the stdout/stderr-and-exit-code contract; keep
+   this layer small, not exhaustive (exhaustive validation belongs at layer 1/2).
+4. Live testnet e2e (opt-in, excluded from the gate). `test/e2e/*.e2e.test.ts`,
+   gated by `MORSE_E2E=1` via `describe.if`, run the built bundle through a full
+   lifecycle including the real Walrus and Seal round-trips (entry read, entry
+   decrypt) that no hermetic layer can cover. Run with `bun run test:e2e`.
+
+Anti-flake (the default gate must stay hermetic): no real network, clock, or
+randomness in layers 1-3; per-test isolated `XDG_CONFIG_HOME` (see
+`useTempConfigHome`) and temp files; no shared mutable state or inter-test
+ordering; no sleeps, only awaited signals; one centralized spawn timeout. Live
+network appears only at layer 4, which is opt-in.
+
+Anti-waste: test the CLI's responsibilities (parse, precedence, validate,
+delegate shape, render, error-to-exit), never the SDK's behavior or commander
+internals. Do not assert the same rule at two layers. Mock SDK clients with
+`Pick<RpcPublicationReader, ...>` and cast concrete mocks `as unknown as ...`,
+because the picked generic method signatures cannot be satisfied structurally.
+
+Genuinely un-hermetic code (interactive prompts in `cli/prompts.ts`, the
+keystore unlock prompt in `keystore/unlock.ts`, stdin reads, the binary
+stdout-write paths, and the Seal decrypt happy path) is covered by layer 4 and
+the manual walkthrough, not by the hermetic gate.
 
 ## Review and commit
 

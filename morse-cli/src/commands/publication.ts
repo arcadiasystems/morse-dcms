@@ -8,8 +8,14 @@ import {
 } from "@arcadiasystems/morse-sdk";
 import type { Command } from "commander";
 
-import { buildReadContext, buildWriteContext } from "../cli/context.ts";
+import {
+	buildReadContext,
+	buildWriteContext,
+	type ReadContext,
+	type WriteContext,
+} from "../cli/context.ts";
 import { cancelled, UsageError } from "../cli/errors.ts";
+import type { GlobalOptions } from "../cli/program.ts";
 import { confirm } from "../cli/prompts.ts";
 import { globalOptions } from "../cli/runtime.ts";
 import { resolvePublication } from "../cli/target.ts";
@@ -25,6 +31,168 @@ import { ownerCapOption, publicationOption } from "./options.ts";
 import { resolveOwnerCap } from "./resolve.ts";
 import { parseLimit } from "./shared.ts";
 
+interface ListOptions {
+	readonly limit?: string;
+	readonly cursor?: string;
+	readonly idsOnly?: boolean;
+}
+
+export async function runPublicationGet(
+	ctx: ReadContext,
+	target: string | undefined,
+): Promise<void> {
+	const id = await resolvePublication(ctx, target);
+	const result = await ctx.reader.getPublication(id, ctx.signal);
+	ctx.output.result(renderPublication(result), result);
+}
+
+export async function runPublicationList(
+	ctx: ReadContext,
+	address: string | undefined,
+	options: ListOptions,
+): Promise<void> {
+	const owner =
+		address === undefined ? ctx.ownerAddress : toSuiAddress(address);
+	if (owner === undefined) {
+		throw new UsageError(
+			"No address given and no active account. Pass an address or import an account.",
+		);
+	}
+	const page = await ctx.reader.listPublicationsOwnedBy(owner, {
+		signal: ctx.signal,
+		...(options.limit === undefined
+			? {}
+			: { limit: parseLimit(options.limit) }),
+		...(options.cursor === undefined ? {} : { cursor: options.cursor }),
+	});
+	if (page.nextCursor !== null) {
+		ctx.output.info(`More results: pass --cursor "${page.nextCursor}"`);
+	}
+	if (options.idsOnly) {
+		ctx.output.result(renderPublicationList(page.results), {
+			results: page.results,
+			nextCursor: page.nextCursor,
+		});
+		return;
+	}
+	// Enrich each row with its slug and name; the list RPC returns only ids, so
+	// this costs one getPublication per result.
+	const enriched: EnrichedPublication[] = [];
+	for (const owned of page.results) {
+		const pub = await ctx.reader.getPublication(
+			owned.publicationId,
+			ctx.signal,
+		);
+		enriched.push({
+			slug: pub.slug,
+			name: pub.name,
+			publicationId: owned.publicationId,
+			ownerCapId: owned.ownerCapId,
+		});
+	}
+	ctx.output.result(renderEnrichedPublicationList(enriched), {
+		results: enriched,
+		nextCursor: page.nextCursor,
+	});
+}
+
+export async function runPublicationCreate(
+	ctx: WriteContext,
+	options: { name: string; slug: string },
+	gopts: GlobalOptions,
+): Promise<void> {
+	ctx.output.info(`Creating "${options.name}"...`);
+	const result = await createPublication(ctx.adapter, ctx.config, {
+		name: options.name,
+		slug: options.slug,
+		signal: ctx.signal,
+	});
+	// Select the new publication so follow-up commands need no id.
+	await updateActiveProfile(gopts, {
+		publication: result.publicationId,
+		collection: undefined,
+	});
+	const human = [
+		`Created "${options.name}" (${result.publicationId})`,
+		`  ownerCap:     ${result.ownerCapId}`,
+		`  publisherCap: ${result.publisherCapId}`,
+		`  tx:           ${result.digest}`,
+		"Selected as the active publication.",
+	].join("\n");
+	ctx.output.result(human, result);
+}
+
+export async function runPublicationDelete(
+	ctx: WriteContext,
+	target: string | undefined,
+	options: { ownerCap?: string },
+	gopts: GlobalOptions,
+): Promise<void> {
+	const id = await resolvePublication(ctx, target);
+	const proceed = await confirm(
+		`Delete publication ${shortId(id)}? This cannot be undone.`,
+		{ assumeYes: Boolean(gopts.yes), signal: ctx.signal },
+	);
+	if (!proceed) {
+		cancelled();
+	}
+	ctx.output.info("Resolving OwnerCap...");
+	const ownerCapId = await resolveOwnerCap(
+		ctx.reader,
+		ctx.address,
+		id,
+		options.ownerCap,
+		ctx.signal,
+	);
+	ctx.output.info("Deleting...");
+	const result = await deletePublication(ctx.reader, ctx.adapter, ctx.config, {
+		publicationId: id,
+		ownerCapId,
+		signal: ctx.signal,
+	});
+	if (ctx.settings.publication === id) {
+		await updateActiveProfile(gopts, {
+			publication: undefined,
+			collection: undefined,
+		});
+	}
+	ctx.output.result(`Deleted ${id}. (tx: ${result.digest})`, result);
+}
+
+export async function runPublicationTransferOwnership(
+	ctx: WriteContext,
+	recipient: string,
+	options: { ownerCap?: string; publication?: string },
+	gopts: GlobalOptions,
+): Promise<void> {
+	const id = await resolvePublication(ctx, options.publication);
+	const to = toSuiAddress(recipient);
+	const proceed = await confirm(
+		`Transfer ownership of ${shortId(id)} to ${to}? You will lose owner control.`,
+		{ assumeYes: Boolean(gopts.yes), signal: ctx.signal },
+	);
+	if (!proceed) {
+		cancelled();
+	}
+	ctx.output.info("Resolving OwnerCap...");
+	const ownerCapId = await resolveOwnerCap(
+		ctx.reader,
+		ctx.address,
+		id,
+		options.ownerCap,
+		ctx.signal,
+	);
+	const result = await transferOwnership(ctx.adapter, ctx.config, {
+		ownerCapId,
+		recipient: to,
+		signal: ctx.signal,
+	});
+	ctx.output.result(
+		`Transferred ownership of ${id} to ${to}. (tx: ${result.digest})`,
+		result,
+	);
+}
+
 export function registerPublicationCommands(program: Command): void {
 	const publication = program
 		.command("publication")
@@ -37,10 +205,7 @@ export function registerPublicationCommands(program: Command): void {
 			"Fetch a publication (slug or id; default: the active publication)",
 		)
 		.action(async (target: string | undefined, _options, command: Command) => {
-			const ctx = await buildReadContext(command);
-			const id = await resolvePublication(ctx, target);
-			const result = await ctx.reader.getPublication(id, ctx.signal);
-			ctx.output.result(renderPublication(result), result);
+			await runPublicationGet(await buildReadContext(command), target);
 		});
 
 	publication
@@ -57,53 +222,14 @@ export function registerPublicationCommands(program: Command): void {
 		.action(
 			async (
 				address: string | undefined,
-				options: { limit?: string; cursor?: string; idsOnly?: boolean },
+				options: ListOptions,
 				command: Command,
 			) => {
-				const ctx = await buildReadContext(command);
-				const owner =
-					address === undefined ? ctx.ownerAddress : toSuiAddress(address);
-				if (owner === undefined) {
-					throw new UsageError(
-						"No address given and no active account. Pass an address or import an account.",
-					);
-				}
-				const page = await ctx.reader.listPublicationsOwnedBy(owner, {
-					signal: ctx.signal,
-					...(options.limit === undefined
-						? {}
-						: { limit: parseLimit(options.limit) }),
-					...(options.cursor === undefined ? {} : { cursor: options.cursor }),
-				});
-				if (page.nextCursor !== null) {
-					ctx.output.info(`More results: pass --cursor "${page.nextCursor}"`);
-				}
-				if (options.idsOnly) {
-					ctx.output.result(renderPublicationList(page.results), {
-						results: page.results,
-						nextCursor: page.nextCursor,
-					});
-					return;
-				}
-				// Enrich each row with its slug and name; the list RPC returns only
-				// ids, so this costs one getPublication per result.
-				const enriched: EnrichedPublication[] = [];
-				for (const owned of page.results) {
-					const pub = await ctx.reader.getPublication(
-						owned.publicationId,
-						ctx.signal,
-					);
-					enriched.push({
-						slug: pub.slug,
-						name: pub.name,
-						publicationId: owned.publicationId,
-						ownerCapId: owned.ownerCapId,
-					});
-				}
-				ctx.output.result(renderEnrichedPublicationList(enriched), {
-					results: enriched,
-					nextCursor: page.nextCursor,
-				});
+				await runPublicationList(
+					await buildReadContext(command),
+					address,
+					options,
+				);
 			},
 		);
 
@@ -117,26 +243,11 @@ export function registerPublicationCommands(program: Command): void {
 		)
 		.action(
 			async (options: { name: string; slug: string }, command: Command) => {
-				const ctx = await buildWriteContext(command);
-				ctx.output.info(`Creating "${options.name}"...`);
-				const result = await createPublication(ctx.adapter, ctx.config, {
-					name: options.name,
-					slug: options.slug,
-					signal: ctx.signal,
-				});
-				// Select the new publication so follow-up commands need no id.
-				await updateActiveProfile(globalOptions(command), {
-					publication: result.publicationId,
-					collection: undefined,
-				});
-				const human = [
-					`Created "${options.name}" (${result.publicationId})`,
-					`  ownerCap:     ${result.ownerCapId}`,
-					`  publisherCap: ${result.publisherCapId}`,
-					`  tx:           ${result.digest}`,
-					"Selected as the active publication.",
-				].join("\n");
-				ctx.output.result(human, result);
+				await runPublicationCreate(
+					await buildWriteContext(command),
+					options,
+					globalOptions(command),
+				);
 			},
 		);
 
@@ -152,44 +263,12 @@ export function registerPublicationCommands(program: Command): void {
 				options: { ownerCap?: string },
 				command: Command,
 			) => {
-				const ctx = await buildWriteContext(command);
-				const id = await resolvePublication(ctx, target);
-				const proceed = await confirm(
-					`Delete publication ${shortId(id)}? This cannot be undone.`,
-					{
-						assumeYes: Boolean(globalOptions(command).yes),
-						signal: ctx.signal,
-					},
+				await runPublicationDelete(
+					await buildWriteContext(command),
+					target,
+					options,
+					globalOptions(command),
 				);
-				if (!proceed) {
-					cancelled();
-				}
-				ctx.output.info("Resolving OwnerCap...");
-				const ownerCapId = await resolveOwnerCap(
-					ctx.reader,
-					ctx.address,
-					id,
-					options.ownerCap,
-					ctx.signal,
-				);
-				ctx.output.info("Deleting...");
-				const result = await deletePublication(
-					ctx.reader,
-					ctx.adapter,
-					ctx.config,
-					{
-						publicationId: id,
-						ownerCapId,
-						signal: ctx.signal,
-					},
-				);
-				if (ctx.settings.publication === id) {
-					await updateActiveProfile(globalOptions(command), {
-						publication: undefined,
-						collection: undefined,
-					});
-				}
-				ctx.output.result(`Deleted ${id}. (tx: ${result.digest})`, result);
 			},
 		);
 
@@ -202,32 +281,11 @@ export function registerPublicationCommands(program: Command): void {
 			options: { ownerCap?: string; publication?: string },
 			command: Command,
 		) => {
-			const ctx = await buildWriteContext(command);
-			const id = await resolvePublication(ctx, options.publication);
-			const to = toSuiAddress(recipient);
-			const proceed = await confirm(
-				`Transfer ownership of ${shortId(id)} to ${to}? You will lose owner control.`,
-				{ assumeYes: Boolean(globalOptions(command).yes), signal: ctx.signal },
-			);
-			if (!proceed) {
-				cancelled();
-			}
-			ctx.output.info("Resolving OwnerCap...");
-			const ownerCapId = await resolveOwnerCap(
-				ctx.reader,
-				ctx.address,
-				id,
-				options.ownerCap,
-				ctx.signal,
-			);
-			const result = await transferOwnership(ctx.adapter, ctx.config, {
-				ownerCapId,
-				recipient: to,
-				signal: ctx.signal,
-			});
-			ctx.output.result(
-				`Transferred ownership of ${id} to ${to}. (tx: ${result.digest})`,
-				result,
+			await runPublicationTransferOwnership(
+				await buildWriteContext(command),
+				recipient,
+				options,
+				globalOptions(command),
 			);
 		},
 	);

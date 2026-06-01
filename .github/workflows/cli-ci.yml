@@ -1,0 +1,39 @@
+name: cli-ci
+
+on:
+  pull_request:
+    paths:
+      - "morse-cli/**"
+      - ".github/workflows/cli-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "morse-cli/**"
+      - ".github/workflows/cli-ci.yml"
+
+jobs:
+  ci:
+    name: morse-cli
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install (workspace root)
+        run: bun install --frozen-lockfile
+      - name: Lint
+        working-directory: morse-cli
+        run: bun run lint
+      - name: Typecheck
+        working-directory: morse-cli
+        run: bun run typecheck
+      - name: Test and coverage gate
+        working-directory: morse-cli
+        run: bun run coverage
+      - name: Build
+        working-directory: morse-cli
+        run: bun run build
+      # The live testnet e2e suite (bun run test:e2e) is intentionally excluded:
+      # it needs a funded testnet key and reaches the network. Run it locally or
+      # in a separate, secret-gated workflow.

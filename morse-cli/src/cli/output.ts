@@ -14,6 +14,10 @@ export interface OutputOptions {
 	readonly json: boolean;
 	readonly quiet: boolean;
 	readonly color: boolean;
+	// Stream sinks default to the process streams; injected in tests to capture
+	// output without monkeypatching globals.
+	readonly writeOut?: (text: string) => void;
+	readonly writeErr?: (text: string) => void;
 }
 
 export class Output {
@@ -29,10 +33,10 @@ export class Output {
 	 */
 	result(human: string, data: unknown): void {
 		if (this.options.json) {
-			process.stdout.write(`${toJson(data)}\n`);
+			this.out(`${toJson(data)}\n`);
 			return;
 		}
-		process.stdout.write(`${human}\n`);
+		this.out(`${human}\n`);
 	}
 
 	/** Progress or informational messaging. Goes to stderr; silenced by --quiet and in JSON mode. */
@@ -40,7 +44,7 @@ export class Output {
 		if (this.options.quiet || this.options.json) {
 			return;
 		}
-		process.stderr.write(`${this.paint(message, DIM)}\n`);
+		this.err(`${this.paint(message, DIM)}\n`);
 	}
 
 	/** Warning. Goes to stderr; silenced by --quiet and in JSON mode (stderr stays JSON-only there). */
@@ -48,7 +52,23 @@ export class Output {
 		if (this.options.quiet || this.options.json) {
 			return;
 		}
-		process.stderr.write(`${this.paint(message, YELLOW)}\n`);
+		this.err(`${this.paint(message, YELLOW)}\n`);
+	}
+
+	private out(text: string): void {
+		if (this.options.writeOut !== undefined) {
+			this.options.writeOut(text);
+			return;
+		}
+		process.stdout.write(text);
+	}
+
+	private err(text: string): void {
+		if (this.options.writeErr !== undefined) {
+			this.options.writeErr(text);
+			return;
+		}
+		process.stderr.write(text);
 	}
 
 	private paint(text: string, code: string): string {

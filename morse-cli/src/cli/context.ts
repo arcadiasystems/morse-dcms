@@ -8,11 +8,13 @@ import {
 	DefaultSealAdapter,
 	DefaultWalrusReadAdapter,
 	DefaultWalrusWriteAdapter,
+	HttpAggregatorReadAdapter,
 	KeypairAdapter,
 	morseConfig,
 	type NetworkConfig,
 	RpcPublicationReader,
 	type SuiAddress,
+	type WalrusReadAdapter,
 } from "@arcadiasystems/morse-sdk";
 import { SuiGrpcClient } from "@mysten/sui/grpc";
 import type { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
@@ -127,12 +129,39 @@ export async function buildEncryptContext(
 	return { ...ctx, seal };
 }
 
+/** Options shared by the content-read context builders. */
+export interface ReadAdapterOptions {
+	/** Read via the Walrus aggregator HTTP service instead of storage nodes. */
+	readonly viaAggregator?: boolean;
+}
+
+/**
+ * Build the Walrus read adapter. The default is the storage-node protocol,
+ * which reconstructs and verifies the blob against its on-chain id; the
+ * aggregator path trades that verification for a single operator-run endpoint
+ * that often stays available when the node fan-out is flaky.
+ */
+function walrusReadAdapter(
+	base: ReadContext,
+	network: "testnet" | "mainnet",
+	viaAggregator: boolean,
+): WalrusReadAdapter {
+	if (viaAggregator) {
+		return HttpAggregatorReadAdapter.fromMorseConfig(base.config, base.client);
+	}
+	return DefaultWalrusReadAdapter.fromConfig({
+		network,
+		suiClient: base.client,
+	});
+}
+
 export interface ReadContentContext extends ReadContext {
-	readonly walrusRead: DefaultWalrusReadAdapter;
+	readonly walrusRead: WalrusReadAdapter;
 }
 
 export async function buildReadContentContext(
 	command: Command,
+	opts: ReadAdapterOptions = {},
 ): Promise<ReadContentContext> {
 	const base = await buildReadContext(command);
 	const network = base.settings.network;
@@ -142,22 +171,22 @@ export async function buildReadContentContext(
 			ExitCode.Usage,
 		);
 	}
-	const walrusRead = DefaultWalrusReadAdapter.fromConfig({
-		network,
-		suiClient: base.client,
-	});
-	return { ...base, walrusRead };
+	return {
+		...base,
+		walrusRead: walrusReadAdapter(base, network, Boolean(opts.viaAggregator)),
+	};
 }
 
 export interface DecryptContext extends ReadContext {
 	readonly keypair: Ed25519Keypair;
 	readonly address: SuiAddress;
 	readonly seal: DefaultSealAdapter;
-	readonly walrusRead: DefaultWalrusReadAdapter;
+	readonly walrusRead: WalrusReadAdapter;
 }
 
 export async function buildDecryptContext(
 	command: Command,
+	opts: ReadAdapterOptions = {},
 ): Promise<DecryptContext> {
 	const { base, keypair, address } = await buildSignedBase(command);
 	const network = base.settings.network;
@@ -168,9 +197,11 @@ export async function buildDecryptContext(
 		);
 	}
 	const seal = DefaultSealAdapter.fromMorseConfig(base.config, {}, base.client);
-	const walrusRead = DefaultWalrusReadAdapter.fromConfig({
-		network,
-		suiClient: base.client,
-	});
-	return { ...base, keypair, address, seal, walrusRead };
+	return {
+		...base,
+		keypair,
+		address,
+		seal,
+		walrusRead: walrusReadAdapter(base, network, Boolean(opts.viaAggregator)),
+	};
 }

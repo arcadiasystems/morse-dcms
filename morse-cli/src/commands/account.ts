@@ -3,6 +3,7 @@
 import type { Command } from "commander";
 
 import { cancelled, UsageError } from "../cli/errors.ts";
+import type { Output } from "../cli/output.ts";
 import type { GlobalOptions } from "../cli/program.ts";
 import {
 	confirm,
@@ -23,6 +24,108 @@ import {
 import { accountAddress } from "../keystore/source.ts";
 import { resolvePassword } from "../keystore/unlock.ts";
 
+export type Env = Record<string, string | undefined>;
+
+export async function runAccountImport(
+	output: Output,
+	gopts: GlobalOptions,
+	env: Env,
+	signal: AbortSignal,
+): Promise<void> {
+	const secret = await readSecretToImport(env, signal);
+	const password = await resolvePassword("create", env, signal);
+	const address = await importKey(secret, password);
+	const profileName = await associateAccount(gopts, address);
+	output.info(`Imported ${address} into keystore.`);
+	output.result(`Imported account ${address} (profile "${profileName}").`, {
+		address,
+		profile: profileName,
+	});
+}
+
+export async function runAccountList(
+	output: Output,
+	gopts: GlobalOptions,
+): Promise<void> {
+	const addresses = await listAddresses();
+	const active = await resolveActiveAccount(gopts);
+	if (addresses.length === 0) {
+		output.result("No accounts. Import one with: morse account import", {
+			active,
+			accounts: [],
+		});
+		return;
+	}
+	const human = addresses
+		.map((address) => `${address === active ? "*" : " "} ${address}`)
+		.join("\n");
+	output.result(human, { active, accounts: addresses });
+}
+
+export async function runAccountShow(
+	output: Output,
+	gopts: GlobalOptions,
+): Promise<void> {
+	const active = await resolveActiveAccount(gopts);
+	if (active === undefined) {
+		throw new UsageError(
+			"No active account. Import one with `morse account import` or set MORSE_ADDRESS.",
+		);
+	}
+	output.result(active, { address: active });
+}
+
+export async function runAccountUse(
+	output: Output,
+	gopts: GlobalOptions,
+	address: string,
+): Promise<void> {
+	if (!(await hasKeystore(address))) {
+		throw new UsageError(
+			`No keystore for ${address}. Import it first with: morse account import`,
+		);
+	}
+	const profileName = await associateAccount(gopts, address);
+	output.result(`Active account for "${profileName}" set to ${address}.`, {
+		address,
+		profile: profileName,
+	});
+}
+
+export async function runAccountExport(
+	output: Output,
+	gopts: GlobalOptions,
+	address: string,
+	env: Env,
+	signal: AbortSignal,
+): Promise<void> {
+	if (output.isJson) {
+		throw new UsageError("account export is not available in --json mode.");
+	}
+	if (!isInteractive()) {
+		throw new UsageError("account export requires an interactive terminal.");
+	}
+	// Revealing a private key is never something --yes should wave through.
+	if (gopts.yes) {
+		throw new UsageError(
+			"account export does not accept --yes. Confirm interactively.",
+		);
+	}
+	const proceed = await confirm(
+		`Reveal the secret key for ${address}? Anyone who sees it controls the account.`,
+		{ signal },
+	);
+	if (!proceed) {
+		cancelled();
+	}
+	const password = await resolvePassword("unlock", env, signal);
+	const secret = await unlockSecret(address, password);
+	// Write the warning directly to stderr so --quiet cannot suppress the only
+	// cue that a secret follows on stdout.
+	process.stderr.write("Warning: secret key follows. Handle it with care.\n");
+	process.stdout.write(`${secret}\n`);
+}
+
 export function registerAccountCommands(program: Command): void {
 	const account = program
 		.command("account")
@@ -32,112 +135,51 @@ export function registerAccountCommands(program: Command): void {
 		.command("import")
 		.description("Import a private key into an encrypted keystore")
 		.action(async (_options, command: Command) => {
-			const opts = globalOptions(command);
-			const output = outputFor(command);
-			const signal = sigintSignal();
-			const secret = await readSecretToImport(process.env, signal);
-			const password = await resolvePassword("create", process.env, signal);
-			const address = await importKey(secret, password);
-			const profileName = await associateAccount(opts, address);
-			output.info(`Imported ${address} into keystore.`);
-			output.result(`Imported account ${address} (profile "${profileName}").`, {
-				address,
-				profile: profileName,
-			});
+			await runAccountImport(
+				outputFor(command),
+				globalOptions(command),
+				process.env,
+				sigintSignal(),
+			);
 		});
 
 	account
 		.command("list")
 		.description("List imported accounts")
 		.action(async (_options, command: Command) => {
-			const output = outputFor(command);
-			const addresses = await listAddresses();
-			const active = await resolveActiveAccount(globalOptions(command));
-			if (addresses.length === 0) {
-				output.result("No accounts. Import one with: morse account import", {
-					active,
-					accounts: [],
-				});
-				return;
-			}
-			const human = addresses
-				.map((address) => `${address === active ? "*" : " "} ${address}`)
-				.join("\n");
-			output.result(human, { active, accounts: addresses });
+			await runAccountList(outputFor(command), globalOptions(command));
 		});
 
 	account
 		.command("show")
 		.description("Print the active account address")
 		.action(async (_options, command: Command) => {
-			const output = outputFor(command);
-			const active = await resolveActiveAccount(globalOptions(command));
-			if (active === undefined) {
-				throw new UsageError(
-					"No active account. Import one with `morse account import` or set MORSE_ADDRESS.",
-				);
-			}
-			output.result(active, { address: active });
+			await runAccountShow(outputFor(command), globalOptions(command));
 		});
 
 	account
 		.command("use <address>")
 		.description("Set the active account for the current profile")
 		.action(async (address: string, _options, command: Command) => {
-			const opts = globalOptions(command);
-			const output = outputFor(command);
-			if (!(await hasKeystore(address))) {
-				throw new UsageError(
-					`No keystore for ${address}. Import it first with: morse account import`,
-				);
-			}
-			const profileName = await associateAccount(opts, address);
-			output.result(`Active account for "${profileName}" set to ${address}.`, {
-				address,
-				profile: profileName,
-			});
+			await runAccountUse(outputFor(command), globalOptions(command), address);
 		});
 
 	account
 		.command("export <address>")
 		.description("Print a decrypted secret key (dangerous)")
 		.action(async (address: string, _options, command: Command) => {
-			const output = outputFor(command);
-			if (output.isJson) {
-				throw new UsageError("account export is not available in --json mode.");
-			}
-			if (!isInteractive()) {
-				throw new UsageError(
-					"account export requires an interactive terminal.",
-				);
-			}
-			// Revealing a private key is never something --yes should wave through.
-			if (globalOptions(command).yes) {
-				throw new UsageError(
-					"account export does not accept --yes. Confirm interactively.",
-				);
-			}
-			const signal = sigintSignal();
-			const proceed = await confirm(
-				`Reveal the secret key for ${address}? Anyone who sees it controls the account.`,
-				{ signal },
+			await runAccountExport(
+				outputFor(command),
+				globalOptions(command),
+				address,
+				process.env,
+				sigintSignal(),
 			);
-			if (!proceed) {
-				cancelled();
-			}
-			const password = await resolvePassword("unlock", process.env, signal);
-			const secret = await unlockSecret(address, password);
-			// Write the warning directly to stderr so --quiet cannot suppress the
-			// only cue that a secret follows on stdout.
-			process.stderr.write(
-				"Warning: secret key follows. Handle it with care.\n",
-			);
-			process.stdout.write(`${secret}\n`);
 		});
 }
 
 async function readSecretToImport(
-	env: Record<string, string | undefined>,
+	env: Env,
 	signal?: AbortSignal,
 ): Promise<string> {
 	const raw = env.MORSE_PRIVATE_KEY;
@@ -164,14 +206,14 @@ async function readSecretToImport(
  * resolved name does not exist yet (so a first-run import is usable immediately).
  */
 async function associateAccount(
-	opts: GlobalOptions,
+	gopts: GlobalOptions,
 	address: string,
 ): Promise<string> {
-	return updateActiveProfile(opts, { account: address });
+	return updateActiveProfile(gopts, { account: address });
 }
 
 async function resolveActiveAccount(
-	opts: GlobalOptions,
+	gopts: GlobalOptions,
 ): Promise<string | undefined> {
-	return accountAddress(resolveSettings(opts, await loadConfig()).account);
+	return accountAddress(resolveSettings(gopts, await loadConfig()).account);
 }

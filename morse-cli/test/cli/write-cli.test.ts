@@ -1,11 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 
-const ENTRY = new URL("../src/index.ts", import.meta.url).pathname;
+import {
+	makeConfigDir,
+	type RunResult,
+	removeConfigDir,
+	runCli,
+} from "../support/cli.ts";
+
 const SECRET = Ed25519Keypair.generate().getSecretKey();
 const VALID_ID = `0x${"1".repeat(64)}`;
 const RECIPIENT = `0x${"2".repeat(64)}`;
@@ -13,40 +16,18 @@ const RECIPIENT = `0x${"2".repeat(64)}`;
 let dir: string;
 
 beforeEach(async () => {
-	dir = await mkdtemp(join(tmpdir(), "morse-write-"));
+	dir = await makeConfigDir("morse-write-");
 });
 
 afterEach(async () => {
-	await rm(dir, { recursive: true, force: true });
+	await removeConfigDir(dir);
 });
-
-interface RunResult {
-	readonly code: number | null;
-	readonly stdout: string;
-	readonly stderr: string;
-}
 
 // MORSE_PRIVATE_KEY lets the write context build offline; every case here fails
 // validation or the non-interactive confirmation before any RPC. The publication
 // is always passed as an object id (-P), never a slug, so no network lookup runs.
-async function run(args: readonly string[]): Promise<RunResult> {
-	const proc = Bun.spawn(["bun", ENTRY, ...args], {
-		stdout: "pipe",
-		stderr: "pipe",
-		env: {
-			...process.env,
-			XDG_CONFIG_HOME: dir,
-			NO_COLOR: "1",
-			MORSE_PRIVATE_KEY: SECRET,
-		},
-		signal: AbortSignal.timeout(15_000),
-	});
-	const [stdout, stderr, code] = await Promise.all([
-		new Response(proc.stdout).text(),
-		new Response(proc.stderr).text(),
-		proc.exited,
-	]);
-	return { code, stdout, stderr };
+function run(args: readonly string[]): Promise<RunResult> {
+	return runCli(args, { configDir: dir, env: { MORSE_PRIVATE_KEY: SECRET } });
 }
 
 describe("morse write commands (offline guards)", () => {
