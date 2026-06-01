@@ -22,6 +22,12 @@ jobs:
           bun-version: latest
       - name: Install (workspace root)
         run: bun install --frozen-lockfile
+      # The CLI resolves @arcadiasystems/morse-sdk to the workspace package,
+      # whose dist/ (and its .d.ts) is gitignored, so build it before any CLI
+      # step typechecks or runs against it.
+      - name: Build SDK (CLI dependency)
+        working-directory: morse-sdk
+        run: bun run build
       - name: Lint
         working-directory: morse-cli
         run: bun run lint
