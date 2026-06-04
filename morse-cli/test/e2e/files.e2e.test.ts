@@ -1,5 +1,5 @@
 /**
- * Live testnet lifecycle for the allowlist + file surface, through the built
+ * Live testnet lifecycle for the RecipientFile surface, through the built
  * bundle. Opt-in: runs only when MORSE_E2E=1, so the default gate never touches
  * the network. Set MORSE_E2E_AGGREGATOR=1 to route the download reads through
  * the Walrus aggregator. Requires a funded testnet key (MORSE_PRIVATE_KEY or
@@ -49,10 +49,7 @@ describe.if(RUN)("live testnet files lifecycle (MORSE_E2E=1)", () => {
 	let configDir: string;
 	let payloadDir: string;
 	let env: Record<string, string>;
-	let self: string;
 	const state: {
-		allowlistId?: string;
-		sealId?: string;
 		encryptedFileId?: string;
 		publicFileId?: string;
 	} = {};
@@ -60,7 +57,6 @@ describe.if(RUN)("live testnet files lifecycle (MORSE_E2E=1)", () => {
 	beforeAll(async () => {
 		await ensureDist();
 		const key = await loadPrivateKey();
-		self = Ed25519Keypair.fromSecretKey(key).toSuiAddress();
 		env = { MORSE_PRIVATE_KEY: key, MORSE_NETWORK: "testnet" };
 		configDir = await makeConfigDir("morse-e2e-files-");
 		payloadDir = await mkdtemp(join(tmpdir(), "morse-e2e-files-data-"));
@@ -73,9 +69,6 @@ describe.if(RUN)("live testnet files lifecycle (MORSE_E2E=1)", () => {
 			}
 			if (state.publicFileId !== undefined) {
 				await run(["file", "delete", state.publicFileId, "-y"]);
-			}
-			if (state.allowlistId !== undefined) {
-				await run(["allowlist", "delete", "-a", state.allowlistId, "-y"]);
 			}
 		}
 		await removeConfigDir(configDir);
@@ -122,36 +115,10 @@ describe.if(RUN)("live testnet files lifecycle (MORSE_E2E=1)", () => {
 	}
 
 	test(
-		"create allowlist and add self as a member",
+		"upload and decrypt an encrypted file via its share string",
 		async () => {
-			const created = parse<{ allowlistId: string }>(
-				await ok(["--json", "allowlist", "create", "--name", "e2e-files"]),
-			);
-			state.allowlistId = created.allowlistId;
-			await ok([
-				"--json",
-				"allowlist",
-				"add-member",
-				self,
-				"-a",
-				created.allowlistId,
-			]);
-			const got = parse<{ members: string[] }>(
-				await ok(["--json", "allowlist", "get", created.allowlistId]),
-			);
-			expect(got.members).toContain(self);
-		},
-		STEP_TIMEOUT_MS,
-	);
-
-	test(
-		"upload and decrypt an encrypted file",
-		async () => {
-			if (state.allowlistId === undefined) {
-				throw new Error("Skipped: no allowlist from the previous step.");
-			}
 			const file = await writeTemp("secret.txt", SECRET_TEXT);
-			const uploaded = parse<{ fileId: string; sealId: string }>(
+			const uploaded = parse<{ fileId: string; share: string }>(
 				await okEventually([
 					"--json",
 					"file",
@@ -159,19 +126,17 @@ describe.if(RUN)("live testnet files lifecycle (MORSE_E2E=1)", () => {
 					file,
 					"--name",
 					"secret.txt",
-					"-a",
-					state.allowlistId,
+					"--encrypt",
 				]),
 			);
 			state.encryptedFileId = uploaded.fileId;
-			state.sealId = uploaded.sealId;
+			expect(uploaded.share.startsWith("mf1.")).toBe(true);
 			const out = join(payloadDir, "decrypted.txt");
 			await okEventually([
 				"file",
 				"download",
-				uploaded.fileId,
-				"--seal-id",
-				uploaded.sealId,
+				"--share",
+				uploaded.share,
 				"--out",
 				out,
 				...READ_FLAGS,
@@ -179,6 +144,29 @@ describe.if(RUN)("live testnet files lifecycle (MORSE_E2E=1)", () => {
 			expect(await readFile(out, "utf8")).toBe(SECRET_TEXT);
 		},
 		STEP_TIMEOUT_MS * 2,
+	);
+
+	test(
+		"recipient add, list, and remove",
+		async () => {
+			if (state.encryptedFileId === undefined) {
+				throw new Error("Skipped: no encrypted file from the previous step.");
+			}
+			const other = Ed25519Keypair.generate().toSuiAddress();
+			await ok(["file", "recipient", "add", state.encryptedFileId, other]);
+			const listed = parse<{ recipients: string[] }>(
+				await ok([
+					"--json",
+					"file",
+					"recipient",
+					"list",
+					state.encryptedFileId,
+				]),
+			);
+			expect(listed.recipients).toContain(other);
+			await ok(["file", "recipient", "remove", state.encryptedFileId, other]);
+		},
+		STEP_TIMEOUT_MS,
 	);
 
 	test(

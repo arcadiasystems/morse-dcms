@@ -1,9 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import {
-	type RpcFilesReader,
 	type RpcPublicationReader,
-	toAllowlistId,
 	toPublicationId,
 	toSuiAddress,
 } from "@arcadiasystems/morse-sdk";
@@ -11,7 +9,6 @@ import {
 import { CliError } from "../src/cli/errors.ts";
 import { ExitCode } from "../src/cli/exit-codes.ts";
 import {
-	resolveAllowlistCap,
 	resolveOwnerCap,
 	resolvePublisherCap,
 } from "../src/commands/resolve.ts";
@@ -21,13 +18,7 @@ const PUB = toPublicationId(`0x${"b".repeat(64)}`);
 const OTHER_PUB = toPublicationId(`0x${"e".repeat(64)}`);
 const OWNER_CAP = `0x${"c".repeat(64)}`;
 const PUBLISHER_CAP = `0x${"d".repeat(64)}`;
-const ALLOWLIST = toAllowlistId(`0x${"7".repeat(64)}`);
-const ALLOWLIST_CAP = `0x${"8".repeat(64)}`;
 const SIGNAL = new AbortController().signal;
-
-function filesReader(impl: Record<string, unknown>): RpcFilesReader {
-	return impl as unknown as RpcFilesReader;
-}
 
 // Loosely typed: tests supply only the reader methods these helpers call, with
 // just the result fields they read.
@@ -130,77 +121,6 @@ describe("resolvePublisherCap", () => {
 			r,
 			ADDRESS,
 			PUB,
-			undefined,
-			SIGNAL,
-		).catch((e) => e);
-		expect(err).toBeInstanceOf(CliError);
-		expect((err as CliError).exitCode).toBe(ExitCode.NotFound);
-	});
-});
-
-describe("resolveAllowlistCap", () => {
-	test("returns the explicit override without paging", async () => {
-		const r = filesReader({
-			listAllowlistCapsOwnedBy: () => {
-				throw new Error("should not page when override is given");
-			},
-		});
-		expect(
-			String(
-				await resolveAllowlistCap(r, ADDRESS, ALLOWLIST, ALLOWLIST_CAP, SIGNAL),
-			),
-		).toBe(ALLOWLIST_CAP);
-	});
-
-	test("finds the cap for the allowlist", async () => {
-		const r = filesReader({
-			listAllowlistCapsOwnedBy: () =>
-				Promise.resolve({
-					results: [{ id: ALLOWLIST_CAP, allowlistId: ALLOWLIST }],
-					nextCursor: null,
-				}),
-		});
-		expect(
-			String(
-				await resolveAllowlistCap(r, ADDRESS, ALLOWLIST, undefined, SIGNAL),
-			),
-		).toBe(ALLOWLIST_CAP);
-	});
-
-	test("follows the cursor to a later page", async () => {
-		let calls = 0;
-		const r = filesReader({
-			listAllowlistCapsOwnedBy: () => {
-				calls += 1;
-				if (calls === 1) {
-					return Promise.resolve({
-						results: [{ id: "0xnope", allowlistId: `0x${"e".repeat(64)}` }],
-						nextCursor: "next",
-					});
-				}
-				return Promise.resolve({
-					results: [{ id: ALLOWLIST_CAP, allowlistId: ALLOWLIST }],
-					nextCursor: null,
-				});
-			},
-		});
-		expect(
-			String(
-				await resolveAllowlistCap(r, ADDRESS, ALLOWLIST, undefined, SIGNAL),
-			),
-		).toBe(ALLOWLIST_CAP);
-		expect(calls).toBe(2);
-	});
-
-	test("throws a not-found CliError when none matches", async () => {
-		const r = filesReader({
-			listAllowlistCapsOwnedBy: () =>
-				Promise.resolve({ results: [], nextCursor: null }),
-		});
-		const err = await resolveAllowlistCap(
-			r,
-			ADDRESS,
-			ALLOWLIST,
 			undefined,
 			SIGNAL,
 		).catch((e) => e);

@@ -3,7 +3,6 @@
 import type { Command } from "commander";
 
 import { registerAccountCommands } from "./account.ts";
-import { registerAllowlistCommands } from "./allowlist.ts";
 import { registerCapCommands } from "./cap.ts";
 import { registerCollectionCommands } from "./collection.ts";
 import { registerConfigCommands } from "./config.ts";
@@ -22,6 +21,5 @@ export function registerCommands(program: Command): void {
 	registerEntryCommands(program);
 	registerRevisionCommands(program);
 	registerCapCommands(program);
-	registerAllowlistCommands(program);
 	registerFileCommands(program);
 }

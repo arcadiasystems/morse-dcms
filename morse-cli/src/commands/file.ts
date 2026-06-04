@@ -1,26 +1,26 @@
-/** `morse file`: register, read, mutate, and delete encrypted/public file metadata. */
+/** `morse file`: upload, register, read, list, download, and manage RecipientFiles. */
 
 import {
-	buildAllowlistSealId,
-	createEncryptedFile,
-	createPublicFile,
-	deleteFile,
-	type EncryptedFile,
-	type EncryptedFileSummary,
-	type EncryptedFileSummaryOrFull,
+	addRecipient,
+	buildRecipientFileSealId,
+	createEncryptedRecipientFile,
+	createRecipientFile,
+	deleteRecipientFile,
 	type FileUploadProgressEvent,
-	reconcileFilesAccessibleBy,
-	reconcileFilesOwnedBy,
+	type RecipientFileSummary,
+	type RecipientFileSummaryOrFull,
+	reconcileRecipientFilesAccessibleBy,
+	reconcileRecipientFilesOwnedBy,
+	removeRecipient,
 	type SealId,
-	toAllowlistId,
 	toBlobObjectId,
-	toEncryptedFileId,
+	toRecipientFileId,
 	toSuiAddress,
 	toWalrusBlobId,
-	transferFileOwnership,
-	updateFileMetadata,
-	uploadEncryptedFileFromBytes,
-	uploadPublicFileFromBytes,
+	transferRecipientFileOwnership,
+	updateRecipientFileMetadata,
+	uploadEncryptedRecipientFileFromBytes,
+	uploadRecipientFileFromBytes,
 } from "@arcadiasystems/morse-sdk";
 import { SessionKey } from "@mysten/seal";
 import type { Command } from "commander";
@@ -46,23 +46,13 @@ import { confirm } from "../cli/prompts.ts";
 import { globalOptions } from "../cli/runtime.ts";
 import { decodeHex, encodeHex } from "../format/hex.ts";
 import { shortId } from "../format/ids.ts";
-import { renderEncryptedFile, renderFileList } from "../format/render.ts";
-import { allowlistOption, viaAggregatorOption } from "./options.ts";
+import { renderFileList, renderRecipientFile } from "../format/render.ts";
+import { decodeShare, encodeShare } from "../format/share.ts";
+import { recipientOption, viaAggregatorOption } from "./options.ts";
 import { parseByteSize, parseLimit, parsePositiveInt } from "./shared.ts";
 
 // SessionKey lifetime; long enough for one decrypt, short enough to limit reuse.
 const SESSION_KEY_TTL_MIN = 10;
-
-// 16 random bytes is the standard Seal nonce length; the Move layer requires >= 1.
-const SEAL_NONCE_BYTES = 16;
-
-interface UploadOptions {
-	readonly name: string;
-	readonly allowlist?: string;
-	readonly public?: boolean;
-	readonly contentType?: string;
-	readonly epochs?: string;
-}
 
 function uploadProgress(
 	output: EncryptContext["output"],
@@ -81,51 +71,61 @@ function uploadProgress(
 	};
 }
 
+export async function runFileGet(
+	ctx: FilesReadContext,
+	target: string,
+): Promise<void> {
+	const result = await ctx.filesReader.getRecipientFile(
+		toRecipientFileId(target),
+		ctx.signal,
+	);
+	ctx.output.result(renderRecipientFile(result), result);
+}
+
 interface RegisterOptions {
 	readonly blobId: string;
 	readonly name: string;
 	readonly contentType: string;
 	readonly size: string;
-	readonly allowlist?: string;
+	readonly recipient?: string[];
 	readonly public?: boolean;
+	readonly encrypted?: boolean;
+	readonly sealPrefix?: string;
 	readonly blobObjectId?: string;
-}
-
-export async function runFileGet(
-	ctx: FilesReadContext,
-	target: string,
-): Promise<void> {
-	const result = await ctx.filesReader.getEncryptedFile(
-		toEncryptedFileId(target),
-		ctx.signal,
-	);
-	ctx.output.result(renderEncryptedFile(result), result);
 }
 
 export async function runFileRegister(
 	ctx: WriteContext,
 	options: RegisterOptions,
 ): Promise<void> {
-	if (options.allowlist === undefined && options.public !== true) {
-		throw new UsageError(
-			"Pass --allowlist <id> to register an encrypted file, or --public for a world-readable one.",
-		);
+	if (options.public && options.encrypted) {
+		throw new UsageError("Pass --public or --encrypted, not both.");
 	}
+	const recipients = (options.recipient ?? []).map((r) => toSuiAddress(r));
 	const blobId = toWalrusBlobId(options.blobId);
 	const size = parseByteSize(options.size, "--size");
 	const blobObjectId =
 		options.blobObjectId === undefined
 			? undefined
 			: toBlobObjectId(options.blobObjectId);
-	if (options.allowlist !== undefined) {
-		const result = await createEncryptedFile(ctx.adapter, ctx.config, {
-			allowlistId: toAllowlistId(options.allowlist),
-			blobId,
-			...(blobObjectId === undefined ? {} : { blobObjectId }),
-			name: options.name,
-			contentType: options.contentType,
-			size,
-			signal: ctx.signal,
+	const common = {
+		blobId,
+		...(blobObjectId === undefined ? {} : { blobObjectId }),
+		name: options.name,
+		contentType: options.contentType,
+		size,
+		recipients,
+		signal: ctx.signal,
+	};
+	if (options.encrypted) {
+		if (options.sealPrefix === undefined) {
+			throw new UsageError(
+				"--encrypted requires --seal-prefix <hex> (the prefix the blob was encrypted under).",
+			);
+		}
+		const result = await createEncryptedRecipientFile(ctx.adapter, ctx.config, {
+			...common,
+			sealIdPrefix: decodeHex(options.sealPrefix),
 		});
 		ctx.output.result(
 			`Registered encrypted file ${result.fileId}. (tx: ${result.digest})`,
@@ -133,17 +133,16 @@ export async function runFileRegister(
 		);
 		return;
 	}
-	const result = await createPublicFile(ctx.adapter, ctx.config, {
-		blobId,
-		...(blobObjectId === undefined ? {} : { blobObjectId }),
-		name: options.name,
-		contentType: options.contentType,
-		size,
-		signal: ctx.signal,
-	});
-	ctx.output.result(
-		`Registered public file ${result.fileId}. (tx: ${result.digest})`,
-		result,
+	if (options.public) {
+		const result = await createRecipientFile(ctx.adapter, ctx.config, common);
+		ctx.output.result(
+			`Registered public file ${result.fileId}. (tx: ${result.digest})`,
+			result,
+		);
+		return;
+	}
+	throw new UsageError(
+		"Pass --public for a world-readable file, or --encrypted --seal-prefix <hex>.",
 	);
 }
 
@@ -152,8 +151,8 @@ export async function runFileUpdate(
 	target: string,
 	options: { name: string; contentType: string },
 ): Promise<void> {
-	const result = await updateFileMetadata(ctx.adapter, ctx.config, {
-		fileId: toEncryptedFileId(target),
+	const result = await updateRecipientFileMetadata(ctx.adapter, ctx.config, {
+		fileId: toRecipientFileId(target),
 		name: options.name,
 		contentType: options.contentType,
 		signal: ctx.signal,
@@ -170,16 +169,16 @@ export async function runFileTransferOwnership(
 	newOwner: string,
 	gopts: GlobalOptions,
 ): Promise<void> {
-	const fileId = toEncryptedFileId(target);
+	const fileId = toRecipientFileId(target);
 	const to = toSuiAddress(newOwner);
 	const proceed = await confirm(
-		`Transfer metadata ownership of file ${shortId(fileId)} to ${to}? Decryption access is governed separately by the allowlist.`,
+		`Transfer ownership of file ${shortId(fileId)} to ${to}? Recipient access is governed separately by the recipient list.`,
 		{ assumeYes: Boolean(gopts.yes), signal: ctx.signal },
 	);
 	if (!proceed) {
 		cancelled();
 	}
-	const result = await transferFileOwnership(ctx.adapter, ctx.config, {
+	const result = await transferRecipientFileOwnership(ctx.adapter, ctx.config, {
 		fileId,
 		newOwner: to,
 		signal: ctx.signal,
@@ -195,19 +194,77 @@ export async function runFileDelete(
 	target: string,
 	gopts: GlobalOptions,
 ): Promise<void> {
-	const fileId = toEncryptedFileId(target);
+	const fileId = toRecipientFileId(target);
 	const proceed = await confirm(
-		`Delete file metadata ${shortId(fileId)}? The Walrus blob is not deleted; it expires on its own lease.`,
+		`Delete file ${shortId(fileId)}? The Walrus blob is not deleted; it expires on its own lease.`,
 		{ assumeYes: Boolean(gopts.yes), signal: ctx.signal },
 	);
 	if (!proceed) {
 		cancelled();
 	}
-	const result = await deleteFile(ctx.adapter, ctx.config, {
+	const result = await deleteRecipientFile(ctx.adapter, ctx.config, {
 		fileId,
 		signal: ctx.signal,
 	});
 	ctx.output.result(`Deleted file ${fileId}. (tx: ${result.digest})`, result);
+}
+
+export async function runFileRecipientAdd(
+	ctx: WriteContext,
+	target: string,
+	recipient: string,
+): Promise<void> {
+	const fileId = toRecipientFileId(target);
+	const member = toSuiAddress(recipient);
+	const result = await addRecipient(ctx.adapter, ctx.config, {
+		fileId,
+		recipient: member,
+		signal: ctx.signal,
+	});
+	ctx.output.result(
+		`Added ${member} to file ${shortId(fileId)}. (tx: ${result.digest})`,
+		result,
+	);
+}
+
+export async function runFileRecipientRemove(
+	ctx: WriteContext,
+	target: string,
+	recipient: string,
+): Promise<void> {
+	const fileId = toRecipientFileId(target);
+	const member = toSuiAddress(recipient);
+	const result = await removeRecipient(ctx.adapter, ctx.config, {
+		fileId,
+		recipient: member,
+		signal: ctx.signal,
+	});
+	ctx.output.result(
+		`Removed ${member} from file ${shortId(fileId)}. (tx: ${result.digest})`,
+		result,
+	);
+}
+
+export async function runFileRecipientList(
+	ctx: FilesReadContext,
+	target: string,
+): Promise<void> {
+	const file = await ctx.filesReader.getRecipientFile(
+		toRecipientFileId(target),
+		ctx.signal,
+	);
+	const human =
+		file.members.length === 0 ? "No recipients." : file.members.join("\n");
+	ctx.output.result(human, { fileId: file.id, recipients: file.members });
+}
+
+interface UploadOptions {
+	readonly name: string;
+	readonly public?: boolean;
+	readonly encrypt?: boolean;
+	readonly recipient?: string[];
+	readonly contentType?: string;
+	readonly epochs?: string;
 }
 
 export async function runFileUpload(
@@ -215,9 +272,18 @@ export async function runFileUpload(
 	path: string,
 	options: UploadOptions,
 ): Promise<void> {
-	if (options.allowlist === undefined && options.public !== true) {
+	if (options.public && options.encrypt) {
+		throw new UsageError("Pass --public or --encrypt, not both.");
+	}
+	const recipients = (options.recipient ?? []).map((r) => toSuiAddress(r));
+	if (options.public && recipients.length > 0) {
 		throw new UsageError(
-			"Pass --allowlist <id> to upload an encrypted file, or --public for a world-readable one.",
+			"--recipient applies to encrypted uploads; a public file is readable by anyone.",
+		);
+	}
+	if (!options.public && !options.encrypt && recipients.length === 0) {
+		throw new UsageError(
+			"Pass --public for a world-readable file, or --encrypt (optionally with --recipient <addr>).",
 		);
 	}
 	const epochs = parsePositiveInt(options.epochs ?? "3", "--epochs");
@@ -226,74 +292,135 @@ export async function runFileUpload(
 	const upload = { epochs, deletable: true };
 	const onProgress = uploadProgress(ctx.output);
 
-	if (options.allowlist !== undefined) {
-		const allowlistId = toAllowlistId(options.allowlist);
-		const sealId = buildAllowlistSealId(
-			allowlistId,
-			crypto.getRandomValues(new Uint8Array(SEAL_NONCE_BYTES)),
-		);
-		const result = await uploadEncryptedFileFromBytes(ctx.adapter, ctx.config, {
+	if (options.public) {
+		const result = await uploadRecipientFileFromBytes(ctx.adapter, ctx.config, {
 			walrus: ctx.walrus,
-			seal: ctx.seal,
-			allowlistId,
-			sealId,
-			plaintext: bytes,
+			bytes,
+			recipients: [],
 			name: options.name,
 			contentType,
 			upload,
 			signal: ctx.signal,
 			onProgress,
 		});
-		const sealIdHex = encodeHex(sealId);
-		const human = [
-			`Uploaded encrypted file ${result.fileId}`,
-			`  blobId: ${result.blobId}`,
-			`  sealId: ${sealIdHex}`,
-			`  tx:     ${result.digest}`,
-			"Save the seal id: decrypting later needs it plus allowlist membership.",
-		].join("\n");
-		ctx.output.result(human, { ...result, sealId: sealIdHex });
+		const aggregator = ctx.config.walrusEndpoints.aggregator;
+		const viewUrl =
+			aggregator.length > 0
+				? `${aggregator}/v1/blobs/${result.blobId}`
+				: undefined;
+		const human =
+			viewUrl === undefined
+				? `Uploaded public file ${result.fileId}. (tx: ${result.digest})`
+				: `Uploaded public file ${result.fileId}. (tx: ${result.digest})\n  view: ${viewUrl}`;
+		ctx.output.result(human, { ...result, viewUrl: viewUrl ?? null });
 		return;
 	}
 
-	const result = await uploadPublicFileFromBytes(ctx.adapter, ctx.config, {
-		walrus: ctx.walrus,
-		bytes,
-		name: options.name,
-		contentType,
-		upload,
-		signal: ctx.signal,
-		onProgress,
+	const result = await uploadEncryptedRecipientFileFromBytes(
+		ctx.adapter,
+		ctx.config,
+		{
+			walrus: ctx.walrus,
+			seal: ctx.seal,
+			plaintext: bytes,
+			recipients,
+			name: options.name,
+			contentType,
+			upload,
+			signal: ctx.signal,
+			onProgress,
+		},
+	);
+	const prefixHex = encodeHex(result.sealIdPrefix);
+	const nonceHex = encodeHex(result.sealNonce);
+	const share = encodeShare(
+		result.fileId,
+		result.sealIdPrefix,
+		result.sealNonce,
+	);
+	const human = [
+		`Uploaded encrypted file ${result.fileId}`,
+		`  blobId: ${result.blobId}`,
+		`  share:  ${share}`,
+		`  tx:     ${result.digest}`,
+		"Give the share string to recipients; they need it (plus membership) to decrypt.",
+	].join("\n");
+	ctx.output.result(human, {
+		fileId: result.fileId,
+		blobId: result.blobId,
+		blobObjectId: result.blobObjectId,
+		digest: result.digest,
+		gasUsedMist: result.gasUsedMist,
+		sealIdPrefix: prefixHex,
+		sealNonce: nonceHex,
+		share,
 	});
-	const aggregator = ctx.config.walrusEndpoints.aggregator;
-	const viewUrl =
-		aggregator.length > 0
-			? `${aggregator}/v1/blobs/${result.blobId}`
-			: undefined;
-	const human =
-		viewUrl === undefined
-			? `Uploaded public file ${result.fileId}. (tx: ${result.digest})`
-			: `Uploaded public file ${result.fileId}. (tx: ${result.digest})\n  view: ${viewUrl}`;
-	ctx.output.result(human, { ...result, viewUrl: viewUrl ?? null });
 }
 
-async function decryptFile(
+interface DownloadOptions {
+	readonly out?: string;
+	readonly share?: string;
+	readonly prefix?: string;
+	readonly nonce?: string;
+	readonly viaAggregator?: boolean;
+}
+
+interface DownloadTarget {
+	readonly fileId: string;
+	readonly decrypt?: {
+		readonly prefix: Uint8Array;
+		readonly nonce: Uint8Array;
+	};
+}
+
+function resolveDownloadTarget(
+	positional: string | undefined,
+	options: DownloadOptions,
+): DownloadTarget {
+	if (options.share !== undefined) {
+		const decoded = decodeShare(options.share);
+		if (
+			positional !== undefined &&
+			String(toRecipientFileId(positional)) !==
+				String(toRecipientFileId(decoded.fileId))
+		) {
+			throw new UsageError(
+				"The <file> argument does not match the file id in --share.",
+			);
+		}
+		return {
+			fileId: decoded.fileId,
+			decrypt: { prefix: decoded.prefix, nonce: decoded.nonce },
+		};
+	}
+	if (positional === undefined) {
+		throw new UsageError("Pass a <file> id, or --share <string>.");
+	}
+	if (options.prefix !== undefined || options.nonce !== undefined) {
+		if (options.prefix === undefined || options.nonce === undefined) {
+			throw new UsageError(
+				"Decrypting needs both --prefix and --nonce (or use --share).",
+			);
+		}
+		return {
+			fileId: positional,
+			decrypt: {
+				prefix: decodeHex(options.prefix),
+				nonce: decodeHex(options.nonce),
+			},
+		};
+	}
+	return { fileId: positional };
+}
+
+async function decryptRecipientFile(
 	ctx: FileDownloadContext,
-	file: EncryptedFile,
+	fileId: ReturnType<typeof toRecipientFileId>,
 	ciphertext: Uint8Array,
-	sealIdHex: string | undefined,
+	prefix: Uint8Array,
+	nonce: Uint8Array,
 ): Promise<Uint8Array> {
-	if (sealIdHex === undefined) {
-		throw new UsageError(
-			"This file is encrypted; pass --seal-id <hex> (printed when the file was uploaded).",
-		);
-	}
-	if (file.allowlistId === null) {
-		throw new UsageError(
-			`File ${file.id} is marked encrypted but carries no allowlist; it cannot be decrypted.`,
-		);
-	}
-	const sealId = decodeHex(sealIdHex) as unknown as SealId;
+	const sealId: SealId = buildRecipientFileSealId(prefix, nonce);
 	const { keypair, address } = await ctx.unlockSigner();
 	ctx.output.info("Signing a SessionKey with the active account...");
 	const sessionKey = await SessionKey.create({
@@ -303,34 +430,46 @@ async function decryptFile(
 		signer: keypair,
 		suiClient: ctx.client,
 	});
-	return ctx.seal.decryptUnderAllowlist(ciphertext, {
-		sealId,
-		allowlistId: file.allowlistId,
+	return ctx.seal.decryptUnderRecipientFile(ciphertext, {
 		sessionKey,
+		sealId,
+		fileId,
 	});
 }
 
 export async function runFileDownload(
 	ctx: FileDownloadContext,
-	target: string,
-	options: { out?: string; sealId?: string },
+	positional: string | undefined,
+	options: DownloadOptions,
 ): Promise<void> {
 	if (ctx.output.isJson && options.out === undefined) {
 		throw new UsageError(
 			"Downloading content to stdout is not supported in --json mode; pass --out <path>.",
 		);
 	}
-	const file = await ctx.filesReader.getEncryptedFile(
-		toEncryptedFileId(target),
-		ctx.signal,
-	);
+	const target = resolveDownloadTarget(positional, options);
+	const fileId = toRecipientFileId(target.fileId);
+	const file = await ctx.filesReader.getRecipientFile(fileId, ctx.signal);
+	// A public file has no recipients; any with a recipient list was encrypted.
+	// Without a share string (or prefix/nonce) we can only return ciphertext.
+	if (target.decrypt === undefined && file.members.length > 0) {
+		ctx.output.warn(
+			"This file has a recipient list, so its bytes are likely encrypted. Pass --share (or --prefix and --nonce) to decrypt; writing the raw bytes as-is.",
+		);
+	}
 	ctx.output.info("Fetching content from Walrus...");
 	const bytes = await ctx.walrusRead.readBlob(file.blobId, {
 		signal: ctx.signal,
 	});
 	let content = bytes;
-	if (file.encrypted) {
-		content = await decryptFile(ctx, file, bytes, options.sealId);
+	if (target.decrypt !== undefined) {
+		content = await decryptRecipientFile(
+			ctx,
+			fileId,
+			bytes,
+			target.decrypt.prefix,
+			target.decrypt.nonce,
+		);
 	}
 	if (options.out !== undefined) {
 		await writeFileContents(options.out, content);
@@ -370,37 +509,40 @@ export async function runFileList(
 		);
 	}
 	const types = ctx.eventTypes;
-	let summaries: EncryptedFileSummary[];
+	let summaries: RecipientFileSummary[];
 	if (options.accessible) {
-		ctx.output.info("Fetching membership and file events...");
+		ctx.output.info("Fetching recipient and file events...");
 		const events = await fetchEventStreams(
 			ctx.events,
 			[
-				types.MemberAdded,
-				types.MemberRemoved,
-				types.AllowlistDeleted,
-				types.FileCreated,
-				types.FileDeleted,
+				types.RecipientFileCreated,
+				types.RecipientAdded,
+				types.RecipientRemoved,
+				types.RecipientFileDeleted,
 			],
 			ctx.signal,
 		);
-		summaries = reconcileFilesAccessibleBy(events, address, types);
+		summaries = reconcileRecipientFilesAccessibleBy(events, address, types);
 	} else {
 		ctx.output.info("Fetching file events...");
 		const events = await fetchEventStreams(
 			ctx.events,
-			[types.FileCreated, types.FileOwnershipTransferred, types.FileDeleted],
+			[
+				types.RecipientFileCreated,
+				types.RecipientFileOwnershipTransferred,
+				types.RecipientFileDeleted,
+			],
 			ctx.signal,
 		);
-		summaries = reconcileFilesOwnedBy(events, address, types);
+		summaries = reconcileRecipientFilesOwnedBy(events, address, types);
 	}
 	const limited = limit === undefined ? summaries : summaries.slice(0, limit);
-	let items: EncryptedFileSummaryOrFull[] = limited;
+	let items: RecipientFileSummaryOrFull[] = limited;
 	if (options.hydrate) {
 		ctx.output.info(`Hydrating ${limited.length} file(s)...`);
-		const full: EncryptedFileSummaryOrFull[] = [];
+		const full: RecipientFileSummaryOrFull[] = [];
 		for (const summary of limited) {
-			const record = await ctx.filesReader.getEncryptedFile(
+			const record = await ctx.filesReader.getRecipientFile(
 				summary.id,
 				ctx.signal,
 			);
@@ -414,19 +556,20 @@ export async function runFileList(
 export function registerFileCommands(program: Command): void {
 	const file = program
 		.command("file")
-		.description("Upload, register, read, and manage files on Walrus");
+		.description("Upload, register, read, list, and manage files on Walrus");
 
 	const upload = file
 		.command("upload <path>")
 		.description("Encrypt (or not), upload to Walrus, and register a file")
 		.requiredOption("-n, --name <name>", "File name")
 		.option("--public", "Upload a world-readable (unencrypted) file")
+		.option("--encrypt", "Encrypt the file (implied when --recipient is given)")
 		.option(
 			"--content-type <mime>",
 			"MIME content type (inferred from the path if omitted)",
 		)
 		.option("--epochs <n>", "Walrus storage epochs", "3");
-	allowlistOption(upload).action(
+	recipientOption(upload).action(
 		async (path: string, options: UploadOptions, command: Command) => {
 			await runFileUpload(await buildEncryptContext(command), path, options);
 		},
@@ -443,9 +586,9 @@ export function registerFileCommands(program: Command): void {
 		)
 		.option(
 			"--accessible",
-			"List files you can decrypt via allowlist membership, not just owned",
+			"List files you can decrypt as a recipient, not just owned",
 		)
-		.option("--hydrate", "Fetch full records (adds blobId; one read per file)")
+		.option("--hydrate", "Fetch full records (one read per file)")
 		.option("--limit <n>", "Cap the number of results")
 		.option(
 			"--indexer-url <url>",
@@ -466,17 +609,19 @@ export function registerFileCommands(program: Command): void {
 		);
 
 	const download = file
-		.command("download <file>")
+		.command("download [file]")
 		.description("Download a file's content; decrypts in place when encrypted")
 		.option("--out <path>", "Write content to a file instead of stdout")
 		.option(
-			"--seal-id <hex>",
-			"Seal id from upload (required to decrypt an encrypted file)",
-		);
+			"--share <string>",
+			"Share string from upload (bundles file id, prefix, nonce)",
+		)
+		.option("--prefix <hex>", "Seal prefix (with --nonce) to decrypt")
+		.option("--nonce <hex>", "Seal nonce (with --prefix) to decrypt");
 	viaAggregatorOption(download).action(
 		async (
-			target: string,
-			options: { out?: string; sealId?: string; viaAggregator?: boolean },
+			target: string | undefined,
+			options: DownloadOptions,
 			command: Command,
 		) => {
 			await runFileDownload(
@@ -504,11 +649,13 @@ export function registerFileCommands(program: Command): void {
 		.requiredOption("--content-type <mime>", "MIME content type")
 		.requiredOption("--size <bytes>", "Plaintext byte length")
 		.option("--public", "Register a world-readable (unencrypted) file")
+		.option("--encrypted", "Register an encrypted file (needs --seal-prefix)")
+		.option("--seal-prefix <hex>", "Seal prefix the blob was encrypted under")
 		.option(
 			"--blob-object-id <id>",
 			"On-chain Walrus Blob object id, if known",
 		);
-	allowlistOption(register).action(
+	recipientOption(register).action(
 		async (options: RegisterOptions, command: Command) => {
 			await runFileRegister(await buildWriteContext(command), options);
 		},
@@ -531,9 +678,7 @@ export function registerFileCommands(program: Command): void {
 
 	file
 		.command("transfer-ownership <file> <newOwner>")
-		.description(
-			"Transfer a file's metadata-mutation right (not decrypt access)",
-		)
+		.description("Transfer a file's ownership (not recipient access)")
 		.action(
 			async (target: string, newOwner: string, _options, command: Command) => {
 				await runFileTransferOwnership(
@@ -554,5 +699,42 @@ export function registerFileCommands(program: Command): void {
 				target,
 				globalOptions(command),
 			);
+		});
+
+	const recipient = file
+		.command("recipient")
+		.description("Manage a file's recipient list");
+
+	recipient
+		.command("add <file> <address>")
+		.description("Allow an address to decrypt the file")
+		.action(
+			async (target: string, address: string, _options, command: Command) => {
+				await runFileRecipientAdd(
+					await buildWriteContext(command),
+					target,
+					address,
+				);
+			},
+		);
+
+	recipient
+		.command("remove <file> <address>")
+		.description("Revoke an address's access to the file")
+		.action(
+			async (target: string, address: string, _options, command: Command) => {
+				await runFileRecipientRemove(
+					await buildWriteContext(command),
+					target,
+					address,
+				);
+			},
+		);
+
+	recipient
+		.command("list <file>")
+		.description("List the file's recipients")
+		.action(async (target: string, _options, command: Command) => {
+			await runFileRecipientList(await buildFilesReadContext(command), target);
 		});
 }

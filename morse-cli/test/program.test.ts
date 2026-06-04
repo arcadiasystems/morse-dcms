@@ -75,7 +75,6 @@ describe("registration", () => {
 		expect(names).toEqual(
 			[
 				"account",
-				"allowlist",
 				"cap",
 				"collection",
 				"config",
@@ -279,57 +278,13 @@ describe("localnet guards on content contexts", () => {
 	});
 });
 
-describe("allowlist wrappers (offline guards)", () => {
-	const ALLOWLIST = `0x${"7".repeat(64)}`;
-
-	test("add-member requires --allowlist", async () => {
-		await expect(
-			dispatch(["allowlist", "add-member", RECIPIENT]),
-		).rejects.toThrow(/--allowlist/);
-	});
-
-	test("transfer-cap declines without --yes", async () => {
-		await expect(
-			dispatch([
-				"allowlist",
-				"transfer-cap",
-				RECIPIENT,
-				"--allowlist",
-				ALLOWLIST,
-			]),
-		).rejects.toThrow(/--yes/);
-	});
-
-	test("delete declines without --yes", async () => {
-		await expect(
-			dispatch(["allowlist", "delete", "--allowlist", ALLOWLIST]),
-		).rejects.toThrow(/--yes/);
-	});
-
-	test("remove-member requires --allowlist", async () => {
-		await expect(
-			dispatch(["allowlist", "remove-member", RECIPIENT]),
-		).rejects.toThrow(/--allowlist/);
-	});
-
-	test("get rejects a malformed allowlist id before any RPC", async () => {
-		await expect(dispatch(["allowlist", "get", "not-an-id"])).rejects.toThrow();
-	});
-
-	test("list-caps rejects a malformed address before any RPC", async () => {
-		await expect(
-			dispatch(["allowlist", "list-caps", "not-an-address"]),
-		).rejects.toThrow();
-	});
-});
-
 describe("file wrappers (offline guards)", () => {
 	const FILE = `0x${"9".repeat(64)}`;
 
-	test("upload requires --allowlist or --public", async () => {
+	test("upload requires --public, --encrypt, or --recipient", async () => {
 		await expect(
 			dispatch(["file", "upload", "/tmp/x", "--name", "x"]),
-		).rejects.toThrow(/--allowlist|--public/);
+		).rejects.toThrow(/--public|--encrypt/);
 	});
 
 	test("get rejects a malformed file id before any RPC", async () => {
@@ -382,7 +337,7 @@ describe("file wrappers (offline guards)", () => {
 		).rejects.toThrow();
 	});
 
-	test("register requires --allowlist or --public", async () => {
+	test("register requires --public or --encrypted", async () => {
 		await expect(
 			dispatch([
 				"file",
@@ -396,7 +351,7 @@ describe("file wrappers (offline guards)", () => {
 				"--size",
 				"10",
 			]),
-		).rejects.toThrow(/--allowlist|--public/);
+		).rejects.toThrow(/--public|--encrypted/);
 	});
 
 	test("transfer-ownership declines without --yes", async () => {
@@ -407,6 +362,24 @@ describe("file wrappers (offline guards)", () => {
 
 	test("delete declines without --yes", async () => {
 		await expect(dispatch(["file", "delete", FILE])).rejects.toThrow(/--yes/);
+	});
+
+	test("recipient add rejects a malformed file id before any RPC", async () => {
+		await expect(
+			dispatch(["file", "recipient", "add", "not-an-id", RECIPIENT]),
+		).rejects.toThrow();
+	});
+
+	test("recipient remove rejects a malformed address before any RPC", async () => {
+		await expect(
+			dispatch(["file", "recipient", "remove", FILE, "not-an-address"]),
+		).rejects.toThrow();
+	});
+
+	test("recipient list rejects a malformed file id before any RPC", async () => {
+		await expect(
+			dispatch(["file", "recipient", "list", "not-an-id"]),
+		).rejects.toThrow();
 	});
 });
 

@@ -30,14 +30,16 @@ export function ownerCapOption(command: Command): Command {
 	);
 }
 
-export function allowlistOption(command: Command): Command {
-	return command.option("-a, --allowlist <id>", "Allowlist object id");
+function collect(value: string, previous: string[]): string[] {
+	return [...previous, value];
 }
 
-export function allowlistCapOption(command: Command): Command {
+export function recipientOption(command: Command): Command {
 	return command.option(
-		"--cap <id>",
-		"Allowlist admin Cap id (auto-resolved from owned caps if omitted)",
+		"-r, --recipient <addr>",
+		"Recipient address allowed to decrypt (repeatable); the sender is always added",
+		collect,
+		[],
 	);
 }
 

@@ -1,17 +1,15 @@
 /** Human-readable renderers for read results. JSON output uses the raw objects. */
 
 import type {
-	Allowlist,
-	AllowlistCap,
 	Collection,
-	EncryptedFile,
-	EncryptedFileSummaryOrFull,
 	Entry,
 	OwnedPublication,
 	OwnerCapId,
 	Publication,
 	PublicationId,
 	PublisherCap,
+	RecipientFile,
+	RecipientFileSummaryOrFull,
 	Revision,
 } from "@arcadiasystems/morse-sdk";
 
@@ -111,57 +109,34 @@ export function renderEntryList(entries: readonly Entry[]): string {
 		.join("\n");
 }
 
-export function renderAllowlist(allowlist: Allowlist): string {
-	const members =
-		allowlist.members.length === 0
-			? "(none)"
-			: allowlist.members.map((m) => `  ${m}`).join("\n");
-	return [
-		`${allowlist.name} (${shortId(allowlist.id)})`,
-		`members (${allowlist.members.length}):`,
-		members,
-	].join("\n");
-}
-
-export function renderAllowlistCapList(caps: readonly AllowlistCap[]): string {
-	if (caps.length === 0) {
-		return "No allowlist caps held by this address.";
-	}
-	return caps
-		.map((cap) => `${cap.id}  allowlist ${cap.allowlistId}`)
-		.join("\n");
-}
-
 export function renderFileList(
-	items: readonly EncryptedFileSummaryOrFull[],
+	items: readonly RecipientFileSummaryOrFull[],
 ): string {
 	if (items.length === 0) {
 		return "No files.";
 	}
-	const header = "id  name  size  encrypted  allowlist  created";
+	const header = "id  name  size  recipients  created";
 	const rows = items.map((file) => {
-		const allowlist =
-			file.allowlistId === null ? "public" : shortId(file.allowlistId);
 		const created = new Date(file.createdAtMs).toISOString().slice(0, 10);
-		const encrypted = file.encrypted ? "yes" : "no";
-		return `${shortId(file.id)}  ${file.name}  ${file.size}  ${encrypted}  ${allowlist}  ${created}`;
+		return `${shortId(file.id)}  ${file.name}  ${file.size}  ${file.members.length}  ${created}`;
 	});
 	return [header, ...rows].join("\n");
 }
 
-export function renderEncryptedFile(file: EncryptedFile): string {
-	const lines = [
+export function renderRecipientFile(file: RecipientFile): string {
+	const recipients =
+		file.members.length === 0
+			? "(none)"
+			: file.members.map((m) => `  ${m}`).join("\n");
+	return [
 		`${file.name} (${shortId(file.id)})`,
 		`contentType: ${file.contentType}`,
 		`size:        ${file.size}`,
-		`encrypted:   ${file.encrypted}`,
 		`blobId:      ${file.blobId}`,
 		`owner:       ${file.owner}`,
-	];
-	if (file.allowlistId !== null) {
-		lines.push(`allowlist:   ${file.allowlistId}`);
-	}
-	return lines.join("\n");
+		`recipients (${file.members.length}):`,
+		recipients,
+	].join("\n");
 }
 
 function headLabel(value: number | null): string {

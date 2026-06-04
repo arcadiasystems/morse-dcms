@@ -2,7 +2,7 @@
  * Event fetching for file listing. The SDK ships pure reconcile helpers but no
  * event source; this is the consumer side. It walks `suix_queryEvents` (via the
  * JSON-RPC client) for a Move event type until the pages run out, mapping each
- * event to the `FilesEventInput` shape the reconcile helpers consume.
+ * event to the `RecipientFileEventInput` shape the reconcile helpers consume.
  *
  * This is a deprecated Sui endpoint (Mysten is sunsetting `suix_queryEvents`);
  * the listing commands accept `--indexer-url` so users can point at any source
@@ -10,7 +10,7 @@
  * client stays in `cli/context.ts` and the paginator is unit-testable.
  */
 
-import type { FilesEventInput } from "@arcadiasystems/morse-sdk";
+import type { RecipientFileEventInput } from "@arcadiasystems/morse-sdk";
 
 const PAGE_LIMIT = 50;
 
@@ -40,8 +40,8 @@ export async function fetchEventStream(
 	client: EventQuerier,
 	eventType: string,
 	signal?: AbortSignal,
-): Promise<FilesEventInput[]> {
-	const out: FilesEventInput[] = [];
+): Promise<RecipientFileEventInput[]> {
+	const out: RecipientFileEventInput[] = [];
 	let cursor: unknown;
 	for (;;) {
 		const page = await client.queryEvents({
@@ -54,8 +54,8 @@ export async function fetchEventStream(
 		for (const event of page.data) {
 			out.push({
 				type: event.type,
-				parsedJson: event.parsedJson,
-				timestampMs: event.timestampMs,
+				json: (event.parsedJson ?? {}) as Record<string, unknown>,
+				timestampMs: event.timestampMs == null ? 0 : Number(event.timestampMs),
 			});
 		}
 		if (
@@ -75,7 +75,7 @@ export async function fetchEventStreams(
 	client: EventQuerier,
 	eventTypes: readonly string[],
 	signal?: AbortSignal,
-): Promise<FilesEventInput[]> {
+): Promise<RecipientFileEventInput[]> {
 	const streams = await Promise.all(
 		eventTypes.map((type) => fetchEventStream(client, type, signal)),
 	);

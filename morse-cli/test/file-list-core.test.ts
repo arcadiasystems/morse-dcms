@@ -11,16 +11,16 @@ describe("runFileList", () => {
 	test("owned: reconciles owned files and renders them", async () => {
 		const { ctx, captured } = fileListContext();
 		await runFileList(ctx, {});
-		expect(ops.reconcileFilesOwnedBy).toHaveBeenCalledTimes(1);
-		expect(ops.reconcileFilesAccessibleBy).not.toHaveBeenCalled();
+		expect(ops.reconcileRecipientFilesOwnedBy).toHaveBeenCalledTimes(1);
+		expect(ops.reconcileRecipientFilesAccessibleBy).not.toHaveBeenCalled();
 		expect(captured.stdout()).toContain("file.txt");
 	});
 
 	test("accessible: switches to the membership reconcile helper", async () => {
 		const { ctx } = fileListContext();
 		await runFileList(ctx, { accessible: true });
-		expect(ops.reconcileFilesAccessibleBy).toHaveBeenCalledTimes(1);
-		expect(ops.reconcileFilesOwnedBy).not.toHaveBeenCalled();
+		expect(ops.reconcileRecipientFilesAccessibleBy).toHaveBeenCalledTimes(1);
+		expect(ops.reconcileRecipientFilesOwnedBy).not.toHaveBeenCalled();
 	});
 
 	test("throws when no address and no active account", async () => {
@@ -30,8 +30,8 @@ describe("runFileList", () => {
 		);
 	});
 
-	test("empty result renders 'No files.' and exits successfully", async () => {
-		ops.reconcileFilesOwnedBy.mockReturnValueOnce([]);
+	test("empty result renders an empty array and exits successfully", async () => {
+		ops.reconcileRecipientFilesOwnedBy.mockReturnValueOnce([]);
 		const { ctx, captured } = fileListContext({ json: true });
 		await runFileList(ctx, {});
 		expect(captured.json()).toEqual([]);
@@ -42,7 +42,7 @@ describe("runFileList", () => {
 		const { ctx, captured } = fileListContext({
 			json: true,
 			filesReader: {
-				getEncryptedFile: () => {
+				getRecipientFile: () => {
 					getCalls += 1;
 					return Promise.resolve({
 						id: FILE,
@@ -52,8 +52,7 @@ describe("runFileList", () => {
 						name: "file.txt",
 						contentType: "text/plain",
 						size: 10,
-						encrypted: true,
-						allowlistId: `0x${"7".repeat(64)}`,
+						members: [`0x${"7".repeat(64)}`],
 						createdAtMs: 1,
 					});
 				},
@@ -66,7 +65,7 @@ describe("runFileList", () => {
 	});
 
 	test("--limit caps the result count", async () => {
-		ops.reconcileFilesOwnedBy.mockReturnValueOnce([
+		ops.reconcileRecipientFilesOwnedBy.mockReturnValueOnce([
 			SUMMARY,
 			{ ...SUMMARY, id: `0x${"1".repeat(64)}` },
 			{ ...SUMMARY, id: `0x${"2".repeat(64)}` },

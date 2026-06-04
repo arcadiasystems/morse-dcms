@@ -228,56 +228,52 @@ OwnerCap and PublisherCap IDs are auto-resolved from the active account when the
 `--owner-cap` / `--publisher-cap` override is omitted. Destructive operations
 (`delete`, `revoke`, `destroy`, `transfer`) confirm interactively unless `--yes`.
 
-### allowlist
-
-Per-wallet allowlists gate who can decrypt encrypted files. The admin Cap is
-auto-resolved from the active account when `--cap` is omitted.
-
-| Command | Purpose |
-| --- | --- |
-| `allowlist create --name <name>` | Create an allowlist; transfers its admin Cap to you. |
-| `allowlist add-member <addr> -a <id> [--cap <id>]` | Add a wallet that may decrypt. |
-| `allowlist remove-member <addr> -a <id> [--cap <id>]` | Remove a wallet. |
-| `allowlist transfer-cap <recipient> -a <id> [--cap <id>] [-y]` | Hand off admin rights. |
-| `allowlist delete -a <id> [--cap <id>] [-y]` | Delete an allowlist (dependent files become undecryptable). |
-| `allowlist get <id>` | Show an allowlist's name and members. |
-| `allowlist list-caps [address]` | List allowlist admin Caps held by an address. |
-
 ### file
 
+A `RecipientFile` is a single object that carries its own recipient list: the
+addresses allowed to decrypt it live inline on the file, managed by its owner.
+There is no separate allowlist object.
+
 | Command | Purpose |
 | --- | --- |
-| `file upload <path> --name <n> [-a <id>] [--public] [--content-type <m>] [--epochs <n>]` | Upload to Walrus and register; `-a` encrypts, `--public` is world-readable. |
-| `file register --blob-id <id> --name <n> --content-type <m> --size <bytes> [-a <id>] [--public] [--blob-object-id <id>]` | Register metadata for a blob already on Walrus. |
-| `file download <file> [--out <path>] [--seal-id <hex>] [--via-aggregator]` | Download content; decrypts in place when encrypted. |
+| `file upload <path> --name <n> (--public \| --encrypt \| -r <addr>...) [--content-type <m>] [--epochs <n>]` | Upload to Walrus and register. `--public` is world-readable; `--encrypt` (or supplying `-r`) encrypts, and the sender is always a recipient. One of the three is required. |
+| `file register --blob-id <id> --name <n> --content-type <m> --size <bytes> (--public \| --encrypted --seal-prefix <hex>) [-r <addr>...] [--blob-object-id <id>]` | Register metadata for a blob already on Walrus. |
+| `file download [file] [--out <path>] [--share <s>] [--prefix <hex> --nonce <hex>] [--via-aggregator]` | Download content; decrypts in place with a share string (or prefix + nonce). |
 | `file list [--address <addr>] [--accessible] [--hydrate] [--limit <n>] [--indexer-url <url>]` | List files owned by (or, with `--accessible`, decryptable by) an address. |
-| `file get <file>` | Fetch a file's on-chain metadata. |
+| `file get <file>` | Fetch a file's on-chain metadata and recipient list. |
 | `file update <file> --name <n> --content-type <m>` | Update name and MIME (owner only). |
-| `file transfer-ownership <file> <newOwner> [-y]` | Transfer the metadata right (not decrypt access). |
+| `file transfer-ownership <file> <newOwner> [-y]` | Transfer ownership (not recipient access, which the list governs). |
 | `file delete <file> [-y]` | Delete the metadata record (the Walrus blob expires on its own lease). |
+| `file recipient add <file> <address>` | Allow an address to decrypt the file. |
+| `file recipient remove <file> <address>` | Revoke an address's access. |
+| `file recipient list <file>` | List the file's recipients. |
 
-Encrypting a file (`file upload -a <allowlist>`) prints a **seal id**. It is not
-recoverable from the ciphertext, so save it: `file download` needs it (via
-`--seal-id`) plus allowlist membership to decrypt.
+An encrypted `file upload` prints a **share string** (`mf1.<fileId>.<prefix>.<nonce>`)
+that bundles the file id and the Seal prefix and nonce. The prefix and nonce are
+not recoverable from the ciphertext, so save the share string: `file download
+--share <s>` needs it (plus being on the recipient list) to decrypt. `--json`
+also returns the raw `sealIdPrefix` and `sealNonce` as hex, usable as `--prefix`
+/ `--nonce` if you prefer to pass them separately.
 
-`file list` reconstructs the file set from contract events. Encrypted files are
-shared objects with no on-chain owner index, so listing is event-derived, not a
-direct query. By default the command reads events via `suix_queryEvents` on the
-configured Sui RPC. That endpoint is **deprecated** (Mysten is sunsetting it), so
-listing may degrade or stop working on the public RPC over time; point
-`--indexer-url <url>` at any source that speaks `suix_queryEvents` (a self-hosted
-indexer, a third-party endpoint) to stay in control. Results are best-effort and
-eventually consistent (subject to indexer lag and retention). `EncryptedFileSummary`
-rows omit `blobId`/`blobObjectId`; add `--hydrate` to fetch the full record per
-file (one read each) when you need them.
+`file list` reconstructs the file set from contract events. `RecipientFile`
+objects have no on-chain owner index for the shared case, so listing is
+event-derived, not a direct query. By default the command reads events via
+`suix_queryEvents` on the configured Sui RPC. That endpoint is **deprecated**
+(Mysten is sunsetting it), so listing may degrade or stop working on the public
+RPC over time; point `--indexer-url <url>` at any source that speaks
+`suix_queryEvents` (a self-hosted indexer, a third-party endpoint) to stay in
+control. Results are best-effort and eventually consistent (subject to indexer
+lag and retention). Summary rows omit `blobId`/`blobObjectId`; add `--hydrate`
+to fetch the full record per file (one read each) when you need them.
 
 ## Output and scripting
 
 - Human-readable output goes to stdout; progress, warnings, and prompts go to
   stderr. Redirecting stdout yields only the result.
 - `--json` emits a single JSON document on stdout (nothing else). `bigint` values
-  (e.g. `gasUsedMist`) are encoded as decimal strings and byte arrays (`sealId`,
-  quilt patch ids) as `0x`-hex.
+  (e.g. `gasUsedMist`) are encoded as decimal strings and byte arrays (quilt patch
+  ids) as `0x`-hex. Encrypted uploads also return `sealIdPrefix` / `sealNonce` as
+  hex and a `share` string.
 - Color is emitted only to a TTY and honors `NO_COLOR` and `FORCE_COLOR`.
 
 ## Exit codes
@@ -300,7 +296,7 @@ file (one read each) when you need them.
   - [`encrypt-decrypt.sh`](./examples/encrypt-decrypt.sh): encrypt with Seal and decrypt back.
   - [`delegation.sh`](./examples/delegation.sh): issue a PublisherCap to a delegate, then revoke it.
   - [`ci-noninteractive.sh`](./examples/ci-noninteractive.sh): env-var auth, `--yes`, and `--json` parsing.
-  - [`files.sh`](./examples/files.sh): allowlist + encrypted file round-trip (create allowlist, add a member, upload, download/decrypt, plus a public file).
+  - [`files.sh`](./examples/files.sh): RecipientFile round-trip (upload an encrypted file, download/decrypt via its share string, manage recipients, plus a public file).
 
 ## Limitations
 

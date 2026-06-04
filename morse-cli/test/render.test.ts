@@ -1,27 +1,23 @@
 import { describe, expect, test } from "bun:test";
 import type {
-	Allowlist,
-	AllowlistCap,
 	Collection,
-	EncryptedFile,
 	Entry,
 	OwnedPublication,
 	Publication,
 	PublisherCap,
+	RecipientFile,
 } from "@arcadiasystems/morse-sdk";
 
 import { shortId } from "../src/format/ids.ts";
 import {
-	renderAllowlist,
-	renderAllowlistCapList,
 	renderCollectionList,
-	renderEncryptedFile,
 	renderEntry,
 	renderEntryList,
 	renderFileList,
 	renderPublication,
 	renderPublicationList,
 	renderPublisherCapList,
+	renderRecipientFile,
 } from "../src/format/render.ts";
 
 const ADDR = `0x${"a".repeat(64)}`;
@@ -143,36 +139,7 @@ describe("renderEntryList", () => {
 	});
 });
 
-describe("renderAllowlist", () => {
-	test("shows name and members, or (none) when empty", () => {
-		const base = { id: `0x${"7".repeat(64)}`, name: "team" } as const;
-		const withMembers = renderAllowlist({
-			...base,
-			members: [`0x${"2".repeat(64)}`],
-		} as unknown as Allowlist);
-		expect(withMembers).toContain("team");
-		expect(withMembers).toContain("members (1)");
-		expect(withMembers).toContain(`0x${"2".repeat(64)}`);
-
-		const empty = renderAllowlist({
-			...base,
-			members: [],
-		} as unknown as Allowlist);
-		expect(empty).toContain("(none)");
-	});
-});
-
-describe("renderAllowlistCapList", () => {
-	test("handles empty and populated lists", () => {
-		expect(renderAllowlistCapList([])).toContain("No allowlist caps");
-		const caps = [
-			{ id: `0x${"8".repeat(64)}`, allowlistId: `0x${"7".repeat(64)}` },
-		] as unknown as AllowlistCap[];
-		expect(renderAllowlistCapList(caps)).toContain(`0x${"8".repeat(64)}`);
-	});
-});
-
-describe("renderEncryptedFile", () => {
+describe("renderRecipientFile", () => {
 	const base = {
 		id: `0x${"9".repeat(64)}`,
 		owner: `0x${"a".repeat(64)}`,
@@ -184,25 +151,23 @@ describe("renderEncryptedFile", () => {
 		createdAtMs: 0,
 	};
 
-	test("omits the allowlist line for a public file", () => {
-		const out = renderEncryptedFile({
+	test("lists the recipients", () => {
+		const out = renderRecipientFile({
 			...base,
-			encrypted: false,
-			allowlistId: null,
-		} as unknown as EncryptedFile);
+			members: [`0x${"2".repeat(64)}`],
+		} as unknown as RecipientFile);
 		expect(out).toContain("doc.pdf");
-		expect(out).toContain("encrypted:   false");
-		expect(out).not.toContain("allowlist:");
+		expect(out).toContain("recipients (1)");
+		expect(out).toContain(`0x${"2".repeat(64)}`);
 	});
 
-	test("includes the allowlist line for an encrypted file", () => {
-		const out = renderEncryptedFile({
+	test("marks an empty recipient list", () => {
+		const out = renderRecipientFile({
 			...base,
-			encrypted: true,
-			allowlistId: `0x${"7".repeat(64)}`,
-		} as unknown as EncryptedFile);
-		expect(out).toContain("allowlist:");
-		expect(out).toContain(`0x${"7".repeat(64)}`);
+			members: [],
+		} as unknown as RecipientFile);
+		expect(out).toContain("recipients (0)");
+		expect(out).toContain("(none)");
 	});
 });
 
@@ -211,6 +176,7 @@ describe("renderFileList", () => {
 		kind: "summary" as const,
 		owner: `0x${"a".repeat(64)}`,
 		contentType: "text/plain",
+		blobId: "blob123",
 		createdAtMs: 1_700_000_000_000,
 	};
 
@@ -225,31 +191,15 @@ describe("renderFileList", () => {
 				id: `0x${"9".repeat(64)}`,
 				name: "doc.pdf",
 				size: 1024,
-				encrypted: true,
-				allowlistId: `0x${"7".repeat(64)}`,
+				members: [`0x${"7".repeat(64)}`, `0x${"6".repeat(64)}`],
 			},
 		] as never);
 		const [header, row] = out.split("\n");
 		expect(header).toContain("id");
-		expect(header).toContain("encrypted");
+		expect(header).toContain("recipients");
 		expect(row).toContain("doc.pdf");
 		expect(row).toContain("1024");
-		expect(row).toContain("yes");
+		expect(row).toContain("2"); // recipient count
 		expect(row).toContain("2023-11-14"); // 1_700_000_000_000 ms -> date
-	});
-
-	test("renders a public file's allowlist column as 'public'", () => {
-		const out = renderFileList([
-			{
-				...base,
-				id: `0x${"9".repeat(64)}`,
-				name: "logo.png",
-				size: 10,
-				encrypted: false,
-				allowlistId: null,
-			},
-		] as never);
-		expect(out).toContain("public");
-		expect(out).toContain("no");
 	});
 });

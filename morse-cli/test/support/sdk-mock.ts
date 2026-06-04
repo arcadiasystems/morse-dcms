@@ -17,7 +17,7 @@ function canned<T>(value: T): (...args: unknown[]) => Promise<T> {
 	return () => Promise.resolve(value);
 }
 
-/** Canned EncryptedFileSummary the reconcile mocks return by default. */
+/** Canned RecipientFileSummary the reconcile mocks return by default. */
 export const SUMMARY = {
 	kind: "summary" as const,
 	id: `0x${"9".repeat(64)}`,
@@ -25,8 +25,8 @@ export const SUMMARY = {
 	name: "file.txt",
 	contentType: "text/plain",
 	size: 10,
-	encrypted: true,
-	allowlistId: `0x${"7".repeat(64)}`,
+	blobId: "blobSUM",
+	members: [`0x${"a".repeat(64)}`],
 	createdAtMs: 1_700_000_000_000,
 };
 
@@ -57,37 +57,33 @@ export const ops = {
 	revokePublisherCap: mock(canned({ digest: DIGEST })),
 	destroyPublisherCap: mock(canned({ digest: DIGEST })),
 	transferPublisherCap: mock(canned({ digest: DIGEST })),
-	createAllowlist: mock(
-		canned({
-			allowlistId: `0x${"7".repeat(64)}`,
-			capId: `0x${"8".repeat(64)}`,
-			digest: DIGEST,
-			gasUsedMist: 0n,
-		}),
-	),
-	addMember: mock(canned({ digest: DIGEST, gasUsedMist: 0n })),
-	removeMember: mock(canned({ digest: DIGEST, gasUsedMist: 0n })),
-	transferAllowlistCap: mock(canned({ digest: DIGEST, gasUsedMist: 0n })),
-	deleteAllowlist: mock(canned({ digest: DIGEST, gasUsedMist: 0n })),
-	createEncryptedFile: mock(
+	createRecipientFile: mock(
 		canned({ fileId: `0x${"9".repeat(64)}`, digest: DIGEST, gasUsedMist: 0n }),
 	),
-	createPublicFile: mock(
+	createEncryptedRecipientFile: mock(
 		canned({ fileId: `0x${"9".repeat(64)}`, digest: DIGEST, gasUsedMist: 0n }),
 	),
-	updateFileMetadata: mock(canned({ digest: DIGEST, gasUsedMist: 0n })),
-	transferFileOwnership: mock(canned({ digest: DIGEST, gasUsedMist: 0n })),
-	deleteFile: mock(canned({ digest: DIGEST, gasUsedMist: 0n })),
-	uploadEncryptedFileFromBytes: mock(
+	addRecipient: mock(canned({ digest: DIGEST, gasUsedMist: 0n })),
+	removeRecipient: mock(canned({ digest: DIGEST, gasUsedMist: 0n })),
+	updateRecipientFileMetadata: mock(
+		canned({ digest: DIGEST, gasUsedMist: 0n }),
+	),
+	transferRecipientFileOwnership: mock(
+		canned({ digest: DIGEST, gasUsedMist: 0n }),
+	),
+	deleteRecipientFile: mock(canned({ digest: DIGEST, gasUsedMist: 0n })),
+	uploadEncryptedRecipientFileFromBytes: mock(
 		canned({
 			fileId: `0x${"9".repeat(64)}`,
 			blobId: "blobENC",
 			blobObjectId: `0x${"a".repeat(64)}`,
 			digest: DIGEST,
 			gasUsedMist: 0n,
+			sealIdPrefix: new Uint8Array([1, 2, 3, 4]),
+			sealNonce: new Uint8Array([5, 6, 7, 8]),
 		}),
 	),
-	uploadPublicFileFromBytes: mock(
+	uploadRecipientFileFromBytes: mock(
 		canned({
 			fileId: `0x${"9".repeat(64)}`,
 			blobId: "blobPUB",
@@ -97,8 +93,8 @@ export const ops = {
 		}),
 	),
 	// Sync reconcile helpers; tests override per-case with mockReturnValueOnce.
-	reconcileFilesOwnedBy: mock(() => [SUMMARY]),
-	reconcileFilesAccessibleBy: mock(() => [SUMMARY]),
+	reconcileRecipientFilesOwnedBy: mock(() => [SUMMARY]),
+	reconcileRecipientFilesAccessibleBy: mock(() => [SUMMARY]),
 };
 
 mock.module("@arcadiasystems/morse-sdk", () => ({ ...real, ...ops }));

@@ -2,6 +2,9 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import {
 	runFileDelete,
 	runFileGet,
+	runFileRecipientAdd,
+	runFileRecipientList,
+	runFileRecipientRemove,
 	runFileRegister,
 	runFileTransferOwnership,
 	runFileUpdate,
@@ -12,32 +15,35 @@ import { ops, resetSdkMock } from "./support/sdk-mock.ts";
 beforeEach(resetSdkMock);
 
 const FILE = `0x${"9".repeat(64)}`;
-const ALLOWLIST = `0x${"7".repeat(64)}`;
+const RECIPIENT = `0x${"7".repeat(64)}`;
 const BLOB = "A".repeat(43); // 43 URL-safe base64 chars
 const NEW_OWNER = `0x${"2".repeat(64)}`;
+const SEAL_PREFIX = "0a0b0c";
+
+function fileRecord(over: Record<string, unknown> = {}) {
+	return {
+		id: FILE,
+		owner: NEW_OWNER,
+		blobId: BLOB,
+		blobObjectId: null,
+		name: "doc.pdf",
+		contentType: "application/pdf",
+		size: 1024,
+		members: [RECIPIENT],
+		createdAtMs: 0,
+		...over,
+	};
+}
 
 describe("runFileGet", () => {
-	test("renders the file metadata", async () => {
+	test("renders the file metadata and recipients", async () => {
 		const { ctx, captured } = filesReadContext({
-			filesReader: {
-				getEncryptedFile: () =>
-					Promise.resolve({
-						id: FILE,
-						owner: NEW_OWNER,
-						blobId: BLOB,
-						blobObjectId: null,
-						name: "doc.pdf",
-						contentType: "application/pdf",
-						size: 1024,
-						encrypted: true,
-						allowlistId: ALLOWLIST,
-						createdAtMs: 0,
-					}),
-			},
+			filesReader: { getRecipientFile: () => Promise.resolve(fileRecord()) },
 		});
 		await runFileGet(ctx, FILE);
 		expect(captured.stdout()).toContain("doc.pdf");
-		expect(captured.stdout()).toContain("allowlist:");
+		expect(captured.stdout()).toContain("recipients");
+		expect(captured.stdout()).toContain(RECIPIENT);
 	});
 });
 
@@ -49,44 +55,63 @@ describe("runFileRegister", () => {
 		size: "1024",
 	};
 
-	test("requires --allowlist or --public", async () => {
+	test("requires --public or --encrypted", async () => {
 		const { ctx } = writeContext();
 		await expect(runFileRegister(ctx, base)).rejects.toThrow(
-			/--allowlist|--public/,
+			/--public|--encrypted/,
 		);
-		expect(ops.createEncryptedFile).not.toHaveBeenCalled();
-		expect(ops.createPublicFile).not.toHaveBeenCalled();
+		expect(ops.createRecipientFile).not.toHaveBeenCalled();
+		expect(ops.createEncryptedRecipientFile).not.toHaveBeenCalled();
 	});
 
-	test("encrypted: delegates with the allowlist and bigint size", async () => {
+	test("rejects both --public and --encrypted", async () => {
+		const { ctx } = writeContext();
+		await expect(
+			runFileRegister(ctx, { ...base, public: true, encrypted: true }),
+		).rejects.toThrow(/not both/);
+	});
+
+	test("encrypted: delegates with the seal prefix and recipients", async () => {
 		const { ctx, captured } = writeContext();
-		await runFileRegister(ctx, { ...base, allowlist: ALLOWLIST });
-		expect(ops.createEncryptedFile).toHaveBeenCalledTimes(1);
-		expect(ops.createEncryptedFile.mock.calls[0]?.[2]).toMatchObject({
-			allowlistId: ALLOWLIST,
+		await runFileRegister(ctx, {
+			...base,
+			encrypted: true,
+			sealPrefix: SEAL_PREFIX,
+			recipient: [RECIPIENT],
+		});
+		expect(ops.createEncryptedRecipientFile).toHaveBeenCalledTimes(1);
+		expect(ops.createEncryptedRecipientFile.mock.calls[0]?.[2]).toMatchObject({
 			blobId: BLOB,
-			size: 1024n,
+			size: 1024,
+			recipients: [RECIPIENT],
 		});
 		expect(captured.stdout()).toContain("Registered encrypted file");
 	});
 
-	test("public: delegates createPublicFile", async () => {
+	test("encrypted without --seal-prefix fails", async () => {
+		const { ctx } = writeContext();
+		await expect(
+			runFileRegister(ctx, { ...base, encrypted: true }),
+		).rejects.toThrow(/--seal-prefix/);
+	});
+
+	test("public: delegates createRecipientFile", async () => {
 		const { ctx, captured } = writeContext();
 		await runFileRegister(ctx, { ...base, public: true });
-		expect(ops.createPublicFile).toHaveBeenCalledTimes(1);
+		expect(ops.createRecipientFile).toHaveBeenCalledTimes(1);
 		expect(captured.stdout()).toContain("Registered public file");
 	});
 });
 
 describe("runFileUpdate", () => {
-	test("delegates updateFileMetadata", async () => {
+	test("delegates updateRecipientFileMetadata", async () => {
 		const { ctx, captured } = writeContext();
 		await runFileUpdate(ctx, FILE, {
 			name: "renamed.pdf",
 			contentType: "application/pdf",
 		});
-		expect(ops.updateFileMetadata).toHaveBeenCalledTimes(1);
-		expect(ops.updateFileMetadata.mock.calls[0]?.[2]).toMatchObject({
+		expect(ops.updateRecipientFileMetadata).toHaveBeenCalledTimes(1);
+		expect(ops.updateRecipientFileMetadata.mock.calls[0]?.[2]).toMatchObject({
 			name: "renamed.pdf",
 		});
 		expect(captured.stdout()).toContain("Updated file");
@@ -99,16 +124,18 @@ describe("runFileTransferOwnership", () => {
 		await expect(
 			runFileTransferOwnership(ctx, FILE, NEW_OWNER, {}),
 		).rejects.toThrow(/--yes/);
-		expect(ops.transferFileOwnership).not.toHaveBeenCalled();
+		expect(ops.transferRecipientFileOwnership).not.toHaveBeenCalled();
 	});
 
 	test("with --yes transfers", async () => {
 		const { ctx, captured } = writeContext();
 		await runFileTransferOwnership(ctx, FILE, NEW_OWNER, { yes: true });
-		expect(ops.transferFileOwnership).toHaveBeenCalledTimes(1);
-		expect(ops.transferFileOwnership.mock.calls[0]?.[2]).toMatchObject({
-			newOwner: NEW_OWNER,
-		});
+		expect(ops.transferRecipientFileOwnership).toHaveBeenCalledTimes(1);
+		expect(ops.transferRecipientFileOwnership.mock.calls[0]?.[2]).toMatchObject(
+			{
+				newOwner: NEW_OWNER,
+			},
+		);
 		expect(captured.stdout()).toContain("Transferred file ownership");
 	});
 });
@@ -117,13 +144,57 @@ describe("runFileDelete", () => {
 	test("aborts without --yes", async () => {
 		const { ctx } = writeContext();
 		await expect(runFileDelete(ctx, FILE, {})).rejects.toThrow(/--yes/);
-		expect(ops.deleteFile).not.toHaveBeenCalled();
+		expect(ops.deleteRecipientFile).not.toHaveBeenCalled();
 	});
 
 	test("with --yes deletes", async () => {
 		const { ctx, captured } = writeContext();
 		await runFileDelete(ctx, FILE, { yes: true });
-		expect(ops.deleteFile).toHaveBeenCalledTimes(1);
+		expect(ops.deleteRecipientFile).toHaveBeenCalledTimes(1);
 		expect(captured.stdout()).toContain("Deleted file");
+	});
+});
+
+describe("runFileRecipientAdd", () => {
+	test("delegates addRecipient", async () => {
+		const { ctx, captured } = writeContext();
+		await runFileRecipientAdd(ctx, FILE, RECIPIENT);
+		expect(ops.addRecipient).toHaveBeenCalledTimes(1);
+		expect(ops.addRecipient.mock.calls[0]?.[2]).toMatchObject({
+			recipient: RECIPIENT,
+		});
+		expect(captured.stdout()).toContain("Added");
+	});
+});
+
+describe("runFileRecipientRemove", () => {
+	test("delegates removeRecipient", async () => {
+		const { ctx, captured } = writeContext();
+		await runFileRecipientRemove(ctx, FILE, RECIPIENT);
+		expect(ops.removeRecipient).toHaveBeenCalledTimes(1);
+		expect(ops.removeRecipient.mock.calls[0]?.[2]).toMatchObject({
+			recipient: RECIPIENT,
+		});
+		expect(captured.stdout()).toContain("Removed");
+	});
+});
+
+describe("runFileRecipientList", () => {
+	test("lists the file's recipients", async () => {
+		const { ctx, captured } = filesReadContext({
+			filesReader: { getRecipientFile: () => Promise.resolve(fileRecord()) },
+		});
+		await runFileRecipientList(ctx, FILE);
+		expect(captured.stdout()).toContain(RECIPIENT);
+	});
+
+	test("reports an empty recipient list", async () => {
+		const { ctx, captured } = filesReadContext({
+			filesReader: {
+				getRecipientFile: () => Promise.resolve(fileRecord({ members: [] })),
+			},
+		});
+		await runFileRecipientList(ctx, FILE);
+		expect(captured.stdout()).toContain("No recipients.");
 	});
 });

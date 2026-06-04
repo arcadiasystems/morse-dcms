@@ -49,15 +49,13 @@ function event(n: number) {
 }
 
 describe("fetchEventStream", () => {
-	test("walks every page and maps to FilesEventInput", async () => {
+	test("walks every page and maps to RecipientFileEventInput", async () => {
 		const { client } = querier([
 			{ data: [event(1), event(2)], hasNextPage: true, nextCursor: "c1" },
 			{ data: [event(3)], hasNextPage: false, nextCursor: null },
 		]);
 		const out = await fetchEventStream(client, "0xpkg::file::FileCreated");
-		expect(out.map((e) => (e.parsedJson as { n: number }).n)).toEqual([
-			1, 2, 3,
-		]);
+		expect(out.map((e) => (e.json as { n: number }).n)).toEqual([1, 2, 3]);
 		expect(out[0]).toMatchObject({ type: "0xpkg::file::FileCreated" });
 	});
 

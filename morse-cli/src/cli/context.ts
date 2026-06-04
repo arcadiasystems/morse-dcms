@@ -5,17 +5,17 @@
  */
 
 import {
-	buildFilesEventTypes,
+	buildRecipientFileEventTypes,
 	DefaultSealAdapter,
 	DefaultWalrusReadAdapter,
 	DefaultWalrusWriteAdapter,
-	type FilesEventTypes,
 	HttpAggregatorReadAdapter,
 	KeypairAdapter,
 	morseConfig,
 	type NetworkConfig,
-	RpcFilesReader,
+	type RecipientFileEventTypes,
 	RpcPublicationReader,
+	RpcRecipientFilesReader,
 	type SuiAddress,
 	type WalrusReadAdapter,
 } from "@arcadiasystems/morse-sdk";
@@ -99,10 +99,10 @@ export async function buildWriteContext(
 	};
 }
 
-// The files domain (allowlists + encrypted files) uses a separate reader from
-// publications; it is type-filtered on the v2 packageId, not the genesis id.
+// The recipient-files domain uses a separate reader from publications; it is
+// type-filtered on the recipient-file origin package id.
 export interface FilesReadContext extends ReadContext {
-	readonly filesReader: RpcFilesReader;
+	readonly filesReader: RpcRecipientFilesReader;
 }
 
 export async function buildFilesReadContext(
@@ -111,21 +111,9 @@ export async function buildFilesReadContext(
 	const base = await buildReadContext(command);
 	return {
 		...base,
-		filesReader: RpcFilesReader.fromMorseConfig(base.config, base.client),
-	};
-}
-
-export interface AllowlistWriteContext extends WriteContext {
-	readonly filesReader: RpcFilesReader;
-}
-
-export async function buildAllowlistWriteContext(
-	command: Command,
-): Promise<AllowlistWriteContext> {
-	const base = await buildWriteContext(command);
-	return {
-		...base,
-		filesReader: RpcFilesReader.fromMorseConfig(base.config, base.client),
+		filesReader: RpcRecipientFilesReader.fromConfig(base.client, {
+			packageId: base.config.packageId,
+		}),
 	};
 }
 
@@ -267,7 +255,9 @@ export async function buildFileDownloadContext(
 	}
 	return {
 		...base,
-		filesReader: RpcFilesReader.fromMorseConfig(base.config, base.client),
+		filesReader: RpcRecipientFilesReader.fromConfig(base.client, {
+			packageId: base.config.packageId,
+		}),
 		walrusRead: walrusReadAdapter(base, network, Boolean(opts.viaAggregator)),
 		seal: DefaultSealAdapter.fromMorseConfig(base.config, {}, base.client),
 		unlockSigner: () =>
@@ -280,7 +270,7 @@ export async function buildFileDownloadContext(
 // helpers. Carries the files reader too, for --hydrate.
 export interface FileListContext extends FilesReadContext {
 	readonly events: EventQuerier;
-	readonly eventTypes: FilesEventTypes;
+	readonly eventTypes: RecipientFileEventTypes;
 }
 
 export async function buildFileListContext(
@@ -288,10 +278,10 @@ export async function buildFileListContext(
 	opts: { indexerUrl?: string } = {},
 ): Promise<FileListContext> {
 	const base = await buildReadContext(command);
-	const originPackageId = base.config.filesEventOriginPackageId;
+	const originPackageId = base.config.recipientFileEventOriginPackageId;
 	if (originPackageId === undefined) {
 		throw new CliError(
-			"File listing is unavailable on this network: no filesEventOriginPackageId in the config. Use testnet, or supply a config that sets it.",
+			"File listing is unavailable on this network: no recipientFileEventOriginPackageId in the config. Use testnet, or supply a config that sets it.",
 			ExitCode.Usage,
 		);
 	}
@@ -301,10 +291,12 @@ export async function buildFileListContext(
 	});
 	return {
 		...base,
-		filesReader: RpcFilesReader.fromMorseConfig(base.config, base.client),
+		filesReader: RpcRecipientFilesReader.fromConfig(base.client, {
+			packageId: base.config.packageId,
+		}),
 		// queryEvents satisfies EventQuerier structurally; the only divergence is
 		// the opaque pagination cursor, which the paginator round-trips untouched.
 		events: events as unknown as EventQuerier,
-		eventTypes: buildFilesEventTypes(originPackageId),
+		eventTypes: buildRecipientFileEventTypes(originPackageId),
 	};
 }

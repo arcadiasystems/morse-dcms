@@ -17,7 +17,6 @@ import type { SuiGrpcClient } from "@mysten/sui/grpc";
 import type { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 
 import type {
-	AllowlistWriteContext,
 	ContentContext,
 	DecryptContext,
 	EncryptContext,
@@ -116,24 +115,14 @@ export function filesReadContext(opts: ReadFixtureOptions = {}): {
 	return { ctx: { ...ctx, filesReader: filesReaderOf(opts) }, captured };
 }
 
-export function allowlistWriteContext(opts: ReadFixtureOptions = {}): {
-	ctx: AllowlistWriteContext;
-	captured: CapturedOutput;
-} {
-	const { ctx, captured } = writeContext(opts);
-	return { ctx: { ...ctx, filesReader: filesReaderOf(opts) }, captured };
-}
-
 const STUB_EVENT_TYPES = {
-	FileCreated: "FileCreated",
-	FileDeleted: "FileDeleted",
-	FileMetadataUpdated: "FileMetadataUpdated",
-	FileOwnershipTransferred: "FileOwnershipTransferred",
-	AllowlistCreated: "AllowlistCreated",
-	AllowlistDeleted: "AllowlistDeleted",
-	MemberAdded: "MemberAdded",
-	MemberRemoved: "MemberRemoved",
-	CapTransferred: "CapTransferred",
+	RecipientFileCreated: "RecipientFileCreated",
+	RecipientFileDeleted: "RecipientFileDeleted",
+	RecipientFileMetadataUpdated: "RecipientFileMetadataUpdated",
+	RecipientFileOwnershipTransferred: "RecipientFileOwnershipTransferred",
+	RecipientFileSealPrefixAttached: "RecipientFileSealPrefixAttached",
+	RecipientAdded: "RecipientAdded",
+	RecipientRemoved: "RecipientRemoved",
 } as FileListContext["eventTypes"];
 
 const EMPTY_EVENTS = {

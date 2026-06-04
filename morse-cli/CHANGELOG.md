@@ -4,6 +4,44 @@ All notable changes to `@arcadiasystems/morse-cli` are documented here. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-06-04
+
+Ports the file commands to the SDK 0.4.0 `RecipientFile` primitive, which
+replaces the per-wallet allowlist plus encrypted-file pair with a single object
+that carries its recipient list inline. This is a breaking change to the `morse
+file` surface and removes `morse allowlist` entirely.
+
+### Added
+
+- `morse file recipient add|remove|list <file> [address]`: manage a file's
+  recipient list directly on the file object (replaces `morse allowlist`).
+- Recipients on uploads and registration via repeatable `-r, --recipient <addr>`;
+  the sender is always included.
+- Encrypted uploads emit a **share string** (`mf1.<fileId>.<prefix>.<nonce>`,
+  see `format/share.ts`) bundling everything a recipient needs to decrypt, plus
+  the raw `sealIdPrefix` and `sealNonce` (hex) in `--json`.
+- `morse file download` accepts `--share <string>`, or `--prefix <hex> --nonce
+  <hex>`, to decrypt; the file id becomes an optional positional (the share
+  string carries it).
+- `morse file register --encrypted --seal-prefix <hex>` / `--public`: register
+  on-chain metadata for an existing Walrus blob as a `RecipientFile`.
+
+### Changed
+
+- Depends on `@arcadiasystems/morse-sdk` `^0.4.0`.
+- `morse file list` reconciles `RecipientFile` events; `--accessible` now lists
+  files you can decrypt as a recipient (recipient-list membership), not allowlist
+  membership. The human listing shows a `recipients` count column.
+- `morse file get` shows the recipient list instead of an allowlist reference.
+
+### Removed
+
+- `morse allowlist` and all its subcommands. Recipient access now lives on the
+  file via `morse file recipient`.
+- `file upload -a <allowlist>` and `file download --seal-id <hex>`. Use
+  `--encrypt` / `--recipient` on upload and `--share` (or `--prefix`/`--nonce`)
+  on download.
+
 ## [0.3.0] - 2026-06-04
 
 Event-based file listing, wrapping the SDK 0.3.0 reconcile helpers. Purely

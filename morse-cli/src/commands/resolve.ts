@@ -5,15 +5,11 @@
  */
 
 import {
-	type AllowlistCapId,
-	type AllowlistId,
 	type OwnerCapId,
 	type PublicationId,
 	type PublisherCapId,
-	type RpcFilesReader,
 	type RpcPublicationReader,
 	type SuiAddress,
-	toAllowlistCapId,
 	toOwnerCapId,
 	toPublisherCapId,
 } from "@arcadiasystems/morse-sdk";
@@ -77,35 +73,6 @@ export async function resolvePublisherCap(
 	} while (cursor !== undefined);
 	throw new CliError(
 		`No PublisherCap for ${publicationId} held by ${address}. Pass --publisher-cap, or check that the active account holds one.`,
-		ExitCode.NotFound,
-	);
-}
-
-export async function resolveAllowlistCap(
-	filesReader: RpcFilesReader,
-	address: SuiAddress,
-	allowlistId: AllowlistId,
-	override: string | undefined,
-	signal: AbortSignal,
-): Promise<AllowlistCapId> {
-	if (override !== undefined) {
-		return toAllowlistCapId(override);
-	}
-	let cursor: string | undefined;
-	do {
-		const page = await filesReader.listAllowlistCapsOwnedBy(address, {
-			limit: PAGE_LIMIT,
-			signal,
-			...(cursor === undefined ? {} : { cursor }),
-		});
-		const match = page.results.find((c) => c.allowlistId === allowlistId);
-		if (match !== undefined) {
-			return match.id;
-		}
-		cursor = page.nextCursor ?? undefined;
-	} while (cursor !== undefined);
-	throw new CliError(
-		`No allowlist Cap for ${allowlistId} held by ${address}. Pass --cap, or check that the active account administers it.`,
 		ExitCode.NotFound,
 	);
 }

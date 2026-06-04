@@ -11,7 +11,7 @@ multi-party and scripted scenarios.
 | [`encrypt-decrypt.sh`](./encrypt-decrypt.sh) | Encrypt content with Seal and decrypt it back. |
 | [`delegation.sh`](./delegation.sh) | Owner issues a PublisherCap to a delegate, then revokes it (the sub-owner model). |
 | [`ci-noninteractive.sh`](./ci-noninteractive.sh) | Env-var auth, `--yes`, and parsing `--json` output. No prompts. |
-| [`files.sh`](./files.sh) | Allowlist + encrypted file round-trip: create allowlist, add a member, upload, download/decrypt, plus a public file; teardown. |
+| [`files.sh`](./files.sh) | RecipientFile round-trip: upload an encrypted file, download/decrypt via its share string, manage recipients, plus a public file; teardown. |
 
 Not shown because the contract does not support it: renaming a publication. A
 publication's name and slug are immutable (the slug is the registry's unique
