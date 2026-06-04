@@ -2,6 +2,84 @@
 
 All notable changes to `morse-sdk` will be documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-06-04
+
+Replaces the per-wallet `Allowlist` + `EncryptedFile` pair with a single `RecipientFile` primitive that carries its recipient set directly on the file. Target UX: 2 wallet popups for an encrypted upload to N recipients (was N+3). The SDK exposes the new surface only; the legacy `allowlist` and `file` modules remain in the contract bytecode for backward compat with 0.2 / 0.3 clients but no current SDK code paths reach them.
+
+Paired with the morse-contracts v4 upgrade (testnet `published-at`: `0x468727724e86b7d305e961aee73ef9d868b4b68478952fc23748ef4ccfcaf4b2`).
+
+### Breaking changes (pre-1.0)
+
+- Removed types: `Allowlist`, `AllowlistCap`, `AllowlistId`, `AllowlistCapId`, `EncryptedFile`, `EncryptedFileFull`, `EncryptedFileId`, `EncryptedFileSummary`, `EncryptedFileSummaryOrFull`.
+- Removed enum constant: `SealPolicyTag.Allowlist` (was `= 2`). Consumers switching on the numeric value should now see only `Publisher = 1` and `RecipientFile = 3`.
+- Removed codecs: `toAllowlistId`, `toAllowlistCapId`, `toEncryptedFileId`.
+- Removed ops: `createAllowlist`, `deleteAllowlist`, `addMember`, `removeMember`, `transferAllowlistCap`, `createPublicFile`, `createEncryptedFile`, `deleteFile`, `transferFileOwnership`, `updateFileMetadata`, `uploadPublicFileFromBytes`, `uploadEncryptedFileFromBytes`.
+- Removed reader: `RpcFilesReader`, `buildFilesEventTypes`, `reconcileFilesOwnedBy`, `reconcileFilesAccessibleBy`.
+- Removed seal: `buildAllowlistSealId`, `decodeAllowlistSealId`, `SealAdapter.decryptUnderAllowlist`.
+- Renamed config field: `filesEventOriginPackageId` -> `recipientFileEventOriginPackageId`.
+- Renamed abort module: `AbortModule "allowlist" | "file"` -> `"recipient_file"`. `NotFoundResource "allowlist" | "encrypted-file"` -> `"recipient-file"`.
+
+### Added: types
+
+- `RecipientFileId` branded ID.
+- `RecipientFile`, `RecipientFileSummary` (event-derived), `RecipientFileFull`, `RecipientFileSummaryOrFull`. The `members` array is embedded; no separate allowlist object.
+- `SealPolicyTag.RecipientFile = 3` (publisher=1, recipient_file=3; tag 2 is legacy allowlist, not used by the SDK).
+
+### Added: codecs
+
+- `toRecipientFileId`.
+
+### Added: errors
+
+- `AbortModule = "publication" | "collection" | "entry" | "recipient_file"`. `ABORT_CODES.recipient_file` covers codes 0-10. Code 4 = `ERecipientAlreadyPresent`, 5 = `ERecipientNotPresent`, 9 = `ESealPrefixEmpty` (caller-supplied prefix was empty), 10 = `ESealPrefixMissing` (file was created via the legacy `new_recipient_file` path and has no attached prefix to validate against).
+
+### Added: ops
+
+- `createRecipientFile(adapter, config, args)` - single PTB: `new_recipient_file + share_recipient_file`.
+- `createEncryptedRecipientFile(adapter, config, args)` - same shape but takes `sealIdPrefix` and calls `new_recipient_file_with_seal_prefix`. Assumes the blob is already Seal-encrypted under `[sealIdPrefix || tag(=3) || nonce]`.
+- `addRecipient`, `removeRecipient`, `transferRecipientFileOwnership`, `updateRecipientFileMetadata`, `deleteRecipientFile` - single-Move-call wrappers.
+- `uploadRecipientFileFromBytes(adapter, config, { walrus, bytes, recipients, name, contentType, upload })` - **2 popups**: Walrus `register_blob`, then a combined `certify_blob + new_recipient_file + share` PTB.
+- `uploadEncryptedRecipientFileFromBytes(adapter, config, { walrus, seal, plaintext, recipients, name, contentType, upload })` - **2 popups** for encrypted uploads. Picks a random seal prefix, encrypts under `[prefix || tag(=3) || nonce]`, uploads ciphertext, then `certify_blob + new_recipient_file_with_seal_prefix + share` in one PTB. Returns `{ sealIdPrefix, sealNonce, fileId, blobId, blobObjectId, ... }` so consumers can rebuild the seal identity for decrypt.
+
+### Added: read layer
+
+- `RpcRecipientFilesReader.getRecipientFile(id)` - live object read; parses `members` from `VecSet<address>`, `blob_id` from either base64 string or u8-array Sui JSON encoding, and `blob_object_id` from `Option<ID>`.
+- `buildRecipientFileEventTypes(originPackageId)` - returns fully-qualified event type strings for `RecipientFileCreated`, `RecipientFileDeleted`, `RecipientFileMetadataUpdated`, `RecipientFileOwnershipTransferred`, `RecipientFileSealPrefixAttached`, `RecipientAdded`, `RecipientRemoved`. Pass `config.recipientFileEventOriginPackageId`.
+- `reconcileRecipientFilesOwnedBy(events, address, eventTypes): RecipientFileSummary[]`.
+- `reconcileRecipientFilesAccessibleBy(events, address, eventTypes): RecipientFileSummary[]`.
+
+### Added: seal
+
+- `buildRecipientFileSealId(prefix, nonce): SealId`. Layout `[prefix(>=1) || tag(=3) || nonce(>=1)]`. No longer derives from a file id (the v3 contract required this; v4's caller-supplied prefix removes the chicken-and-egg).
+- `decodeRecipientFileSealId(id, prefixLength)`. Caller supplies `prefixLength` because the layout is not self-delimiting.
+- `randomSealPrefix()` returns 32 random bytes; `randomSealNonce()` returns 16. Helpers for the common case.
+- `RECOMMENDED_SEAL_PREFIX_BYTES = 32`, `RECOMMENDED_SEAL_NONCE_BYTES = 16`.
+- `SealAdapter.decryptUnderRecipientFile(ciphertext, { sessionKey, sealId, fileId })`. Builds a `recipient_file::seal_approve_with_prefix` PTB; the on-chain dynamic-field check is the authoritative validator (no client-side prefix decode).
+
+### Added: smoke + example scripts
+
+- `scripts/phase-8-recipient-file.ts` - end-to-end on testnet: public upload, encrypted upload, owner decrypt, delete both.
+- `scripts/example-recipient-file-alice-bob.ts` - two keypairs; Alice uploads encrypted RecipientFile addressed to Bob, Bob decrypts.
+
+### Migration from 0.3.0
+
+The new surface is a clean replacement for the allowlist + file pair:
+
+| Before                                                    | After                                                  |
+| --------------------------------------------------------- | ------------------------------------------------------ |
+| `createAllowlist` + N `addMember` calls + `createEncryptedFile` | `createEncryptedRecipientFile` (or upload variant)     |
+| `RpcFilesReader.getAllowlist` / `getEncryptedFile`        | `RpcRecipientFilesReader.getRecipientFile`             |
+| `buildAllowlistSealId(allowlistId, nonce)`                | `buildRecipientFileSealId(prefix, nonce)` + bind prefix on file creation |
+| `seal.decryptUnderAllowlist({ allowlistId, sealId, ... })`| `seal.decryptUnderRecipientFile({ fileId, sealId, ... })` |
+| Reconcile against `MemberAdded`/`AllowlistDeleted`        | Reconcile against `RecipientAdded`/`RecipientFileDeleted` |
+
+No backward-compat shim is provided because pre-1.0 and the legacy modules are deployed but unused by any morse-sdk consumer.
+
+### Config
+
+- `testnet.packageId` updated to v4: `0x468727724e86b7d305e961aee73ef9d868b4b68478952fc23748ef4ccfcaf4b2`.
+- `recipientFileEventOriginPackageId` pinned to v3 (the upgrade where `recipient_file` was introduced); will only move on future upgrades that redefine the `recipient_file` module.
+
 ## [0.3.0] - 2026-06-04
 
 Event-based file listing helpers, deliberately scoped to NOT include event fetching. Consumers integrate the indexer of their choice (Mysten public, self-hosted, third-party); the SDK ships the parsing + reconciliation logic. All additive, no breaking changes.

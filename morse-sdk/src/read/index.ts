@@ -3,19 +3,6 @@
  */
 
 export {
-	buildFilesEventTypes,
-	type FilesEventInput,
-	type FilesEventTypes,
-	reconcileFilesAccessibleBy,
-	reconcileFilesOwnedBy,
-} from "./files-events.js";
-export {
-	type AllowlistCapListPage,
-	type FilesListOptions,
-	type FilesReader,
-	RpcFilesReader,
-} from "./files-reader.js";
-export {
 	type EntryListPage,
 	type ListEntriesOptions,
 	type ListPublicationsOptions,
@@ -27,3 +14,15 @@ export {
 	RpcPublicationReader,
 	type ScanEntriesOptions,
 } from "./reader.js";
+export {
+	buildRecipientFileEventTypes,
+	type RecipientFileEventInput,
+	type RecipientFileEventTypes,
+	reconcileRecipientFilesAccessibleBy,
+	reconcileRecipientFilesOwnedBy,
+} from "./recipient-file-events.js";
+export {
+	type RecipientFilesReader,
+	RpcRecipientFilesReader,
+	type RpcRecipientFilesReaderConfig,
+} from "./recipient-files-reader.js";

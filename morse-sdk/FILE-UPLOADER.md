@@ -1,10 +1,22 @@
 # File uploader guide
 
-Quick reference for uploading, downloading, encrypting, and decrypting files via the morse-sdk files module. Companion to the React component `@arcadiasystems/morse-uploader`.
+End-to-end reference for uploading, downloading, encrypting, and decrypting files via the morse-sdk `recipient_file` module. The primitive is `RecipientFile`: a shared Sui object that carries its recipient set inline. Each file is independent; there is no separate allowlist object.
 
 For the on-chain model, type strings, PTB shapes, and event payloads, see `morse-contracts/INTEGRATION.md`.
 
-For a runnable end-to-end narrative with two keypairs (Alice creates, Bob decrypts), see `scripts/example-files-alice-bob.ts`.
+For a runnable end-to-end narrative with two keypairs (Alice uploads encrypted, Bob decrypts), see `scripts/example-recipient-file-alice-bob.ts`.
+
+## At a glance
+
+| Goal | Function | Popups |
+|------|----------|--------|
+| Upload a public file with a list of viewers | `uploadRecipientFileFromBytes` | 2 |
+| Upload an encrypted file with a list of recipients | `uploadEncryptedRecipientFileFromBytes` | 2 |
+| Add or remove a recipient on an existing file | `addRecipient` / `removeRecipient` | 1 each |
+| Read a file's metadata + recipient list | `RpcRecipientFilesReader.getRecipientFile` | 0 |
+| Decrypt a file (recipient side) | `seal.decryptUnderRecipientFile` | 1 (SessionKey personal message) |
+
+The 2-popup count for the encrypted upload assumes a `WalrusWriteAdapter` that implements `WalrusFlowCapable` (the default `DefaultWalrusWriteAdapter` does). Custom adapters without that capability fall back to 3 popups via the unbundled `seal.encrypt + walrus.uploadBlob + createEncryptedRecipientFile` path.
 
 ## Setup (shared across all flows)
 
@@ -17,7 +29,7 @@ import {
   DefaultWalrusWriteAdapter,
   KeypairAdapter,
   morseConfig,
-  RpcFilesReader,
+  RpcRecipientFilesReader,
 } from "@arcadiasystems/morse-sdk";
 
 const config = morseConfig({ network: "testnet" });
@@ -39,322 +51,248 @@ const walrusRead = DefaultWalrusReadAdapter.fromConfig({
   suiClient: client,
 });
 const seal = DefaultSealAdapter.fromMorseConfig(config, {}, client);
-const filesReader = RpcFilesReader.fromMorseConfig(config, client);
+const filesReader = RpcRecipientFilesReader.fromConfig(client, {
+  packageId: config.packageId,
+});
 ```
 
-## 1. Create an allowlist (one-time per group of files)
+## 1. Public upload (no encryption)
+
+Public files store plaintext on Walrus; anyone with the Walrus blob id can download. The on-chain `RecipientFile` still carries a `members` list (creator auto-added), but it does not gate decryption because there is nothing to decrypt. Use the recipient list as a "share with these people in the dapp UI" hint.
 
 ```ts
-import { createAllowlist, addMember, toSuiAddress } from "@arcadiasystems/morse-sdk";
+import { uploadRecipientFileFromBytes, toSuiAddress } from "@arcadiasystems/morse-sdk";
 
-const { allowlistId, capId } = await createAllowlist(adapter, config, {
-  name: "team-docs",
+const bytes = await file.arrayBuffer().then((b) => new Uint8Array(b));
+
+const result = await uploadRecipientFileFromBytes(adapter, config, {
+  walrus: walrusWrite,
+  bytes,
+  recipients: [toSuiAddress("0xb0b...")],
+  name: "report.pdf",
+  contentType: "application/pdf",
+  upload: { epochs: 3, deletable: true },
+  onProgress: (e) => console.log(e.phase),
 });
 
-// Add wallets that should be able to decrypt
-await addMember(adapter, config, {
-  allowlistId,
-  capId,
-  member: toSuiAddress("0xb0b..."),
-});
+console.log(result.fileId, result.blobId, result.blobObjectId);
 ```
 
-Persist `allowlistId` and `capId`. The `capId` is the admin token — whoever holds it can add/remove members and delete the allowlist.
+**2 popups**: Walrus `register_blob`, then a combined PTB (`certify_blob + new_recipient_file + share_recipient_file`).
 
-One allowlist can gate many files. Reuse a single allowlist for "team folder" UX, or create one per file for "per-file ACL" UX.
+## 2. Encrypted upload to specific recipients
 
-## 2. Encrypt + upload an encrypted file
+The marquee flow. Plaintext is encrypted via Seal under a caller-supplied identity prefix; ciphertext is uploaded to Walrus; the file is created on chain with the same prefix bound via a dynamic field. Only addresses in `recipients` (plus the creator) can decrypt.
 
 ```ts
 import {
-  buildAllowlistSealId,
-  uploadEncryptedFileFromBytes,
+  uploadEncryptedRecipientFileFromBytes,
+  toSuiAddress,
 } from "@arcadiasystems/morse-sdk";
 
-// Construct the Seal identity. The nonce must be ≥ 1 byte; 16 random bytes is standard.
-const nonce = crypto.getRandomValues(new Uint8Array(16));
-const sealId = buildAllowlistSealId(allowlistId, nonce);
+const plaintext = await file.arrayBuffer().then((b) => new Uint8Array(b));
 
-const plaintext = new TextEncoder().encode("hello, world");
-
-const upload = await uploadEncryptedFileFromBytes(adapter, config, {
+const result = await uploadEncryptedRecipientFileFromBytes(adapter, config, {
   walrus: walrusWrite,
   seal,
-  allowlistId,
-  sealId,
   plaintext,
-  name: "hello.txt",
-  contentType: "text/plain",
-  upload: { epochs: 2, deletable: true },
-  onProgress: (e) => console.log(`phase: ${e.phase}`),
+  recipients: [
+    toSuiAddress("0xb0b..."),
+    toSuiAddress("0xa11ce..."),
+  ],
+  name: "salaries-q3.pdf",
+  contentType: "application/pdf",
+  upload: { epochs: 3, deletable: true },
+  onProgress: (e) => console.log(e.phase),
 });
 
+// Hand `result.sealIdPrefix` and `result.sealNonce` to recipients
+// (typically by reading them off the file's event payload server-side).
 console.log({
-  fileId: upload.fileId,           // on-chain EncryptedFile object id
-  blobId: upload.blobId,           // Walrus content id
-  blobObjectId: upload.blobObjectId, // on-chain Blob object
+  fileId: result.fileId,
+  blobId: result.blobId,
+  sealIdPrefix: result.sealIdPrefix,
+  sealNonce: result.sealNonce,
 });
 ```
 
-**Persist `sealId` out-of-band.** It's not recoverable from the ciphertext envelope in a consumer-readable form. Stash it in your dapp's database, embed it in share links, or emit a custom event that an indexer can pick up. Without `sealId` the decrypt side can't request the right key shares.
+**2 popups**: Walrus `register_blob`, then a combined PTB (`certify_blob + new_recipient_file_with_seal_prefix + share_recipient_file`). The Seal `encrypt` happens between popups and is wallet-free.
 
-Two wallet popups happen during this call:
-1. `register_blob` (Walrus storage reservation)
-2. `certify_blob + new_encrypted_file + share_file` (combined; the SDK composes them into one PTB)
+### Why a caller-supplied prefix?
 
-## 3. Upload an unencrypted (public) file
+Seal binds a chosen `id` byte string into the ciphertext envelope. To open it later, the recipient sends the same bytes to the key servers; the servers dry-run `recipient_file::seal_approve_with_prefix` on chain, which checks (a) the bytes start with the prefix bound to the file at creation, and (b) the sender is in `members`.
 
-```ts
-import { uploadPublicFileFromBytes } from "@arcadiasystems/morse-sdk";
+Encryption must happen BEFORE the file exists on chain (the file's `blob_id` is the Walrus CID of the ciphertext). The encrypted-upload helper picks a random 32-byte prefix, encrypts with `[prefix || 0x03 || nonce]`, then creates the file with the same prefix attached. The two byte strings line up, recipients can decrypt.
 
-const upload = await uploadPublicFileFromBytes(adapter, config, {
-  walrus: walrusWrite,
-  bytes,
-  name: "logo.png",
-  contentType: "image/png",
-  upload: { epochs: 2, deletable: true },
-});
-```
+If you want a deterministic prefix (testing, app-controlled identity), pass `sealIdPrefix: Uint8Array` and `sealNonce: Uint8Array` explicitly. Both must be at least 1 byte; 32 + 16 is the recommended pairing.
 
-Same two-popup shape; no Seal involvement; bytes on Walrus are world-readable via the aggregator.
-
-## 4. Read metadata + download bytes
+## 3. Reading a file's metadata
 
 ```ts
-const file = await filesReader.getEncryptedFile(fileId);
-// file.name, file.contentType, file.size, file.encrypted, file.allowlistId,
-// file.blobId, file.blobObjectId, file.owner, file.createdAtMs
+const file = await filesReader.getRecipientFile(fileId);
 
-const ciphertextOrBytes = await walrusRead.readBlob(file.blobId);
+file.id;            // RecipientFileId
+file.owner;         // SuiAddress: can mutate, decrypt
+file.blobId;        // WalrusBlobId: where to fetch bytes from Walrus
+file.blobObjectId;  // Sui Blob object id, when known
+file.members;       // readonly SuiAddress[]: who can decrypt
+file.name;
+file.contentType;
+file.size;          // plaintext byte length (Walrus blob is larger for encrypted)
+file.createdAtMs;
 ```
 
-For public files, `ciphertextOrBytes` IS the plaintext — no decrypt step.
+## 4. Decrypting (recipient side)
 
-For encrypted files, continue to step 5.
-
-## 5. Decrypt an encrypted file
+Recipients need: the `fileId`, the `sealIdPrefix` + `sealNonce` (or equivalently the rebuilt `sealId`), and a Seal `SessionKey` signed by their wallet's personal-message signer.
 
 ```ts
 import { SessionKey } from "@mysten/seal";
+import { buildRecipientFileSealId } from "@arcadiasystems/morse-sdk";
 
-// 5a. Build a SessionKey. Triggers one wallet popup (personal-message signature).
+// 1. Build a SessionKey. Costs one wallet popup (signPersonalMessage).
 const sessionKey = await SessionKey.create({
-  address: myAddress,
+  address: adapter.address,
   packageId: config.originalPackageId ?? config.packageId,
   ttlMin: 10,
-  signer: keypair, // or the wallet-standard signer for browser dapps
   suiClient: client,
 });
+const personalMessage = sessionKey.getPersonalMessage();
+const { signature } = await adapter.signPersonalMessage(personalMessage);
+sessionKey.setPersonalMessageSignature(signature);
 
-// 5b. Decrypt. Seal key servers dry-run allowlist::seal_approve internally,
-// verifying that myAddress is a member of the allowlist. No popup here.
-const plaintext = await seal.decryptUnderAllowlist(ciphertextOrBytes, {
-  sealId,              // the same sealId used at upload time
-  allowlistId: file.allowlistId!,
+// 2. Fetch the ciphertext from Walrus.
+const ciphertext = await walrusRead.readBlob(file.blobId);
+
+// 3. Rebuild the Seal identity from prefix + nonce.
+const sealId = buildRecipientFileSealId(sealIdPrefix, sealNonce);
+
+// 4. Decrypt. The key servers dry-run `seal_approve_with_prefix(sealId, file)`;
+//    non-recipients surface as `SealError("no-access")`.
+const plaintext = await seal.decryptUnderRecipientFile(ciphertext, {
   sessionKey,
+  sealId,
+  fileId: file.id,
 });
-
-const text = new TextDecoder().decode(plaintext);
 ```
 
-The `SessionKey` is reusable for `ttlMin` minutes against any file gated by the same allowlist — one popup per session, many decrypts.
+## 5. Modifying recipients
 
-## 6. Allowlist member management
+All mutations are owner-only.
 
 ```ts
 import {
-  removeMember,
-  transferAllowlistCap,
-  deleteAllowlist,
+  addRecipient,
+  removeRecipient,
+  transferRecipientFileOwnership,
+  updateRecipientFileMetadata,
+  deleteRecipientFile,
 } from "@arcadiasystems/morse-sdk";
 
-// Remove a member
-await removeMember(adapter, config, { allowlistId, capId, member: bobAddress });
+await addRecipient(adapter, config, { fileId, recipient });
+await removeRecipient(adapter, config, { fileId, recipient });
 
-// Hand off admin rights (e.g., when ownership of a "team docs" group changes)
-await transferAllowlistCap(adapter, config, { capId, recipient: newAdmin });
+// Move mutation rights to a new owner. Does NOT touch `members`. Compose with
+// addRecipient / removeRecipient if you want a full handover (new owner gains
+// decrypt, old owner loses it).
+await transferRecipientFileOwnership(adapter, config, { fileId, newOwner });
 
-// Delete the allowlist. Any encrypted files referencing it become un-decryptable;
-// delete them first or migrate them to a different allowlist.
-await deleteAllowlist(adapter, config, { allowlistId, capId });
-```
-
-## 7. File metadata mutations (owner only)
-
-```ts
-import {
-  updateFileMetadata,
-  transferFileOwnership,
-  deleteFile,
-} from "@arcadiasystems/morse-sdk";
-
-// Rename or change MIME type
-await updateFileMetadata(adapter, config, {
+// Rename or change MIME without re-uploading.
+await updateRecipientFileMetadata(adapter, config, {
   fileId,
-  name: "tax-return-2026.pdf",
+  name: "new-name.pdf",
   contentType: "application/pdf",
 });
 
-// Transfer the metadata-mutation right. Note: decryption access is governed
-// separately by the allowlist; if you want full handover, compose with
-// addMember(newOwner) and removeMember(oldOwner) in the same PTB.
-await transferFileOwnership(adapter, config, { fileId, newOwner });
-
-// Delete the metadata record. Does NOT delete the Walrus blob; that follows
-// the Walrus lease lifecycle (max 53 epochs).
-await deleteFile(adapter, config, { fileId });
+// Delete the on-chain metadata. Does NOT delete the Walrus blob; that follows
+// the Walrus lease lifecycle.
+await deleteRecipientFile(adapter, config, { fileId });
 ```
 
-## 8. Listing the allowlists an address admins
+## 6. Listing files via your indexer
 
-```ts
-const capPage = await filesReader.listAllowlistCapsOwnedBy(myAddress);
-for (const cap of capPage.results) {
-  console.log("admin of:", cap.allowlistId);
-}
-// page.nextCursor for pagination.
-```
-
-This works against the gRPC fullnode because `AllowlistCap` is an owned object (the Cap has an explicit address owner; Sui's `listOwnedObjects` indexes by owner). Use this to populate "allowlists I manage" sections.
-
-## 9. Listing files via your indexer
-
-`EncryptedFile` is a shared Sui object, so `listOwnedObjects` cannot find files by owner. The morse-sdk does NOT ship event fetching (Sui v2 gRPC has no historical event query, and `suix_queryEvents` is sunsetting). Instead, the SDK ships **pure reconciliation helpers** that turn raw event streams into the current file set. You bring the indexer.
-
-### What you need
-
-Pick a Sui event source. Options:
-- **Mysten public testnet indexer** (if available; check the [Sui docs](https://docs.sui.io/) for the current endpoint and CORS story)
-- **Self-hosted indexer** (e.g. [sui-indexer](https://docs.sui.io/guides/operator/sui-indexer))
-- **Third-party** (Suiscan, Pyth, etc., per their query APIs)
-- **`suix_queryEvents` on a JSON-RPC endpoint** (works today, deprecated path)
-
-Any source that can return events of a given Move type with their `parsedJson` payload and a `timestampMs` field will work. The reconcile helpers don't care which.
-
-### Usage
+The SDK does not ship event fetching. Sui v2 gRPC has no historical event query, and Mysten is sunsetting `suix_queryEvents` on the JSON-RPC side. The SDK gives you the parsing + reconciliation logic; you pick the indexer.
 
 ```ts
 import {
-  buildFilesEventTypes,
-  reconcileFilesOwnedBy,
-  reconcileFilesAccessibleBy,
-  type FilesEventInput,
+  buildRecipientFileEventTypes,
+  reconcileRecipientFilesAccessibleBy,
+  reconcileRecipientFilesOwnedBy,
 } from "@arcadiasystems/morse-sdk";
 
-// 1. Build the event type strings from your config.
-const eventTypes = buildFilesEventTypes(config.filesEventOriginPackageId!);
+const eventTypes = buildRecipientFileEventTypes(
+  config.recipientFileEventOriginPackageId ?? config.packageId,
+);
 
-// 2. Fetch events via your indexer. Pseudo-code; replace with your client.
-async function fetchAll(eventType: string): Promise<FilesEventInput[]> {
-  const out: FilesEventInput[] = [];
-  let cursor: unknown = null;
-  while (true) {
-    const page = await myIndexer.queryEvents({
-      query: { MoveEventType: eventType },
-      cursor,
-      limit: 50,
-      descending: true,
-    });
-    out.push(...page.data.map((e) => ({
-      type: e.type,
-      parsedJson: e.parsedJson,
-      timestampMs: e.timestampMs,
-    })));
-    if (!page.hasNextPage) break;
-    cursor = page.nextCursor;
-  }
-  return out;
-}
+// Pull all `recipient_file::*` events touching this user from your indexer.
+// Shape: { type: string, json: Record<string, unknown>, timestampMs: number }.
+const events = await yourIndexer.getEvents({
+  types: Object.values(eventTypes),
+  involvedAddress: userAddress,
+});
 
-// 3. Concatenate the streams you need.
-const ownedEvents = await Promise.all([
-  fetchAll(eventTypes.FileCreated),
-  fetchAll(eventTypes.FileOwnershipTransferred),
-  fetchAll(eventTypes.FileDeleted),
-]).then((arrs) => arrs.flat());
-
-// 4. Reconcile into the current "my files" list.
-const myFiles = reconcileFilesOwnedBy(ownedEvents, myAddress, eventTypes);
-// myFiles is EncryptedFileSummary[], sorted newest-first.
-
-// 5. For "files accessible to me" (allowlist membership):
-const accessibleEvents = await Promise.all([
-  fetchAll(eventTypes.MemberAdded),
-  fetchAll(eventTypes.MemberRemoved),
-  fetchAll(eventTypes.AllowlistDeleted),
-  fetchAll(eventTypes.FileCreated),
-  fetchAll(eventTypes.FileDeleted),
-]).then((arrs) => arrs.flat());
-
-const sharedWithMe = reconcileFilesAccessibleBy(
-  accessibleEvents,
-  myAddress,
+// Pure functions; no I/O, no client.
+const filesOwned = reconcileRecipientFilesOwnedBy(events, userAddress, eventTypes);
+const filesAccessible = reconcileRecipientFilesAccessibleBy(
+  events,
+  userAddress,
   eventTypes,
 );
 ```
 
-### What summaries contain
+Both reconcile helpers return `RecipientFileSummary[]`. To get the `blobId` and `blobObjectId` (needed to fetch bytes), follow up with `filesReader.getRecipientFile(summary.id)` per row. Use sparingly; the summary list is enough for most UIs.
 
-`EncryptedFileSummary` has the fields available from the `FileCreated` event payload + envelope `timestampMs`: `id`, `owner`, `name`, `contentType`, `size`, `encrypted`, `allowlistId`, `createdAtMs`.
+## 7. Error handling
 
-**Missing**: `blobId` and `blobObjectId`. The `FileCreated` event doesn't carry them. To download or share a file from a summary list, call `filesReader.getEncryptedFile(summary.id)` to hydrate. A future contract upgrade may add `blob_id` to the event, which would make summaries actionable without the hydrate step; the discriminated-union types (`{ kind: "summary" } | { kind: "full" }`) keep that migration backwards-compatible.
+Errors normalize to a small typed set; switch on `instanceof` rather than parsing messages.
 
-### Caveats
+- `ValidationError` - client-side argument shape failures (bad object id, empty string where required).
+- `ContractAbortError` - the Move VM aborted. Inspect `module` and `reason`; for the recipient_file module, see `ABORT_CODES.recipient_file` for the names. Common abort reasons:
+  - `EUnauthorized` (0): sender is not the file owner.
+  - `ERecipientAlreadyPresent` (4): `addRecipient` called for an existing member.
+  - `ERecipientNotPresent` (5): `removeRecipient` called for a non-member.
+  - `ESealPrefixEmpty` (9): caller supplied an empty `sealIdPrefix`.
+  - `ENoAccess` (8): on a decrypt PTB dry-run, sender is not a recipient.
+- `SealError` - Seal key server failures. `code` discriminates: `"no-access"` (sender failed `seal_approve_with_prefix`), `"decrypt-failed"`, `"session-expired"`, `"rate-limited"`.
+- `UncertifiedBlobError` - the second-leg PTB failed after Walrus uploaded the bytes. `cause` carries the original error; the blob is uncertified and storage is held until expiry. Surface the blobId so the user can retry the certify leg if relevant.
+- `TransportError` - RPC, network, or response-parsing failure. `operation` discriminates by call site.
+- `NotFoundError` - the requested resource was not found. `resource === "recipient-file"` for `getRecipientFile`.
 
-- **Eventually consistent.** Event-fetch lag, indexer retention, and pagination windows mean these lists are best-effort. For guaranteed-complete listing (e.g. compliance), use an indexer with retention guarantees and snapshot-consistent queries.
-- **Pagination is yours.** The reconcile helpers process whatever you pass; if the indexer's pagination misses events, the reconcile result will be partial.
-- **Pure functions.** No I/O, no clients, no failure modes. Errors from your indexer surface in your fetch layer, not from the SDK.
-- **Order-independent.** Events are sorted by `timestampMs` internally; you can stream them in any order or batch.
+## 8. Recipes
 
-## 9. Standalone encrypt / decrypt (rarely needed)
-
-If you already have ciphertext in hand and just want to decrypt:
+### "Share a doc with my team" (encrypted)
 
 ```ts
-const { ciphertext } = await seal.encrypt(plaintext, { sealId });
-
-const plaintext = await seal.decryptUnderAllowlist(ciphertext, {
-  sealId,
-  allowlistId,
-  sessionKey,
+const team = [aliceAddr, bobAddr, carolAddr];
+const result = await uploadEncryptedRecipientFileFromBytes(adapter, config, {
+  walrus: walrusWrite, seal,
+  plaintext, recipients: team,
+  name: "design-spec.md", contentType: "text/markdown",
+  upload: { epochs: 12, deletable: true },
 });
 ```
 
-If you already have bytes uploaded to Walrus and just want to register metadata (no upload step):
+### "Add Dave to an existing doc"
 
 ```ts
-import {
-  createEncryptedFile,
-  createPublicFile,
-} from "@arcadiasystems/morse-sdk";
-
-await createEncryptedFile(adapter, config, {
-  allowlistId,
-  blobId,           // existing Walrus content id
-  blobObjectId,     // optional; on-chain Blob object id if known
-  name: "x.pdf",
-  contentType: "application/pdf",
-  size: BigInt(byteLength),
-});
+await addRecipient(adapter, config, { fileId: result.fileId, recipient: daveAddr });
 ```
 
-## Error handling
+### "Revoke Carol's access"
 
-All ops throw a `MorseError` subclass on failure. The most common ones for file flows:
+```ts
+await removeRecipient(adapter, config, { fileId: result.fileId, recipient: carolAddr });
+```
 
-| Class | When |
-|---|---|
-| `ValidationError` | Empty name, oversized name, malformed ID before any RPC. |
-| `ContractAbortError` (`module: "allowlist"` or `"file"`) | Move-level abort. Narrow on `err.reason` for the specific code (`EMemberAlreadyPresent`, `ENoAccess`, `EUnauthorized`, etc). |
-| `SealError` | `code: "no-access"` when you're not a member; `code: "decrypt-failed"` for tampered ciphertext or wrong `sealId`; `code: "session-expired"` when SessionKey TTL ran out. |
-| `UncertifiedBlobError` | `uploadEncryptedFileFromBytes` succeeded uploading bytes but the combined certify+create_file tx failed. Carries `blobId` and `blobObjectId` for retry / support. |
-| `TransportError` | Network or RPC failure. Carries `operation` for telemetry. |
+Note: Seal's decryption material is held by the key servers and rotated per request, so a removal takes effect for any future decrypt attempt. Existing in-memory plaintexts that Carol may have downloaded before removal are out of scope for any on-chain ACL.
 
-`formatUserMessage(err)` turns any of these into a `{ title, description }` pair suitable for a toast or banner.
+### "Hand the file off entirely"
 
-## See also
-
-- `morse-contracts/INTEGRATION.md` — on-chain types, PTB shapes, events, Move call signatures
-- `scripts/example-files-alice-bob.ts` — runnable narrative with two keypairs
-- `scripts/phase-9-encrypted-file.ts` — minimal round-trip smoke
-- `README.md` — wallet schemes, Walrus access patterns, error taxonomy
+```ts
+// New owner can mutate.
+await transferRecipientFileOwnership(adapter, config, { fileId, newOwner: davesAddr });
+// New owner can decrypt.
+await addRecipient(adapter, config, { fileId, recipient: davesAddr });
+// Optional: remove old owner from members.
+await removeRecipient(adapter, config, { fileId, recipient: oldOwner });
+```

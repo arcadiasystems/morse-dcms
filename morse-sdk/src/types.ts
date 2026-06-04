@@ -24,14 +24,8 @@ export type OwnerCapId = Brand<string, "OwnerCapId">;
 /** Sui object ID of a `PublisherCap`. */
 export type PublisherCapId = Brand<string, "PublisherCapId">;
 
-/** Sui object ID of an `Allowlist` (file-ACL module). */
-export type AllowlistId = Brand<string, "AllowlistId">;
-
-/** Sui object ID of an `allowlist::Cap`, bound to an Allowlist. */
-export type AllowlistCapId = Brand<string, "AllowlistCapId">;
-
-/** Sui object ID of an `EncryptedFile`. */
-export type EncryptedFileId = Brand<string, "EncryptedFileId">;
+/** Sui object ID of a `RecipientFile` (encrypted file with embedded recipients). */
+export type RecipientFileId = Brand<string, "RecipientFileId">;
 
 /** Sui object ID of a Walrus `Blob`. */
 export type BlobObjectId = Brand<string, "BlobObjectId">;
@@ -51,9 +45,16 @@ export type WalrusBlobId = Brand<string, "WalrusBlobId">;
 export type QuiltPatchId = Uint8Array & { readonly __brand: "QuiltPatchId" };
 
 /**
- * Seal identity bytes. Layout: `publication_id(32) || policy_tag(u8) || nonce(>=1)`.
- * Total length must be > 33. Branded so callers cannot bypass the identity
- * builder; construct via `buildPublisherSealId`.
+ * Seal identity bytes. The layout depends on the policy:
+ *
+ *   - Publisher policy (tag=1): `publication_id(32) || tag(u8=1) || nonce(>=1)`.
+ *     Construct via `buildPublisherSealId`; total length > 33.
+ *   - RecipientFile policy (tag=3): `prefix(>=1) || tag(u8=3) || nonce(>=1)`.
+ *     Construct via `buildRecipientFileSealId`; total length >= 3. The prefix
+ *     is caller-chosen and is bound to the file on chain via a dynamic field
+ *     when the file is created with `new_recipient_file_with_seal_prefix`.
+ *
+ * Branded so callers cannot bypass the identity builders.
  */
 export type SealId = Uint8Array & { readonly __brand: "SealId" };
 
@@ -93,7 +94,7 @@ export type AccessPolicy = (typeof AccessPolicy)[keyof typeof AccessPolicy];
 /** Policy tag byte inside a Seal identity, identifying the approval entrypoint. */
 export const SealPolicyTag = {
 	Publisher: 1,
-	Allowlist: 2,
+	RecipientFile: 3,
 } as const;
 export type SealPolicyTag = (typeof SealPolicyTag)[keyof typeof SealPolicyTag];
 
@@ -205,92 +206,69 @@ export interface TxReceipt {
 	readonly deletedObjects: readonly TxDeletedObject[];
 }
 
-// Allowlist
-
-/** Per-wallet allowlist gating Seal-encrypted file decryption. */
-export interface Allowlist {
-	readonly id: AllowlistId;
-	readonly name: string;
-	readonly members: readonly SuiAddress[];
-}
-
-/** Admin capability for an Allowlist; required to add/remove members and delete. */
-export interface AllowlistCap {
-	readonly id: AllowlistCapId;
-	readonly allowlistId: AllowlistId;
-}
-
-// Encrypted file
+// RecipientFile
 
 /**
- * On-chain metadata record for a file stored on Walrus. `allowlistId` is set
- * iff `encrypted === true`; public files carry `allowlistId: null`.
+ * Encrypted file with embedded recipient set. Members listed in `members` are
+ * the only addresses that pass `recipient_file::seal_approve`; the creator is
+ * always auto-added to `members` on construction. Shared object: any holder
+ * can read; only the owner can mutate.
  *
- * Returned by `RpcFilesReader.getEncryptedFile` (live object read) and as the
- * `"full"` variant of `EncryptedFileSummaryOrFull` after hydration. Use
- * `EncryptedFileSummary` (no `blobId`, no `blobObjectId`) for event-derived
- * lists that haven't been hydrated.
+ * Returned by `RpcRecipientFilesReader.getRecipientFile` (live object read)
+ * and as the `"full"` variant of `RecipientFileSummaryOrFull` after hydration.
+ * Use `RecipientFileSummary` (no `blobId`, no `blobObjectId`) for
+ * event-derived lists that haven't been hydrated.
  */
-export interface EncryptedFile {
-	readonly id: EncryptedFileId;
+export interface RecipientFile {
+	readonly id: RecipientFileId;
 	readonly owner: SuiAddress;
 	readonly blobId: WalrusBlobId;
 	readonly blobObjectId: BlobObjectId | null;
 	readonly name: string;
 	readonly contentType: string;
 	/**
-	 * Plaintext byte length for encrypted files; stored byte length for public
-	 * files. Mirrors the Move contract semantics. Note: the actual ciphertext
-	 * uploaded to Walrus is larger than this for encrypted files because Seal
-	 * adds an envelope.
+	 * Plaintext byte length, mirroring the Move contract. The Walrus blob is
+	 * larger because Seal adds an envelope.
 	 */
 	readonly size: number;
-	readonly encrypted: boolean;
-	readonly allowlistId: AllowlistId | null;
+	readonly members: readonly SuiAddress[];
 	readonly createdAtMs: number;
 }
 
 /**
- * Event-derived view of an `EncryptedFile`. Built purely from `FileCreated`
- * event payloads + envelope `timestampMs`, with no live object fetch.
+ * Event-derived view of a `RecipientFile`. Built purely from
+ * `RecipientFileCreated` event payloads + envelope `timestampMs`, with no
+ * live object fetch.
  *
- * Missing relative to `EncryptedFile`: `blobId` and `blobObjectId` are not
- * carried in the `FileCreated` event payload, so summaries cannot be used
- * directly to read bytes from Walrus or to call the on-chain Blob object.
- * Hydrate via `RpcFilesReader.getEncryptedFile(id)` when those fields are
- * needed. A future contract upgrade may add `blob_id` to `FileCreated`,
- * which would let summaries become actionable for download flows; the
- * discriminated union keeps that migration backwards-compatible.
+ * Missing relative to `RecipientFile`: `blobId` and `blobObjectId` (not
+ * carried in `RecipientFileCreated`). Hydrate via
+ * `RpcRecipientFilesReader.getRecipientFile(id)` when those fields are needed.
  */
-export interface EncryptedFileSummary {
+export interface RecipientFileSummary {
 	readonly kind: "summary";
-	readonly id: EncryptedFileId;
+	readonly id: RecipientFileId;
 	readonly owner: SuiAddress;
 	readonly name: string;
 	readonly contentType: string;
 	readonly size: number;
-	readonly encrypted: boolean;
-	readonly allowlistId: AllowlistId | null;
+	readonly members: readonly SuiAddress[];
 	/**
-	 * Transaction timestamp of the `FileCreated` event, in milliseconds since
-	 * unix epoch. Sourced from the Sui event envelope, not from the on-chain
-	 * `created_at_ms` field (which the event does not emit). Use for ordering
-	 * UI lists; equal to the hydrated record's `createdAtMs` within Sui's
-	 * checkpoint timing precision.
+	 * Transaction timestamp of the `RecipientFileCreated` event, in
+	 * milliseconds since unix epoch. Sourced from the Sui event envelope.
 	 */
 	readonly createdAtMs: number;
 }
 
-/** `EncryptedFile` wrapped in the same discriminated-union shape as `EncryptedFileSummary`. */
-export interface EncryptedFileFull extends EncryptedFile {
+/** `RecipientFile` wrapped in the same discriminated-union shape as `RecipientFileSummary`. */
+export interface RecipientFileFull extends RecipientFile {
 	readonly kind: "full";
 }
 
 /**
- * Union type returned by the reconcile helpers. Switch on `kind` to access
- * fields safely. `summary` is the default (event-derived, fast); `full`
- * requires a per-result `getEncryptedFile` (N+1; use sparingly).
+ * Union returned by the reconcile helpers. Switch on `kind` to access fields
+ * safely. `summary` is event-derived (fast); `full` requires a per-result
+ * `getRecipientFile` fetch (N+1; use sparingly).
  */
-export type EncryptedFileSummaryOrFull =
-	| EncryptedFileSummary
-	| EncryptedFileFull;
+export type RecipientFileSummaryOrFull =
+	| RecipientFileSummary
+	| RecipientFileFull;

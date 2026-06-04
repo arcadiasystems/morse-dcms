@@ -6,15 +6,10 @@
 export type {
 	SealAdapter,
 	SealDecryptOptions,
-	SealDecryptUnderAllowlistOptions,
+	SealDecryptUnderRecipientFileOptions,
 	SealEncryptOptions,
 	SealEncryptResult,
 } from "./adapter.js";
-export {
-	type AllowlistSealIdParts,
-	buildAllowlistSealId,
-	decodeAllowlistSealId,
-} from "./allowlist-identity.js";
 export {
 	DefaultSealAdapter,
 	type SealAdapterConfig,
@@ -24,3 +19,12 @@ export {
 	decodePublisherSealId,
 	type SealIdParts,
 } from "./identity.js";
+export {
+	buildRecipientFileSealId,
+	decodeRecipientFileSealId,
+	RECOMMENDED_SEAL_NONCE_BYTES,
+	RECOMMENDED_SEAL_PREFIX_BYTES,
+	type RecipientFileSealIdParts,
+	randomSealNonce,
+	randomSealPrefix,
+} from "./recipient-file-identity.js";

@@ -188,8 +188,7 @@ const NOT_FOUND_TITLES: Readonly<Record<NotFoundResource, string>> = {
 	"owner-cap": "OwnerCap not found",
 	registry: "Registry not found",
 	blob: "Content unavailable",
-	allowlist: "Allowlist not found",
-	"encrypted-file": "File not found",
+	"recipient-file": "File not found",
 };
 
 function formatNotFound(err: NotFoundError): FormattedError {

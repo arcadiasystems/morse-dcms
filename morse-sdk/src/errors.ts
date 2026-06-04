@@ -36,8 +36,7 @@ export type NotFoundResource =
 	| "owner-cap"
 	| "registry"
 	| "blob"
-	| "allowlist"
-	| "encrypted-file";
+	| "recipient-file";
 
 /** Resource not found on-chain. */
 export class NotFoundError extends MorseError {
@@ -170,7 +169,7 @@ export class UncertifiedBlobError extends MorseError {
 		options?: { cause?: unknown },
 	) {
 		super(
-			`Walrus blob ${blobObjectId} was registered and uploaded but the certify+addEntry transaction failed; the blob is on storage nodes but uncertified. Retry the full flow with fresh bytes, or wait for the storage registration to expire.`,
+			`Walrus blob ${blobObjectId} was registered and uploaded but the certify transaction failed; the blob is on storage nodes but uncertified. Retry the full flow with fresh bytes, or wait for the storage registration to expire.`,
 			options,
 		);
 		this.blobObjectId = blobObjectId;
@@ -212,8 +211,7 @@ export type AbortModule =
 	| "publication"
 	| "collection"
 	| "entry"
-	| "allowlist"
-	| "file";
+	| "recipient_file";
 
 /** One row of the abort-code table. */
 export interface AbortEntry {
@@ -344,34 +342,7 @@ export const ABORT_CODES: {
 				"QuiltPatchId must be exactly 37 bytes (quilt_blob_id || version || start_index || end_index).",
 		},
 	},
-	allowlist: {
-		0: {
-			name: "EUnauthorized",
-			description: "The cap does not match the supplied allowlist.",
-		},
-		1: {
-			name: "EMemberAlreadyPresent",
-			description: "Address is already a member of the allowlist.",
-		},
-		2: {
-			name: "EMemberNotPresent",
-			description: "Address is not a member of the allowlist.",
-		},
-		3: {
-			name: "ESealInvalidId",
-			description:
-				"Provided Seal identity does not match this allowlist namespace.",
-		},
-		4: {
-			name: "ESealWrongPolicyTag",
-			description: "Provided Seal identity has an unsupported policy tag.",
-		},
-		5: {
-			name: "ENoAccess",
-			description: "Sender is not a member of the allowlist.",
-		},
-	},
-	file: {
+	recipient_file: {
 		0: {
 			name: "EUnauthorized",
 			description: "Sender is not the file owner.",
@@ -387,6 +358,36 @@ export const ABORT_CODES: {
 		3: {
 			name: "EContentTypeInvalid",
 			description: "content_type must be non-empty and within 255 chars.",
+		},
+		4: {
+			name: "ERecipientAlreadyPresent",
+			description: "Address is already a recipient of this file.",
+		},
+		5: {
+			name: "ERecipientNotPresent",
+			description: "Address is not a recipient of this file.",
+		},
+		6: {
+			name: "ESealInvalidId",
+			description:
+				"Provided Seal identity does not match this recipient_file namespace.",
+		},
+		7: {
+			name: "ESealWrongPolicyTag",
+			description: "Provided Seal identity has an unsupported policy tag.",
+		},
+		8: {
+			name: "ENoAccess",
+			description: "Sender is not a recipient of this file.",
+		},
+		9: {
+			name: "ESealPrefixEmpty",
+			description: "Caller-supplied Seal identity prefix must be non-empty.",
+		},
+		10: {
+			name: "ESealPrefixMissing",
+			description:
+				"File has no attached Seal identity prefix; use the legacy seal_approve path or create the file via new_recipient_file_with_seal_prefix.",
 		},
 	},
 };

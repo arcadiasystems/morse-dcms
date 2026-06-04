@@ -15,6 +15,7 @@ module publication::recipient_file;
 
 use std::string::String;
 use sui::clock::Clock;
+use sui::dynamic_field as df;
 use sui::event;
 use sui::vec_set::{Self, VecSet};
 
@@ -281,6 +282,13 @@ const ESealWrongPolicyTag: u64 = 7;
 /// Error code: sender is not a recipient of the file.
 const ENoAccess: u64 = 8;
 
+/// Error code: caller-supplied `seal_id_prefix` is empty.
+const ESealPrefixEmpty: u64 = 9;
+
+/// Error code: file was not created with an attached seal prefix and
+/// `seal_approve_with_prefix` cannot apply.
+const ESealPrefixMissing: u64 = 10;
+
 /// Bounds matching `entry::ENameTooLong` and `entry::EContentTypeTooLong`
 /// for cross-module consistency. Not enforced as MIME-case-aware.
 const MAX_NAME_LENGTH: u64 = 256;
@@ -303,6 +311,94 @@ entry fun seal_approve(id: vector<u8>, file: &RecipientFile, ctx: &TxContext) {
 /// allowlist policy (2) so all three coexist in the same package without
 /// identity-namespace collisions.
 const SEAL_POLICY_TAG_RECIPIENT_FILE: u8 = 3;
+
+// -- Seal with caller-supplied prefix --
+
+/// Dynamic-field key used to attach a caller-supplied seal identity prefix
+/// to a `RecipientFile`. Lets clients encrypt under an identity they choose
+/// before the file's Sui object id exists, then bind the prefix on
+/// creation. Required for single-PTB encrypted upload flows (the file's
+/// Sui object id is not predictable before signing).
+public struct SealPrefixKey has copy, drop, store {}
+
+/// Create a recipient file and attach a caller-supplied seal identity
+/// prefix to it via a dynamic field. The Seal identity used to encrypt the
+/// associated Walrus blob is `[seal_id_prefix || tag=3 || nonce]`. The
+/// prefix is bound at creation and immutable.
+///
+/// Pure: returns the file by value; caller must share it via
+/// `share_recipient_file` to make it usable.
+///
+/// Aborts on empty `seal_id_prefix`, empty `blob_id`, empty `name`, or
+/// empty `content_type`. The prefix may be any non-empty byte string;
+/// callers typically use 32 random bytes (collision-resistant per file).
+public fun new_recipient_file_with_seal_prefix(
+  seal_id_prefix: vector<u8>,
+  blob_id: vector<u8>,
+  blob_object_id: Option<ID>,
+  name: String,
+  content_type: String,
+  size: u64,
+  recipients: vector<address>,
+  clock: &Clock,
+  ctx: &mut TxContext,
+): RecipientFile {
+  assert!(!seal_id_prefix.is_empty(), ESealPrefixEmpty);
+  let mut file = new_recipient_file(
+    blob_id,
+    blob_object_id,
+    name,
+    content_type,
+    size,
+    recipients,
+    clock,
+    ctx,
+  );
+  df::add(&mut file.id, SealPrefixKey {}, seal_id_prefix);
+  event::emit(RecipientFileSealPrefixAttached {
+    file: object::id(&file),
+    seal_id_prefix,
+  });
+  file
+}
+
+/// Seal access-control entry point for files created via
+/// `new_recipient_file_with_seal_prefix`. Key servers dry-run this before
+/// releasing decryption shares. Identity format expected:
+///   [seal_id_prefix][SEAL_POLICY_TAG_RECIPIENT_FILE = 3][nonce...]
+/// Aborts unless the file carries an attached `SealPrefixKey` dynamic
+/// field, the identity starts with the attached prefix, the policy tag is
+/// 3, and the sender is a current recipient.
+entry fun seal_approve_with_prefix(
+  id: vector<u8>,
+  file: &RecipientFile,
+  ctx: &TxContext,
+) {
+  assert!(df::exists_(&file.id, SealPrefixKey {}), ESealPrefixMissing);
+  let prefix: &vector<u8> = df::borrow(&file.id, SealPrefixKey {});
+  assert_id_matches_prefix(prefix, &id);
+  assert!(file.members.contains(&ctx.sender()), ENoAccess);
+}
+
+/// Returns the attached seal identity prefix, or `none` if the file was
+/// created via the legacy `new_recipient_file` path. Lets clients decide
+/// which `seal_approve` variant to use at decrypt time.
+public fun get_seal_id_prefix(file: &RecipientFile): Option<vector<u8>> {
+  if (df::exists_(&file.id, SealPrefixKey {})) {
+    let prefix: &vector<u8> = df::borrow(&file.id, SealPrefixKey {});
+    option::some(*prefix)
+  } else {
+    option::none()
+  }
+}
+
+/// Emitted on `new_recipient_file_with_seal_prefix` immediately after
+/// `RecipientFileCreated`. Indexers building decrypt-side flows read this
+/// to learn which prefix was bound to the file.
+public struct RecipientFileSealPrefixAttached has copy, drop {
+  file: ID,
+  seal_id_prefix: vector<u8>,
+}
 
 // -- Reads --
 
@@ -336,12 +432,16 @@ fun assert_valid_content_type(content_type: &String) {
 
 fun assert_valid_recipient_file_seal_id(file: &RecipientFile, id: &vector<u8>) {
   let prefix = object::id(file).to_bytes();
+  assert_id_matches_prefix(&prefix, id);
+}
+
+fun assert_id_matches_prefix(prefix: &vector<u8>, id: &vector<u8>) {
   let prefix_len = prefix.length();
   assert!(id.length() > prefix_len + 1, ESealInvalidId);
 
   let mut i = 0;
   while (i < prefix_len) {
-    assert!(*vector::borrow(&prefix, i) == *vector::borrow(id, i), ESealInvalidId);
+    assert!(*vector::borrow(prefix, i) == *vector::borrow(id, i), ESealInvalidId);
     i = i + 1;
   };
 
@@ -374,4 +474,24 @@ public(package) fun seal_approve_for_testing(
 #[test_only]
 public(package) fun seal_policy_tag_recipient_file_for_testing(): u8 {
   SEAL_POLICY_TAG_RECIPIENT_FILE
+}
+
+#[test_only]
+public(package) fun seal_approve_with_prefix_for_testing(
+  id: vector<u8>,
+  file: &RecipientFile,
+  ctx: &TxContext,
+) {
+  seal_approve_with_prefix(id, file, ctx);
+}
+
+#[test_only]
+public(package) fun build_prefix_seal_id_for_testing(
+  prefix: vector<u8>,
+  nonce: vector<u8>,
+): vector<u8> {
+  let mut id = prefix;
+  vector::push_back(&mut id, SEAL_POLICY_TAG_RECIPIENT_FILE);
+  id.append(nonce);
+  id
 }

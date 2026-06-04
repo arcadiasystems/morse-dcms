@@ -28,20 +28,19 @@ import {
 	ValidationError,
 } from "../errors.js";
 import type {
-	AllowlistId,
 	PackageId,
 	PublicationId,
 	PublisherCapId,
+	RecipientFileId,
 	SealId,
 } from "../types.js";
 import type {
 	SealAdapter,
 	SealDecryptOptions,
-	SealDecryptUnderAllowlistOptions,
+	SealDecryptUnderRecipientFileOptions,
 	SealEncryptOptions,
 	SealEncryptResult,
 } from "./adapter.js";
-import { decodeAllowlistSealId } from "./allowlist-identity.js";
 import { decodePublisherSealId } from "./identity.js";
 
 /**
@@ -56,8 +55,8 @@ export interface SealAdapterConfig {
 	 * Package id used as the target of `seal_approve*` PTBs. Defaults to
 	 * `packageId` when omitted. Must be set explicitly when the seal_approve
 	 * function lives in a module added in a package upgrade (e.g.
-	 * `allowlist::seal_approve` was introduced in v2 and only exists at the
-	 * v2 published-at address; calling it at the original-id fails because
+	 * `recipient_file::seal_approve` was introduced in v3 and only exists at
+	 * the v3 published-at address; calling it at the original-id fails because
 	 * that address only has v1 bytecode). For backwards compat with the
 	 * publisher policy (introduced in v1, present at all upgrade addresses),
 	 * omit this field.
@@ -266,30 +265,17 @@ export class DefaultSealAdapter implements SealAdapter {
 		);
 	}
 
-	async decryptUnderAllowlist(
+	async decryptUnderRecipientFile(
 		ciphertext: Uint8Array,
-		options: SealDecryptUnderAllowlistOptions,
+		options: SealDecryptUnderRecipientFileOptions,
 	): Promise<Uint8Array> {
-		let allowlistIdFromSealId: AllowlistId;
-		try {
-			({ allowlistId: allowlistIdFromSealId } = decodeAllowlistSealId(
-				options.sealId,
-			));
-		} catch (cause) {
-			throw new SealError(
-				"decrypt-failed",
-				`Seal identity is malformed or uses an unsupported policy tag for the allowlist policy: ${cause instanceof Error ? cause.message : String(cause)}`,
-				{ cause },
-			);
-		}
-		if ((allowlistIdFromSealId as string) !== (options.allowlistId as string)) {
-			throw new SealError(
-				"decrypt-failed",
-				`sealId's embedded allowlistId (${allowlistIdFromSealId}) does not match the supplied allowlistId (${options.allowlistId})`,
-			);
-		}
-		const txBytes = await this.buildAllowlistApproveTxBytes(
-			options.allowlistId,
+		// Unlike the publisher policy, the recipient-file seal identity is not
+		// self-validating client-side: the prefix is an opaque caller-chosen
+		// byte string bound to the file on chain via a dynamic field. The
+		// `seal_approve_with_prefix` PTB dry-run is the only authoritative
+		// check; we just forward the bytes and let Move (and Seal) verify.
+		const txBytes = await this.buildRecipientFileApproveTxBytes(
+			options.fileId,
 			options.sealId,
 			options.sessionKey,
 		);
@@ -300,7 +286,7 @@ export class DefaultSealAdapter implements SealAdapter {
 					sessionKey: options.sessionKey,
 					txBytes,
 				}),
-			"seal.decryptUnderAllowlist",
+			"seal.decryptUnderRecipientFile",
 		);
 	}
 
@@ -333,18 +319,15 @@ export class DefaultSealAdapter implements SealAdapter {
 		}
 	}
 
-	private async buildAllowlistApproveTxBytes(
-		allowlistId: AllowlistId,
+	private async buildRecipientFileApproveTxBytes(
+		fileId: RecipientFileId,
 		sealId: SealId,
 		sessionKey: SessionKey,
 	): Promise<Uint8Array> {
 		const tx = new Transaction();
 		tx.moveCall({
-			target: `${this.targetPackageId}::allowlist::seal_approve`,
-			arguments: [
-				tx.pure.vector("u8", Array.from(sealId)),
-				tx.object(allowlistId),
-			],
+			target: `${this.targetPackageId}::recipient_file::seal_approve_with_prefix`,
+			arguments: [tx.pure.vector("u8", Array.from(sealId)), tx.object(fileId)],
 		});
 		tx.setSender(sessionKey.getAddress());
 		try {
@@ -353,10 +336,13 @@ export class DefaultSealAdapter implements SealAdapter {
 				onlyTransactionKind: true,
 			});
 		} catch (cause) {
-			throw new TransportError("Failed to build allowlist seal_approve PTB", {
-				cause,
-				operation: "seal.buildAllowlistApproveTx",
-			});
+			throw new TransportError(
+				"Failed to build recipient_file seal_approve_with_prefix PTB",
+				{
+					cause,
+					operation: "seal.buildRecipientFileApproveTx",
+				},
+			);
 		}
 	}
 }

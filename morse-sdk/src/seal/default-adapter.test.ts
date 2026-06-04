@@ -5,9 +5,8 @@ import {
 	type SessionKey,
 } from "@mysten/seal";
 
-import { toAllowlistId, toPackageId, toPublicationId } from "../codecs.js";
+import { toPackageId, toPublicationId } from "../codecs.js";
 import { SealError, TransportError } from "../errors.js";
-import { buildAllowlistSealId } from "./allowlist-identity.js";
 import { DefaultSealAdapter } from "./default-adapter.js";
 import { buildPublisherSealId } from "./identity.js";
 
@@ -176,66 +175,7 @@ describe("DefaultSealAdapter.encrypt", () => {
 // decrypt happy-path needs a live Sui client to resolve object refs in
 // `tx.build()`; covered by the testnet smoke. Encrypt-side coverage exercises
 // the same SealError mapping decrypt would hit post-build.
-
-describe("DefaultSealAdapter.decryptUnderAllowlist", () => {
-	test("rejects sealId whose embedded allowlistId differs from the supplied one", async () => {
-		// Catch-the-bait: caller passes one allowlistId, but the sealId was
-		// built against a different one. The decrypt path must refuse before
-		// the key servers see the request.
-		const ALLOWLIST_A = toAllowlistId(
-			"0x000000000000000000000000000000000000000000000000000000000000aaaa",
-		);
-		const ALLOWLIST_B = toAllowlistId(
-			"0x000000000000000000000000000000000000000000000000000000000000bbbb",
-		);
-		const sealIdForB = buildAllowlistSealId(
-			ALLOWLIST_B,
-			new Uint8Array([1, 2, 3, 4]),
-		);
-
-		const { client } = fakeClient();
-		const adapter = new DefaultSealAdapter({
-			client,
-			suiClient: fakeSuiClient(),
-			packageId: PACKAGE_ID,
-			targetPackageId: PACKAGE_ID,
-			threshold: 2,
-		});
-
-		try {
-			await adapter.decryptUnderAllowlist(new Uint8Array([0xc1]), {
-				sealId: sealIdForB,
-				allowlistId: ALLOWLIST_A,
-				sessionKey: {} as unknown as SessionKey,
-			});
-			throw new Error("expected throw");
-		} catch (error) {
-			expect(error).toBeInstanceOf(SealError);
-			expect((error as SealError).code).toBe("decrypt-failed");
-		}
-	});
-
-	test("rejects sealId with a non-allowlist policy tag", async () => {
-		// A publisher-policy sealId reused on the allowlist decrypt path
-		// must be rejected, not silently misinterpreted.
-		const { client } = fakeClient();
-		const adapter = new DefaultSealAdapter({
-			client,
-			suiClient: fakeSuiClient(),
-			packageId: PACKAGE_ID,
-			targetPackageId: PACKAGE_ID,
-			threshold: 2,
-		});
-		const ALLOWLIST = toAllowlistId(
-			"0x000000000000000000000000000000000000000000000000000000000000aaaa",
-		);
-
-		await expect(
-			adapter.decryptUnderAllowlist(new Uint8Array([0xc1]), {
-				sealId: SEAL_ID, // built with the PUBLISHER policy tag (1), not 2
-				allowlistId: ALLOWLIST,
-				sessionKey: {} as unknown as SessionKey,
-			}),
-		).rejects.toBeInstanceOf(SealError);
-	});
-});
+//
+// The recipient-file decrypt path forwards an opaque caller-supplied prefix
+// to `seal_approve_with_prefix` on chain; there is no useful client-side
+// validation to assert against, so its coverage is smoke-only.

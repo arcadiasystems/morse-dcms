@@ -652,3 +652,233 @@ fun test_seal_policy_tag_is_distinct_from_publisher_and_allowlist() {
   // requires this tag to be 3.
   assert_eq!(recipient_file::seal_policy_tag_recipient_file_for_testing(), 3u8);
 }
+
+// -- Seal with caller-supplied prefix --
+
+#[test]
+fun test_new_with_seal_prefix_attaches_prefix_and_seal_approve_with_prefix_succeeds() {
+  let owner = @0xa1;
+  let alice = @0xa11ce;
+  let mut scenario = test_scenario::begin(owner);
+
+  let clk = clock::create_for_testing(scenario.ctx());
+  let prefix = b"prefix-bytes-32-random-aaaaaaaaaaaa";
+  let file = recipient_file::new_recipient_file_with_seal_prefix(
+    prefix,
+    b"walrus-blob-id-bytes",
+    option::none(),
+    b"tax.pdf".to_string(),
+    b"application/pdf".to_string(),
+    1234u64,
+    vector[alice],
+    &clk,
+    scenario.ctx(),
+  );
+
+  let stored_prefix = recipient_file::get_seal_id_prefix(&file);
+  assert_eq!(option::is_some(&stored_prefix), true);
+  assert_eq!(*option::borrow(&stored_prefix), prefix);
+
+  let id = recipient_file::build_prefix_seal_id_for_testing(prefix, b"nonce-1");
+  recipient_file::seal_approve_with_prefix_for_testing(id, &file, scenario.ctx());
+
+  clock::destroy_for_testing(clk);
+  unit_test::destroy(file);
+  scenario.end();
+}
+
+#[test]
+fun test_get_seal_id_prefix_returns_none_for_legacy_files() {
+  let owner = @0xa1;
+  let mut scenario = test_scenario::begin(owner);
+
+  let clk = clock::create_for_testing(scenario.ctx());
+  let file = recipient_file::new_recipient_file(
+    b"blob",
+    option::none(),
+    b"n".to_string(),
+    b"text/plain".to_string(),
+    1u64,
+    vector[],
+    &clk,
+    scenario.ctx(),
+  );
+
+  let stored_prefix = recipient_file::get_seal_id_prefix(&file);
+  assert_eq!(option::is_none(&stored_prefix), true);
+
+  clock::destroy_for_testing(clk);
+  unit_test::destroy(file);
+  scenario.end();
+}
+
+#[test]
+#[expected_failure(abort_code = 9, location = recipient_file)]
+fun test_new_with_seal_prefix_aborts_on_empty_prefix() {
+  let owner = @0xa1;
+  let mut scenario = test_scenario::begin(owner);
+
+  let clk = clock::create_for_testing(scenario.ctx());
+  let file = recipient_file::new_recipient_file_with_seal_prefix(
+    b"",
+    b"blob",
+    option::none(),
+    b"n".to_string(),
+    b"text/plain".to_string(),
+    1u64,
+    vector[],
+    &clk,
+    scenario.ctx(),
+  );
+
+  clock::destroy_for_testing(clk);
+  unit_test::destroy(file);
+  scenario.end();
+}
+
+#[test]
+#[expected_failure(abort_code = 10, location = recipient_file)]
+fun test_seal_approve_with_prefix_aborts_when_no_prefix_attached() {
+  let owner = @0xa1;
+  let mut scenario = test_scenario::begin(owner);
+
+  let clk = clock::create_for_testing(scenario.ctx());
+  let file = recipient_file::new_recipient_file(
+    b"blob",
+    option::none(),
+    b"n".to_string(),
+    b"text/plain".to_string(),
+    1u64,
+    vector[],
+    &clk,
+    scenario.ctx(),
+  );
+
+  // Build a syntactically valid id (any prefix + tag + nonce); the dynamic
+  // field lookup must fail before the prefix check runs.
+  let id = recipient_file::build_prefix_seal_id_for_testing(b"anything", b"x");
+  recipient_file::seal_approve_with_prefix_for_testing(id, &file, scenario.ctx());
+
+  clock::destroy_for_testing(clk);
+  unit_test::destroy(file);
+  scenario.end();
+}
+
+#[test]
+#[expected_failure(abort_code = 6, location = recipient_file)]
+fun test_seal_approve_with_prefix_aborts_when_id_does_not_match_prefix() {
+  let owner = @0xa1;
+  let mut scenario = test_scenario::begin(owner);
+
+  let clk = clock::create_for_testing(scenario.ctx());
+  let file = recipient_file::new_recipient_file_with_seal_prefix(
+    b"prefix-A-bytes",
+    b"blob",
+    option::none(),
+    b"n".to_string(),
+    b"text/plain".to_string(),
+    1u64,
+    vector[],
+    &clk,
+    scenario.ctx(),
+  );
+
+  let id = recipient_file::build_prefix_seal_id_for_testing(b"prefix-B-bytes", b"x");
+  recipient_file::seal_approve_with_prefix_for_testing(id, &file, scenario.ctx());
+
+  clock::destroy_for_testing(clk);
+  unit_test::destroy(file);
+  scenario.end();
+}
+
+#[test]
+#[expected_failure(abort_code = 8, location = recipient_file)]
+fun test_seal_approve_with_prefix_aborts_when_sender_is_not_recipient() {
+  let owner = @0xa1;
+  let intruder = @0xfade;
+  let mut scenario = test_scenario::begin(owner);
+
+  let clk = clock::create_for_testing(scenario.ctx());
+  let prefix = b"prefix-bytes";
+  let file = recipient_file::new_recipient_file_with_seal_prefix(
+    prefix,
+    b"blob",
+    option::none(),
+    b"n".to_string(),
+    b"text/plain".to_string(),
+    1u64,
+    vector[],
+    &clk,
+    scenario.ctx(),
+  );
+
+  scenario.next_tx(intruder);
+  let id = recipient_file::build_prefix_seal_id_for_testing(prefix, b"nonce");
+  recipient_file::seal_approve_with_prefix_for_testing(id, &file, scenario.ctx());
+
+  clock::destroy_for_testing(clk);
+  unit_test::destroy(file);
+  scenario.end();
+}
+
+#[test]
+#[expected_failure(abort_code = 7, location = recipient_file)]
+fun test_seal_approve_with_prefix_aborts_on_wrong_policy_tag() {
+  let owner = @0xa1;
+  let mut scenario = test_scenario::begin(owner);
+
+  let clk = clock::create_for_testing(scenario.ctx());
+  let prefix = b"prefix-bytes";
+  let file = recipient_file::new_recipient_file_with_seal_prefix(
+    prefix,
+    b"blob",
+    option::none(),
+    b"n".to_string(),
+    b"text/plain".to_string(),
+    1u64,
+    vector[],
+    &clk,
+    scenario.ctx(),
+  );
+
+  // Hand-craft an id with tag=1 (publisher) instead of 3 (recipient_file).
+  let mut id = prefix;
+  vector::push_back(&mut id, 1u8);
+  vector::append(&mut id, b"nonce");
+  recipient_file::seal_approve_with_prefix_for_testing(id, &file, scenario.ctx());
+
+  clock::destroy_for_testing(clk);
+  unit_test::destroy(file);
+  scenario.end();
+}
+
+#[test]
+fun test_owner_can_add_recipient_then_seal_approve_with_prefix_passes_for_new_member() {
+  let owner = @0xa1;
+  let new_member = @0xb0b;
+  let mut scenario = test_scenario::begin(owner);
+
+  let clk = clock::create_for_testing(scenario.ctx());
+  let prefix = b"prefix-bytes";
+  let mut file = recipient_file::new_recipient_file_with_seal_prefix(
+    prefix,
+    b"blob",
+    option::none(),
+    b"n".to_string(),
+    b"text/plain".to_string(),
+    1u64,
+    vector[],
+    &clk,
+    scenario.ctx(),
+  );
+
+  recipient_file::add_recipient(&mut file, new_member, scenario.ctx());
+
+  scenario.next_tx(new_member);
+  let id = recipient_file::build_prefix_seal_id_for_testing(prefix, b"nonce");
+  recipient_file::seal_approve_with_prefix_for_testing(id, &file, scenario.ctx());
+
+  clock::destroy_for_testing(clk);
+  unit_test::destroy(file);
+  scenario.end();
+}

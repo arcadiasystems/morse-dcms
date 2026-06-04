@@ -1,12 +1,18 @@
 /**
- * Seal adapter interface: encrypt content under a publisher Seal identity
- * and decrypt with a consumer-supplied `SessionKey`. Configuration
- * (key servers, threshold, package id) is bound at construction time.
+ * Seal adapter interface: encrypt content under a Seal identity and decrypt
+ * with a consumer-supplied `SessionKey`. Configuration (key servers,
+ * threshold, package id) is bound at construction time.
+ *
+ * Two policies coexist on the same adapter:
+ *   - Publisher policy (`decrypt`) gates content via a `PublisherCap` against
+ *     a publication's revoked-cap denylist.
+ *   - Recipient-file policy (`decryptUnderRecipientFile`) gates content via
+ *     the per-file recipient set embedded on a `RecipientFile`.
  */
 
 import type { SessionKey } from "@mysten/seal";
 
-import type { AllowlistId, PublisherCapId, SealId } from "../types.js";
+import type { PublisherCapId, RecipientFileId, SealId } from "../types.js";
 
 export interface SealEncryptOptions {
 	readonly sealId: SealId;
@@ -28,11 +34,11 @@ export interface SealDecryptOptions {
 	readonly publisherCapId: PublisherCapId;
 }
 
-/** Options for decrypting content gated by the allowlist policy. */
-export interface SealDecryptUnderAllowlistOptions {
+/** Options for decrypting content gated by the recipient-file policy. */
+export interface SealDecryptUnderRecipientFileOptions {
 	readonly sessionKey: SessionKey;
 	readonly sealId: SealId;
-	readonly allowlistId: AllowlistId;
+	readonly fileId: RecipientFileId;
 }
 
 /**
@@ -62,9 +68,8 @@ export interface SealAdapter {
 	 * a revoked cap surfaces as `SealError("no-access")`.
 	 *
 	 * @throws {SealError} On Seal authorization failure (`no-access`),
-	 *   decryption failure (`decrypt-failed` — also raised when `sealId` is
-	 *   malformed), session-key expiry (`session-expired`), or rate
-	 *   limiting (`rate-limited`).
+	 *   decryption failure (`decrypt-failed`, also raised when `sealId` is
+	 *   malformed), session-key expiry (`session-expired`), or rate limiting.
 	 * @throws {TransportError} On network or PTB build failure.
 	 */
 	decrypt(
@@ -72,21 +77,17 @@ export interface SealAdapter {
 		options: SealDecryptOptions,
 	): Promise<Uint8Array>;
 	/**
-	 * Decrypt content gated by the allowlist policy. The Seal key servers
-	 * verify that `sessionKey.getAddress()` is a current member of `allowlistId`
-	 * by dry-running `allowlist::seal_approve(sealId, allowlist)`; non-members
-	 * surface as `SealError("no-access")`.
-	 *
-	 * Distinct from `decrypt`, which targets the publisher policy. Both can
-	 * coexist on the same adapter instance since policy targeting is decided
-	 * by the seal_approve PTB the adapter constructs internally.
+	 * Decrypt content gated by the recipient-file policy. The Seal key
+	 * servers verify that `sessionKey.getAddress()` is a current recipient
+	 * of `fileId` by dry-running `recipient_file::seal_approve(sealId, file)`;
+	 * non-recipients surface as `SealError("no-access")`.
 	 *
 	 * @throws {SealError} On Seal authorization failure (`no-access`),
 	 *   decryption failure (`decrypt-failed`), session-key expiry, or rate limiting.
 	 * @throws {TransportError} On network or PTB build failure.
 	 */
-	decryptUnderAllowlist(
+	decryptUnderRecipientFile(
 		ciphertext: Uint8Array,
-		options: SealDecryptUnderAllowlistOptions,
+		options: SealDecryptUnderRecipientFileOptions,
 	): Promise<Uint8Array>;
 }

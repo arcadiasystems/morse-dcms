@@ -64,15 +64,15 @@ export interface NetworkConfig {
 	readonly packageId: PackageId;
 	readonly originalPackageId?: PackageId;
 	/**
-	 * Package id where the `file::*` and `allowlist::*` event structs were
-	 * first defined. Used to construct fully-qualified event type strings
-	 * (e.g. `${filesEventOriginPackageId}::file::FileCreated`) for indexer
-	 * queries. Distinct from `packageId` (current published-at, moves on
-	 * every upgrade) and `originalPackageId` (genesis, where the publication
-	 * modules were defined). Update only when a future upgrade redefines
-	 * the file or allowlist modules at a new address. Rare.
+	 * Package id where the `recipient_file::*` event structs were first
+	 * defined. Used to construct fully-qualified event type strings
+	 * (e.g. `${recipientFileEventOriginPackageId}::recipient_file::RecipientFileCreated`)
+	 * for indexer queries. Distinct from `packageId` (current published-at,
+	 * moves on every upgrade) and `originalPackageId` (publication-modules
+	 * genesis). Update only when a future upgrade redefines the
+	 * `recipient_file` module at a new address. Rare.
 	 */
-	readonly filesEventOriginPackageId?: PackageId;
+	readonly recipientFileEventOriginPackageId?: PackageId;
 	readonly registryId: RegistryId;
 	/**
 	 * Canonical Seal threshold-encryption key servers for the network. Used by
@@ -114,7 +114,7 @@ const KNOWN_DEPLOYMENTS: Partial<
 		{
 			readonly packageId: PackageId;
 			readonly originalPackageId: PackageId;
-			readonly filesEventOriginPackageId: PackageId;
+			readonly recipientFileEventOriginPackageId: PackageId;
 			readonly registryId: RegistryId;
 			readonly sealKeyServers: readonly KeyServerConfig[];
 			readonly walrusEndpoints: WalrusEndpoints;
@@ -122,19 +122,21 @@ const KNOWN_DEPLOYMENTS: Partial<
 	>
 > = {
 	testnet: {
-		// Updated 2026-06-04 for v2 upgrade (added allowlist + file modules).
-		// originalPackageId stays the same (used for type-filtered queries).
+		// Updated 2026-06-04 for v4 upgrade (recipient_file::new_recipient_file_with_seal_prefix
+		// + seal_approve_with_prefix added; legacy file/allowlist modules unused).
+		// originalPackageId stays at v1 (publication-modules genesis); used
+		// for type-filtered queries against publication / collection / entry.
 		packageId: toPackageId(
-			"0xd1b847666a0b47b553444944c3e64e8db129994c85481cabbe9089a1fa218698",
+			"0x468727724e86b7d305e961aee73ef9d868b4b68478952fc23748ef4ccfcaf4b2",
 		),
 		originalPackageId: toPackageId(
 			"0x191946c5dc1ea1b978e664d85455e81ef9bdd1d3dbb221fd48cf9008d46a00f0",
 		),
-		// file::* and allowlist::* event structs were defined in the v2
-		// upgrade. Equal to packageId today but tracked separately because it
-		// must NOT move on future upgrades that don't redefine those modules.
-		filesEventOriginPackageId: toPackageId(
-			"0xd1b847666a0b47b553444944c3e64e8db129994c85481cabbe9089a1fa218698",
+		// recipient_file::* event structs were defined in the v3 upgrade.
+		// Tracked separately because it must NOT move on future upgrades
+		// that don't redefine the recipient_file module.
+		recipientFileEventOriginPackageId: toPackageId(
+			"0x3bb8773c55b5bfde6c3821da52afd038a52e6a6ac586d5106013144f3aa7747f",
 		),
 		registryId: toRegistryId(
 			"0xb25e4849d720ad5058c1945a819aa1dc01ff899006e3f0fe7cb9c62668d307e2",
@@ -177,7 +179,7 @@ export interface MorseConfigOptions {
 	readonly rpcUrl?: string;
 	readonly packageId?: PackageId;
 	readonly originalPackageId?: PackageId;
-	readonly filesEventOriginPackageId?: PackageId;
+	readonly recipientFileEventOriginPackageId?: PackageId;
 	readonly registryId?: RegistryId;
 	readonly sealKeyServers?: readonly KeyServerConfig[];
 	readonly walrusEndpoints?: WalrusEndpoints;
@@ -194,8 +196,9 @@ export function morseConfig(options: MorseConfigOptions): NetworkConfig {
 	const packageId = options.packageId ?? deployment?.packageId;
 	const originalPackageId =
 		options.originalPackageId ?? deployment?.originalPackageId;
-	const filesEventOriginPackageId =
-		options.filesEventOriginPackageId ?? deployment?.filesEventOriginPackageId;
+	const recipientFileEventOriginPackageId =
+		options.recipientFileEventOriginPackageId ??
+		deployment?.recipientFileEventOriginPackageId;
 	const registryId = options.registryId ?? deployment?.registryId;
 
 	if (!packageId || !registryId) {
@@ -215,9 +218,9 @@ export function morseConfig(options: MorseConfigOptions): NetworkConfig {
 		packageId,
 		registryId,
 		...(originalPackageId === undefined ? {} : { originalPackageId }),
-		...(filesEventOriginPackageId === undefined
+		...(recipientFileEventOriginPackageId === undefined
 			? {}
-			: { filesEventOriginPackageId }),
+			: { recipientFileEventOriginPackageId }),
 		sealKeyServers: options.sealKeyServers ?? deployment?.sealKeyServers ?? [],
 		walrusEndpoints: options.walrusEndpoints ??
 			deployment?.walrusEndpoints ?? { aggregator: "" },
