@@ -225,6 +225,11 @@ export interface AllowlistCap {
 /**
  * On-chain metadata record for a file stored on Walrus. `allowlistId` is set
  * iff `encrypted === true`; public files carry `allowlistId: null`.
+ *
+ * Returned by `RpcFilesReader.getEncryptedFile` (live object read) and as the
+ * `"full"` variant of `EncryptedFileSummaryOrFull` after hydration. Use
+ * `EncryptedFileSummary` (no `blobId`, no `blobObjectId`) for event-derived
+ * lists that haven't been hydrated.
  */
 export interface EncryptedFile {
 	readonly id: EncryptedFileId;
@@ -244,3 +249,48 @@ export interface EncryptedFile {
 	readonly allowlistId: AllowlistId | null;
 	readonly createdAtMs: number;
 }
+
+/**
+ * Event-derived view of an `EncryptedFile`. Built purely from `FileCreated`
+ * event payloads + envelope `timestampMs`, with no live object fetch.
+ *
+ * Missing relative to `EncryptedFile`: `blobId` and `blobObjectId` are not
+ * carried in the `FileCreated` event payload, so summaries cannot be used
+ * directly to read bytes from Walrus or to call the on-chain Blob object.
+ * Hydrate via `RpcFilesReader.getEncryptedFile(id)` when those fields are
+ * needed. A future contract upgrade may add `blob_id` to `FileCreated`,
+ * which would let summaries become actionable for download flows; the
+ * discriminated union keeps that migration backwards-compatible.
+ */
+export interface EncryptedFileSummary {
+	readonly kind: "summary";
+	readonly id: EncryptedFileId;
+	readonly owner: SuiAddress;
+	readonly name: string;
+	readonly contentType: string;
+	readonly size: number;
+	readonly encrypted: boolean;
+	readonly allowlistId: AllowlistId | null;
+	/**
+	 * Transaction timestamp of the `FileCreated` event, in milliseconds since
+	 * unix epoch. Sourced from the Sui event envelope, not from the on-chain
+	 * `created_at_ms` field (which the event does not emit). Use for ordering
+	 * UI lists; equal to the hydrated record's `createdAtMs` within Sui's
+	 * checkpoint timing precision.
+	 */
+	readonly createdAtMs: number;
+}
+
+/** `EncryptedFile` wrapped in the same discriminated-union shape as `EncryptedFileSummary`. */
+export interface EncryptedFileFull extends EncryptedFile {
+	readonly kind: "full";
+}
+
+/**
+ * Union type returned by the reconcile helpers. Switch on `kind` to access
+ * fields safely. `summary` is the default (event-derived, fast); `full`
+ * requires a per-result `getEncryptedFile` (N+1; use sparingly).
+ */
+export type EncryptedFileSummaryOrFull =
+	| EncryptedFileSummary
+	| EncryptedFileFull;

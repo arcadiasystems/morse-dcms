@@ -142,7 +142,10 @@ export {
 } from "./ops/index.js";
 export {
 	type AllowlistCapListPage,
+	buildFilesEventTypes,
 	type EntryListPage,
+	type FilesEventInput,
+	type FilesEventTypes,
 	type FilesListOptions,
 	type FilesReader,
 	type ListEntriesOptions,
@@ -154,6 +157,8 @@ export {
 	type PublisherCapListPage,
 	RpcFilesReader,
 	RpcPublicationReader,
+	reconcileFilesAccessibleBy,
+	reconcileFilesOwnedBy,
 	type ScanEntriesOptions,
 } from "./read/index.js";
 export {
@@ -181,7 +186,10 @@ export {
 	type BlobRef,
 	type Collection,
 	type EncryptedFile,
+	type EncryptedFileFull,
 	type EncryptedFileId,
+	type EncryptedFileSummary,
+	type EncryptedFileSummaryOrFull,
 	type Entry,
 	type OwnerCap,
 	type OwnerCapId,

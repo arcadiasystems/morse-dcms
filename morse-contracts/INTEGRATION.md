@@ -170,19 +170,26 @@ Decryption access is governed separately by the allowlist; compose
 - `FileOwnershipTransferred { file: ID, previous_owner: address, new_owner: address }` — on `transfer_ownership`.
 - `FileDeleted { file: ID, name: String }` — on `delete_file`.
 
-## Listing files accessible to an address
+## Listing files for an address
 
-There is no direct on-chain query for "files where address X is a member of
-the file's allowlist". The intended approach is event-based:
+`EncryptedFile` is a shared object, so Sui's `listOwnedObjects` cannot find
+files by owner. From v0.3.0, the SDK ships pure reconciliation helpers that
+turn raw event streams into the current state:
 
-1. Subscribe to `MemberAdded` / `MemberRemoved` to track which allowlists
-   include address X.
-2. Subscribe to `FileCreated` filtered by `allowlist_id ∈ <addr's allowlists>`.
-3. Reconcile against `MemberRemoved` and `FileDeleted` for the live set.
+- `reconcileFilesOwnedBy(events, address, eventTypes): EncryptedFileSummary[]`
+- `reconcileFilesAccessibleBy(events, address, eventTypes): EncryptedFileSummary[]`
 
-A future indexer integration will expose this as a `listFilesAccessibleBy(address)`
-reader method. Until then, consumer dapps either index events themselves or
-list per-allowlist by querying the `Allowlist` object's `members` field.
+The SDK does NOT ship event fetching. Consumers integrate an indexer of
+their choice (Mysten public, self-hosted, third-party, or
+`suix_queryEvents` on the legacy JSON-RPC) and pass the events to the
+reconcile helpers. See `morse-sdk/FILE-UPLOADER.md` section 9 for the
+~15-line consumer recipe.
+
+Event types are constructed via `buildFilesEventTypes(packageId)` where
+`packageId` is the type-origin id (the package where the event structs were
+first defined). For the current deployment this is the v2 upgrade address
+(`0xd1b847666a0b47b553444944c3e64e8db129994c85481cabbe9089a1fa218698`).
+Stored in `morseConfig.filesEventOriginPackageId`.
 
 ## Reading
 
@@ -192,12 +199,10 @@ The SDK's `RpcFilesReader` exposes:
 getAllowlist(id): Promise<Allowlist>
 getEncryptedFile(id): Promise<EncryptedFile>
 listAllowlistCapsOwnedBy(address, options?): Promise<AllowlistCapListPage>
-listEncryptedFilesOwnedBy(address, options?): Promise<EncryptedFileListPage>
 ```
 
-`listEncryptedFilesOwnedBy` returns files where the address is the on-chain
-`owner` (the metadata-mutation right holder), not files accessible by
-membership. For the membership case, see the event-based approach above.
+For file listing by ownership or membership, see "Listing files for an
+address" above.
 
 ## Seal key-server registration
 

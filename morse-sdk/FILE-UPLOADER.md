@@ -205,22 +205,106 @@ await transferFileOwnership(adapter, config, { fileId, newOwner });
 await deleteFile(adapter, config, { fileId });
 ```
 
-## 8. Listing files owned by an address
+## 8. Listing the allowlists an address admins
 
 ```ts
-const page = await filesReader.listEncryptedFilesOwnedBy(myAddress);
-for (const file of page.results) {
-  console.log(file.name, file.contentType, file.size);
-}
-// Use page.nextCursor for pagination.
-
 const capPage = await filesReader.listAllowlistCapsOwnedBy(myAddress);
 for (const cap of capPage.results) {
   console.log("admin of:", cap.allowlistId);
 }
+// page.nextCursor for pagination.
 ```
 
-**Listing "files I can decrypt because I am a member"** is not exposed directly — it requires event-based indexing. See `morse-contracts/INTEGRATION.md` for the event subscription approach.
+This works against the gRPC fullnode because `AllowlistCap` is an owned object (the Cap has an explicit address owner; Sui's `listOwnedObjects` indexes by owner). Use this to populate "allowlists I manage" sections.
+
+## 9. Listing files via your indexer
+
+`EncryptedFile` is a shared Sui object, so `listOwnedObjects` cannot find files by owner. The morse-sdk does NOT ship event fetching (Sui v2 gRPC has no historical event query, and `suix_queryEvents` is sunsetting). Instead, the SDK ships **pure reconciliation helpers** that turn raw event streams into the current file set. You bring the indexer.
+
+### What you need
+
+Pick a Sui event source. Options:
+- **Mysten public testnet indexer** (if available; check the [Sui docs](https://docs.sui.io/) for the current endpoint and CORS story)
+- **Self-hosted indexer** (e.g. [sui-indexer](https://docs.sui.io/guides/operator/sui-indexer))
+- **Third-party** (Suiscan, Pyth, etc., per their query APIs)
+- **`suix_queryEvents` on a JSON-RPC endpoint** (works today, deprecated path)
+
+Any source that can return events of a given Move type with their `parsedJson` payload and a `timestampMs` field will work. The reconcile helpers don't care which.
+
+### Usage
+
+```ts
+import {
+  buildFilesEventTypes,
+  reconcileFilesOwnedBy,
+  reconcileFilesAccessibleBy,
+  type FilesEventInput,
+} from "@arcadiasystems/morse-sdk";
+
+// 1. Build the event type strings from your config.
+const eventTypes = buildFilesEventTypes(config.filesEventOriginPackageId!);
+
+// 2. Fetch events via your indexer. Pseudo-code; replace with your client.
+async function fetchAll(eventType: string): Promise<FilesEventInput[]> {
+  const out: FilesEventInput[] = [];
+  let cursor: unknown = null;
+  while (true) {
+    const page = await myIndexer.queryEvents({
+      query: { MoveEventType: eventType },
+      cursor,
+      limit: 50,
+      descending: true,
+    });
+    out.push(...page.data.map((e) => ({
+      type: e.type,
+      parsedJson: e.parsedJson,
+      timestampMs: e.timestampMs,
+    })));
+    if (!page.hasNextPage) break;
+    cursor = page.nextCursor;
+  }
+  return out;
+}
+
+// 3. Concatenate the streams you need.
+const ownedEvents = await Promise.all([
+  fetchAll(eventTypes.FileCreated),
+  fetchAll(eventTypes.FileOwnershipTransferred),
+  fetchAll(eventTypes.FileDeleted),
+]).then((arrs) => arrs.flat());
+
+// 4. Reconcile into the current "my files" list.
+const myFiles = reconcileFilesOwnedBy(ownedEvents, myAddress, eventTypes);
+// myFiles is EncryptedFileSummary[], sorted newest-first.
+
+// 5. For "files accessible to me" (allowlist membership):
+const accessibleEvents = await Promise.all([
+  fetchAll(eventTypes.MemberAdded),
+  fetchAll(eventTypes.MemberRemoved),
+  fetchAll(eventTypes.AllowlistDeleted),
+  fetchAll(eventTypes.FileCreated),
+  fetchAll(eventTypes.FileDeleted),
+]).then((arrs) => arrs.flat());
+
+const sharedWithMe = reconcileFilesAccessibleBy(
+  accessibleEvents,
+  myAddress,
+  eventTypes,
+);
+```
+
+### What summaries contain
+
+`EncryptedFileSummary` has the fields available from the `FileCreated` event payload + envelope `timestampMs`: `id`, `owner`, `name`, `contentType`, `size`, `encrypted`, `allowlistId`, `createdAtMs`.
+
+**Missing**: `blobId` and `blobObjectId`. The `FileCreated` event doesn't carry them. To download or share a file from a summary list, call `filesReader.getEncryptedFile(summary.id)` to hydrate. A future contract upgrade may add `blob_id` to the event, which would make summaries actionable without the hydrate step; the discriminated-union types (`{ kind: "summary" } | { kind: "full" }`) keep that migration backwards-compatible.
+
+### Caveats
+
+- **Eventually consistent.** Event-fetch lag, indexer retention, and pagination windows mean these lists are best-effort. For guaranteed-complete listing (e.g. compliance), use an indexer with retention guarantees and snapshot-consistent queries.
+- **Pagination is yours.** The reconcile helpers process whatever you pass; if the indexer's pagination misses events, the reconcile result will be partial.
+- **Pure functions.** No I/O, no clients, no failure modes. Errors from your indexer surface in your fetch layer, not from the SDK.
+- **Order-independent.** Events are sorted by `timestampMs` internally; you can stream them in any order or batch.
 
 ## 9. Standalone encrypt / decrypt (rarely needed)
 

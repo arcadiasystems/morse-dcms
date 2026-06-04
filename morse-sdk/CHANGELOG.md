@@ -2,6 +2,44 @@
 
 All notable changes to `morse-sdk` will be documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-06-04
+
+Event-based file listing helpers, deliberately scoped to NOT include event fetching. Consumers integrate the indexer of their choice (Mysten public, self-hosted, third-party); the SDK ships the parsing + reconciliation logic. All additive, no breaking changes.
+
+### Added: types
+
+- `EncryptedFileSummary` discriminated-union variant (`kind: "summary"`) with event-derivable fields: `id`, `owner`, `name`, `contentType`, `size`, `encrypted`, `allowlistId`, `createdAtMs` (from event envelope `timestampMs`, not the on-chain field).
+- `EncryptedFileFull` (`kind: "full"`) wraps the existing `EncryptedFile` for hydrated results.
+- `EncryptedFileSummaryOrFull` union returned by the reconcile helpers.
+
+### Added: config
+
+- `NetworkConfig.filesEventOriginPackageId: PackageId` (optional). Type-origin package id for `file::*` and `allowlist::*` event structs. Distinct from `packageId` (which moves on every upgrade) and `originalPackageId` (genesis publication-modules root). Default for testnet baked in (currently equal to `packageId`; will diverge if a future upgrade adds new modules without redefining file/allowlist).
+
+### Added: event type constants
+
+- `buildFilesEventTypes(packageId): FilesEventTypes`. Returns fully-qualified event type strings for `FileCreated`, `FileDeleted`, `FileMetadataUpdated`, `FileOwnershipTransferred`, `AllowlistCreated`, `AllowlistDeleted`, `MemberAdded`, `MemberRemoved`, `CapTransferred`. Pass `config.filesEventOriginPackageId`.
+
+### Added: pure reconcile helpers
+
+- `reconcileFilesOwnedBy(events, address, eventTypes): EncryptedFileSummary[]`. Consumes `FileCreated`, `FileOwnershipTransferred`, `FileDeleted`; returns the current set of files owned by `address`. Order-independent (sorts by `timestampMs` internally). Newest-first.
+- `reconcileFilesAccessibleBy(events, address, eventTypes): EncryptedFileSummary[]`. Consumes `MemberAdded`, `MemberRemoved`, `AllowlistDeleted`, `FileCreated`, `FileDeleted`; returns files where `address` is currently a member of the gating allowlist. Excludes public files, deleted files, and files referencing a deleted allowlist.
+
+Both helpers are pure: no I/O, no client, no dependencies. Caller fetches events via their indexer; helpers parse + reconcile.
+
+### Architectural note
+
+The SDK does NOT ship event fetching. Sui v2 gRPC has no historical event query, and Mysten is sunsetting `suix_queryEvents` on the JSON-RPC side. Coupling morse-sdk to a deprecated endpoint or a single indexer service was rejected. Both pushed platform risk into the SDK that consumers couldn't control. The reconcile helpers + event-type constants encode the morse-contract-specific knowledge; the consumer owns the indexer integration. See `FILE-UPLOADER.md` section 9 for the ~15-line consumer recipe.
+
+### Added: docs
+
+- `FILE-UPLOADER.md` new section "9. Listing files via your indexer" with the consumer-side glue example.
+- `morse-contracts/INTEGRATION.md` updated to note the helpers are now available.
+
+### Migration from 0.2.0
+
+No code changes required for existing consumers. New file-listing UX wires through the new helpers + a consumer-chosen indexer client.
+
 ## [0.2.0] - 2026-06-04
 
 Per-wallet allowlist + encrypted-file metadata module. Substantial new public surface; minor bump per pre-1.0 convention. **No breaking changes**: existing publication / collection / entry / wallet / Walrus / Seal-publisher-policy surface is byte-identical to 0.1.4.
@@ -209,6 +247,7 @@ See `README.md` for the full list. Headlines:
 - Wallet schemes other than Ed25519 ship as decoders with E2E unverified; `WalletStandardSigner.fromAccount` will accept them, but `@mysten/walrus` and `@mysten/seal` round-trip is not yet smoke-tested for those configurations.
 - gRPC client only at v0.1.0; the reader and adapter interfaces are typed against `Pick<SuiGrpcClient, ...>`. JSON-RPC fallback is planned for v0.2.0.
 
+[0.3.0]: https://github.com/arcadiasystems/morse-dcms/releases/tag/v0.3.0
 [0.2.0]: https://github.com/arcadiasystems/morse-dcms/releases/tag/v0.2.0
 [0.1.4]: https://github.com/arcadiasystems/morse-dcms/releases/tag/v0.1.4
 [0.1.3]: https://github.com/arcadiasystems/morse-dcms/releases/tag/v0.1.3

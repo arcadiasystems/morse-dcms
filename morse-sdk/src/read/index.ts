@@ -3,6 +3,13 @@
  */
 
 export {
+	buildFilesEventTypes,
+	type FilesEventInput,
+	type FilesEventTypes,
+	reconcileFilesAccessibleBy,
+	reconcileFilesOwnedBy,
+} from "./files-events.js";
+export {
 	type AllowlistCapListPage,
 	type FilesListOptions,
 	type FilesReader,
