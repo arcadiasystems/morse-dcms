@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import type {
+	Allowlist,
+	AllowlistCap,
 	Collection,
+	EncryptedFile,
 	Entry,
 	OwnedPublication,
 	Publication,
@@ -9,7 +12,10 @@ import type {
 
 import { shortId } from "../src/format/ids.ts";
 import {
+	renderAllowlist,
+	renderAllowlistCapList,
 	renderCollectionList,
+	renderEncryptedFile,
 	renderEntry,
 	renderEntryList,
 	renderPublication,
@@ -133,5 +139,68 @@ describe("renderEntryList", () => {
 			{ id: 1, name: "a", revisions: [], draftHead: null, publicHead: null },
 		] as unknown as Entry[];
 		expect(renderEntryList(entries)).toContain("#1 a");
+	});
+});
+
+describe("renderAllowlist", () => {
+	test("shows name and members, or (none) when empty", () => {
+		const base = { id: `0x${"7".repeat(64)}`, name: "team" } as const;
+		const withMembers = renderAllowlist({
+			...base,
+			members: [`0x${"2".repeat(64)}`],
+		} as unknown as Allowlist);
+		expect(withMembers).toContain("team");
+		expect(withMembers).toContain("members (1)");
+		expect(withMembers).toContain(`0x${"2".repeat(64)}`);
+
+		const empty = renderAllowlist({
+			...base,
+			members: [],
+		} as unknown as Allowlist);
+		expect(empty).toContain("(none)");
+	});
+});
+
+describe("renderAllowlistCapList", () => {
+	test("handles empty and populated lists", () => {
+		expect(renderAllowlistCapList([])).toContain("No allowlist caps");
+		const caps = [
+			{ id: `0x${"8".repeat(64)}`, allowlistId: `0x${"7".repeat(64)}` },
+		] as unknown as AllowlistCap[];
+		expect(renderAllowlistCapList(caps)).toContain(`0x${"8".repeat(64)}`);
+	});
+});
+
+describe("renderEncryptedFile", () => {
+	const base = {
+		id: `0x${"9".repeat(64)}`,
+		owner: `0x${"a".repeat(64)}`,
+		blobId: "blob123",
+		blobObjectId: null,
+		name: "doc.pdf",
+		contentType: "application/pdf",
+		size: 1024,
+		createdAtMs: 0,
+	};
+
+	test("omits the allowlist line for a public file", () => {
+		const out = renderEncryptedFile({
+			...base,
+			encrypted: false,
+			allowlistId: null,
+		} as unknown as EncryptedFile);
+		expect(out).toContain("doc.pdf");
+		expect(out).toContain("encrypted:   false");
+		expect(out).not.toContain("allowlist:");
+	});
+
+	test("includes the allowlist line for an encrypted file", () => {
+		const out = renderEncryptedFile({
+			...base,
+			encrypted: true,
+			allowlistId: `0x${"7".repeat(64)}`,
+		} as unknown as EncryptedFile);
+		expect(out).toContain("allowlist:");
+		expect(out).toContain(`0x${"7".repeat(64)}`);
 	});
 });

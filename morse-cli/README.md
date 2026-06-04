@@ -6,7 +6,7 @@ content entries from your terminal, signing with a locally encrypted key.
 Content is stored on [Walrus](https://walrus.xyz); private entries are encrypted
 with [Seal](https://github.com/MystenLabs/seal).
 
-> Status: v0.1.0, targeting Sui testnet. The command surface is stable; mainnet
+> Status: v0.2.0, targeting Sui testnet. The command surface is stable; mainnet
 > support lands when the contracts are frozen.
 
 ## Requirements
@@ -228,6 +228,39 @@ OwnerCap and PublisherCap IDs are auto-resolved from the active account when the
 `--owner-cap` / `--publisher-cap` override is omitted. Destructive operations
 (`delete`, `revoke`, `destroy`, `transfer`) confirm interactively unless `--yes`.
 
+### allowlist
+
+Per-wallet allowlists gate who can decrypt encrypted files. The admin Cap is
+auto-resolved from the active account when `--cap` is omitted.
+
+| Command | Purpose |
+| --- | --- |
+| `allowlist create --name <name>` | Create an allowlist; transfers its admin Cap to you. |
+| `allowlist add-member <addr> -a <id> [--cap <id>]` | Add a wallet that may decrypt. |
+| `allowlist remove-member <addr> -a <id> [--cap <id>]` | Remove a wallet. |
+| `allowlist transfer-cap <recipient> -a <id> [--cap <id>] [-y]` | Hand off admin rights. |
+| `allowlist delete -a <id> [--cap <id>] [-y]` | Delete an allowlist (dependent files become undecryptable). |
+| `allowlist get <id>` | Show an allowlist's name and members. |
+| `allowlist list-caps [address]` | List allowlist admin Caps held by an address. |
+
+### file
+
+| Command | Purpose |
+| --- | --- |
+| `file upload <path> --name <n> [-a <id>] [--public] [--content-type <m>] [--epochs <n>]` | Upload to Walrus and register; `-a` encrypts, `--public` is world-readable. |
+| `file register --blob-id <id> --name <n> --content-type <m> --size <bytes> [-a <id>] [--public] [--blob-object-id <id>]` | Register metadata for a blob already on Walrus. |
+| `file download <file> [--out <path>] [--seal-id <hex>] [--via-aggregator]` | Download content; decrypts in place when encrypted. |
+| `file get <file>` | Fetch a file's on-chain metadata. |
+| `file update <file> --name <n> --content-type <m>` | Update name and MIME (owner only). |
+| `file transfer-ownership <file> <newOwner> [-y]` | Transfer the metadata right (not decrypt access). |
+| `file delete <file> [-y]` | Delete the metadata record (the Walrus blob expires on its own lease). |
+
+Encrypting a file (`file upload -a <allowlist>`) prints a **seal id**. It is not
+recoverable from the ciphertext, so save it: `file download` needs it (via
+`--seal-id`) plus allowlist membership to decrypt. Listing "files I can decrypt
+as a member" is not supported on-chain (encrypted files are shared objects with
+no owner index); track file ids yourself or index the contract events.
+
 ## Output and scripting
 
 - Human-readable output goes to stdout; progress, warnings, and prompts go to
@@ -257,6 +290,7 @@ OwnerCap and PublisherCap IDs are auto-resolved from the active account when the
   - [`encrypt-decrypt.sh`](./examples/encrypt-decrypt.sh): encrypt with Seal and decrypt back.
   - [`delegation.sh`](./examples/delegation.sh): issue a PublisherCap to a delegate, then revoke it.
   - [`ci-noninteractive.sh`](./examples/ci-noninteractive.sh): env-var auth, `--yes`, and `--json` parsing.
+  - [`files.sh`](./examples/files.sh): allowlist + encrypted file round-trip (create allowlist, add a member, upload, download/decrypt, plus a public file).
 
 ## Limitations
 

@@ -17,9 +17,12 @@ import type { SuiGrpcClient } from "@mysten/sui/grpc";
 import type { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 
 import type {
+	AllowlistWriteContext,
 	ContentContext,
 	DecryptContext,
 	EncryptContext,
+	FileDownloadContext,
+	FilesReadContext,
 	ReadContentContext,
 	ReadContext,
 	WriteContext,
@@ -41,6 +44,8 @@ function baseSettings(over: Partial<ResolvedSettings> = {}): ResolvedSettings {
 
 export interface ReadFixtureOptions {
 	readonly reader?: MockReader;
+	// Loosely typed: tests supply only the RpcFilesReader methods the core calls.
+	readonly filesReader?: unknown;
 	readonly settings?: Partial<ResolvedSettings>;
 	readonly ownerAddress?: SuiAddress | undefined;
 	readonly json?: boolean;
@@ -91,6 +96,53 @@ export function writeContext(opts: ReadFixtureOptions = {}): WriteFixture {
 			...ctx,
 			adapter: inert<WriteContext["adapter"]>(),
 			address: ADDRESS,
+		},
+		captured,
+	};
+}
+
+function filesReaderOf(
+	opts: ReadFixtureOptions,
+): FilesReadContext["filesReader"] {
+	return (opts.filesReader ?? {}) as FilesReadContext["filesReader"];
+}
+
+export function filesReadContext(opts: ReadFixtureOptions = {}): {
+	ctx: FilesReadContext;
+	captured: CapturedOutput;
+} {
+	const { ctx, captured } = readBase(opts);
+	return { ctx: { ...ctx, filesReader: filesReaderOf(opts) }, captured };
+}
+
+export function allowlistWriteContext(opts: ReadFixtureOptions = {}): {
+	ctx: AllowlistWriteContext;
+	captured: CapturedOutput;
+} {
+	const { ctx, captured } = writeContext(opts);
+	return { ctx: { ...ctx, filesReader: filesReaderOf(opts) }, captured };
+}
+
+export interface DownloadFixtureOptions extends ReadFixtureOptions {
+	readonly walrusRead?: unknown;
+	readonly seal?: unknown;
+}
+
+export function fileDownloadContext(opts: DownloadFixtureOptions = {}): {
+	ctx: FileDownloadContext;
+	captured: CapturedOutput;
+} {
+	const { ctx, captured } = filesReadContext(opts);
+	return {
+		ctx: {
+			...ctx,
+			walrusRead: (opts.walrusRead ??
+				{}) as unknown as FileDownloadContext["walrusRead"],
+			seal: (opts.seal ?? {}) as unknown as FileDownloadContext["seal"],
+			// Encrypted-decrypt tests live in the live e2e; hermetic guard tests
+			// never reach the signer, so fail loudly if one does.
+			unlockSigner: () =>
+				Promise.reject(new Error("unlockSigner should not be called")),
 		},
 		captured,
 	};

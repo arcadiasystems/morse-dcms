@@ -30,6 +30,17 @@ export function ownerCapOption(command: Command): Command {
 	);
 }
 
+export function allowlistOption(command: Command): Command {
+	return command.option("-a, --allowlist <id>", "Allowlist object id");
+}
+
+export function allowlistCapOption(command: Command): Command {
+	return command.option(
+		"--cap <id>",
+		"Allowlist admin Cap id (auto-resolved from owned caps if omitted)",
+	);
+}
+
 export function viaAggregatorOption(command: Command): Command {
 	return command.option(
 		"--via-aggregator",

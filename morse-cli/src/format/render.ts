@@ -1,7 +1,10 @@
 /** Human-readable renderers for read results. JSON output uses the raw objects. */
 
 import type {
+	Allowlist,
+	AllowlistCap,
 	Collection,
+	EncryptedFile,
 	Entry,
 	OwnedPublication,
 	OwnerCapId,
@@ -105,6 +108,42 @@ export function renderEntryList(entries: readonly Entry[]): string {
 				`#${entry.id} ${entry.name} (${entry.revisions.length} revisions)`,
 		)
 		.join("\n");
+}
+
+export function renderAllowlist(allowlist: Allowlist): string {
+	const members =
+		allowlist.members.length === 0
+			? "(none)"
+			: allowlist.members.map((m) => `  ${m}`).join("\n");
+	return [
+		`${allowlist.name} (${shortId(allowlist.id)})`,
+		`members (${allowlist.members.length}):`,
+		members,
+	].join("\n");
+}
+
+export function renderAllowlistCapList(caps: readonly AllowlistCap[]): string {
+	if (caps.length === 0) {
+		return "No allowlist caps held by this address.";
+	}
+	return caps
+		.map((cap) => `${cap.id}  allowlist ${cap.allowlistId}`)
+		.join("\n");
+}
+
+export function renderEncryptedFile(file: EncryptedFile): string {
+	const lines = [
+		`${file.name} (${shortId(file.id)})`,
+		`contentType: ${file.contentType}`,
+		`size:        ${file.size}`,
+		`encrypted:   ${file.encrypted}`,
+		`blobId:      ${file.blobId}`,
+		`owner:       ${file.owner}`,
+	];
+	if (file.allowlistId !== null) {
+		lines.push(`allowlist:   ${file.allowlistId}`);
+	}
+	return lines.join("\n");
 }
 
 function headLabel(value: number | null): string {

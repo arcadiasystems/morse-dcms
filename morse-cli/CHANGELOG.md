@@ -4,6 +4,39 @@ All notable changes to `@arcadiasystems/morse-cli` are documented here. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-06-04
+
+Wraps the allowlist + encrypted-file surface from `@arcadiasystems/morse-sdk`
+0.2.0. Existing publication / collection / entry / cap commands are unchanged.
+
+### Added
+
+- `morse allowlist` group: `create`, `add-member`, `remove-member`,
+  `transfer-cap`, `delete`, `get`, `list-caps`. The admin Cap is auto-resolved
+  from the active account when `--cap` is omitted (mirrors OwnerCap/PublisherCap
+  resolution). `transfer-cap` and `delete` confirm unless `--yes`.
+- `morse file` group: `upload` (encrypt with `--allowlist` or `--public`, upload
+  to Walrus, and register; prints a seal id for encrypted files), `register`
+  (register metadata for a blob already on Walrus), `download` (fetch content,
+  decrypting in place for encrypted files via `--seal-id`), `get`, `update`,
+  `transfer-ownership`, `delete`.
+- `entry read` / `entry decrypt` / `file download` accept `--via-aggregator` to
+  read through the Walrus aggregator HTTP service instead of the storage-node
+  protocol (more reliable when nodes are flaky; trades client-side blob
+  verification for operator trust).
+
+### Changed
+
+- Depends on `@arcadiasystems/morse-sdk` `^0.2.0` (testnet `packageId` updated to
+  the contracts v2 deployment).
+
+### Notes
+
+- A file's seal id is not recoverable from its ciphertext; save the value
+  printed by `file upload` to decrypt later.
+- Listing files accessible by allowlist membership is not exposed (encrypted
+  files are shared objects with no owner index); it needs event indexing.
+
 ## [0.1.0] - 2026-05-29
 
 ### Added

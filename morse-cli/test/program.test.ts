@@ -75,10 +75,12 @@ describe("registration", () => {
 		expect(names).toEqual(
 			[
 				"account",
+				"allowlist",
 				"cap",
 				"collection",
 				"config",
 				"entry",
+				"file",
 				"publication",
 				"revision",
 				"status",
@@ -274,6 +276,131 @@ describe("localnet guards on content contexts", () => {
 				join(tmpdir(), "morse-localnet-dec"),
 			]),
 		).rejects.toThrow(/localnet/);
+	});
+});
+
+describe("allowlist wrappers (offline guards)", () => {
+	const ALLOWLIST = `0x${"7".repeat(64)}`;
+
+	test("add-member requires --allowlist", async () => {
+		await expect(
+			dispatch(["allowlist", "add-member", RECIPIENT]),
+		).rejects.toThrow(/--allowlist/);
+	});
+
+	test("transfer-cap declines without --yes", async () => {
+		await expect(
+			dispatch([
+				"allowlist",
+				"transfer-cap",
+				RECIPIENT,
+				"--allowlist",
+				ALLOWLIST,
+			]),
+		).rejects.toThrow(/--yes/);
+	});
+
+	test("delete declines without --yes", async () => {
+		await expect(
+			dispatch(["allowlist", "delete", "--allowlist", ALLOWLIST]),
+		).rejects.toThrow(/--yes/);
+	});
+
+	test("remove-member requires --allowlist", async () => {
+		await expect(
+			dispatch(["allowlist", "remove-member", RECIPIENT]),
+		).rejects.toThrow(/--allowlist/);
+	});
+
+	test("get rejects a malformed allowlist id before any RPC", async () => {
+		await expect(dispatch(["allowlist", "get", "not-an-id"])).rejects.toThrow();
+	});
+
+	test("list-caps rejects a malformed address before any RPC", async () => {
+		await expect(
+			dispatch(["allowlist", "list-caps", "not-an-address"]),
+		).rejects.toThrow();
+	});
+});
+
+describe("file wrappers (offline guards)", () => {
+	const FILE = `0x${"9".repeat(64)}`;
+
+	test("upload requires --allowlist or --public", async () => {
+		await expect(
+			dispatch(["file", "upload", "/tmp/x", "--name", "x"]),
+		).rejects.toThrow(/--allowlist|--public/);
+	});
+
+	test("get rejects a malformed file id before any RPC", async () => {
+		await expect(dispatch(["file", "get", "not-an-id"])).rejects.toThrow();
+	});
+
+	test("download in --json without --out is a usage error", async () => {
+		await expect(
+			dispatch(["--json", "file", "download", FILE]),
+		).rejects.toThrow(/--out/);
+	});
+
+	test("download --via-aggregator builds the aggregator adapter", async () => {
+		await expect(
+			dispatch(["--json", "file", "download", FILE, "--via-aggregator"]),
+		).rejects.toThrow(/--out/);
+	});
+
+	test("download is refused on localnet", async () => {
+		await expect(
+			dispatch([
+				"--network",
+				"localnet",
+				"file",
+				"download",
+				FILE,
+				"--out",
+				join(tmpdir(), "morse-file-localnet"),
+			]),
+		).rejects.toThrow(/localnet/);
+	});
+
+	test("update rejects a malformed file id before any RPC", async () => {
+		await expect(
+			dispatch([
+				"file",
+				"update",
+				"not-an-id",
+				"--name",
+				"x",
+				"--content-type",
+				"text/plain",
+			]),
+		).rejects.toThrow();
+	});
+
+	test("register requires --allowlist or --public", async () => {
+		await expect(
+			dispatch([
+				"file",
+				"register",
+				"--blob-id",
+				"A".repeat(43),
+				"--name",
+				"x",
+				"--content-type",
+				"text/plain",
+				"--size",
+				"10",
+			]),
+		).rejects.toThrow(/--allowlist|--public/);
+	});
+
+	test("transfer-ownership declines without --yes", async () => {
+		await expect(
+			dispatch(["file", "transfer-ownership", FILE, RECIPIENT]),
+		).rejects.toThrow(/--yes/);
+	});
+
+	test("delete declines without --yes", async () => {
+		await expect(dispatch(["file", "delete", FILE])).rejects.toThrow(/--yes/);
 	});
 });
 

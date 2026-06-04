@@ -12,6 +12,7 @@ import {
 	KeypairAdapter,
 	morseConfig,
 	type NetworkConfig,
+	RpcFilesReader,
 	RpcPublicationReader,
 	type SuiAddress,
 	type WalrusReadAdapter,
@@ -91,6 +92,36 @@ export async function buildWriteContext(
 		...base,
 		adapter: new KeypairAdapter(keypair, base.client),
 		address,
+	};
+}
+
+// The files domain (allowlists + encrypted files) uses a separate reader from
+// publications; it is type-filtered on the v2 packageId, not the genesis id.
+export interface FilesReadContext extends ReadContext {
+	readonly filesReader: RpcFilesReader;
+}
+
+export async function buildFilesReadContext(
+	command: Command,
+): Promise<FilesReadContext> {
+	const base = await buildReadContext(command);
+	return {
+		...base,
+		filesReader: RpcFilesReader.fromMorseConfig(base.config, base.client),
+	};
+}
+
+export interface AllowlistWriteContext extends WriteContext {
+	readonly filesReader: RpcFilesReader;
+}
+
+export async function buildAllowlistWriteContext(
+	command: Command,
+): Promise<AllowlistWriteContext> {
+	const base = await buildWriteContext(command);
+	return {
+		...base,
+		filesReader: RpcFilesReader.fromMorseConfig(base.config, base.client),
 	};
 }
 
@@ -203,5 +234,39 @@ export async function buildDecryptContext(
 		address,
 		seal,
 		walrusRead: walrusReadAdapter(base, network, Boolean(opts.viaAggregator)),
+	};
+}
+
+// Files download: read the file metadata and bytes without a key (public files
+// need no signer), unlocking a signer lazily only when an encrypted file
+// requires a SessionKey for decryption.
+export interface FileDownloadContext extends FilesReadContext {
+	readonly walrusRead: WalrusReadAdapter;
+	readonly seal: DefaultSealAdapter;
+	readonly unlockSigner: () => Promise<{
+		keypair: Ed25519Keypair;
+		address: SuiAddress;
+	}>;
+}
+
+export async function buildFileDownloadContext(
+	command: Command,
+	opts: ReadAdapterOptions = {},
+): Promise<FileDownloadContext> {
+	const base = await buildReadContext(command);
+	const network = base.settings.network;
+	if (network === "localnet") {
+		throw new CliError(
+			"Walrus reads are not available on localnet. Use testnet or mainnet.",
+			ExitCode.Usage,
+		);
+	}
+	return {
+		...base,
+		filesReader: RpcFilesReader.fromMorseConfig(base.config, base.client),
+		walrusRead: walrusReadAdapter(base, network, Boolean(opts.viaAggregator)),
+		seal: DefaultSealAdapter.fromMorseConfig(base.config, {}, base.client),
+		unlockSigner: () =>
+			resolveSigner(base.settings.account, process.env, base.signal),
 	};
 }

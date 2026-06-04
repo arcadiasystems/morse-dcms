@@ -30,6 +30,16 @@ export function parseLimit(value: string): number {
 	return parsePositiveInt(value, "--limit");
 }
 
+/** Parse a non-negative integer byte size as a bigint (no Number truncation). */
+export function parseByteSize(value: string, name: string): bigint {
+	if (!/^\d+$/.test(value)) {
+		throw new UsageError(
+			`${name} must be a non-negative integer, got "${value}".`,
+		);
+	}
+	return BigInt(value);
+}
+
 /** Parse a non-negative integer ID argument (entry id, revision id). */
 export function parseId(value: string, name: string): number {
 	const id = Number(value);

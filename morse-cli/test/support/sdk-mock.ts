@@ -44,6 +44,45 @@ export const ops = {
 	revokePublisherCap: mock(canned({ digest: DIGEST })),
 	destroyPublisherCap: mock(canned({ digest: DIGEST })),
 	transferPublisherCap: mock(canned({ digest: DIGEST })),
+	createAllowlist: mock(
+		canned({
+			allowlistId: `0x${"7".repeat(64)}`,
+			capId: `0x${"8".repeat(64)}`,
+			digest: DIGEST,
+			gasUsedMist: 0n,
+		}),
+	),
+	addMember: mock(canned({ digest: DIGEST, gasUsedMist: 0n })),
+	removeMember: mock(canned({ digest: DIGEST, gasUsedMist: 0n })),
+	transferAllowlistCap: mock(canned({ digest: DIGEST, gasUsedMist: 0n })),
+	deleteAllowlist: mock(canned({ digest: DIGEST, gasUsedMist: 0n })),
+	createEncryptedFile: mock(
+		canned({ fileId: `0x${"9".repeat(64)}`, digest: DIGEST, gasUsedMist: 0n }),
+	),
+	createPublicFile: mock(
+		canned({ fileId: `0x${"9".repeat(64)}`, digest: DIGEST, gasUsedMist: 0n }),
+	),
+	updateFileMetadata: mock(canned({ digest: DIGEST, gasUsedMist: 0n })),
+	transferFileOwnership: mock(canned({ digest: DIGEST, gasUsedMist: 0n })),
+	deleteFile: mock(canned({ digest: DIGEST, gasUsedMist: 0n })),
+	uploadEncryptedFileFromBytes: mock(
+		canned({
+			fileId: `0x${"9".repeat(64)}`,
+			blobId: "blobENC",
+			blobObjectId: `0x${"a".repeat(64)}`,
+			digest: DIGEST,
+			gasUsedMist: 0n,
+		}),
+	),
+	uploadPublicFileFromBytes: mock(
+		canned({
+			fileId: `0x${"9".repeat(64)}`,
+			blobId: "blobPUB",
+			blobObjectId: `0x${"a".repeat(64)}`,
+			digest: DIGEST,
+			gasUsedMist: 0n,
+		}),
+	),
 };
 
 mock.module("@arcadiasystems/morse-sdk", () => ({ ...real, ...ops }));
