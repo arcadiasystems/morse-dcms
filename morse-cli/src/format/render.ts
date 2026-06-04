@@ -5,6 +5,7 @@ import type {
 	AllowlistCap,
 	Collection,
 	EncryptedFile,
+	EncryptedFileSummaryOrFull,
 	Entry,
 	OwnedPublication,
 	OwnerCapId,
@@ -129,6 +130,23 @@ export function renderAllowlistCapList(caps: readonly AllowlistCap[]): string {
 	return caps
 		.map((cap) => `${cap.id}  allowlist ${cap.allowlistId}`)
 		.join("\n");
+}
+
+export function renderFileList(
+	items: readonly EncryptedFileSummaryOrFull[],
+): string {
+	if (items.length === 0) {
+		return "No files.";
+	}
+	const header = "id  name  size  encrypted  allowlist  created";
+	const rows = items.map((file) => {
+		const allowlist =
+			file.allowlistId === null ? "public" : shortId(file.allowlistId);
+		const created = new Date(file.createdAtMs).toISOString().slice(0, 10);
+		const encrypted = file.encrypted ? "yes" : "no";
+		return `${shortId(file.id)}  ${file.name}  ${file.size}  ${encrypted}  ${allowlist}  ${created}`;
+	});
+	return [header, ...rows].join("\n");
 }
 
 export function renderEncryptedFile(file: EncryptedFile): string {

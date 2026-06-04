@@ -22,6 +22,7 @@ import type {
 	DecryptContext,
 	EncryptContext,
 	FileDownloadContext,
+	FileListContext,
 	FilesReadContext,
 	ReadContentContext,
 	ReadContext,
@@ -121,6 +122,34 @@ export function allowlistWriteContext(opts: ReadFixtureOptions = {}): {
 } {
 	const { ctx, captured } = writeContext(opts);
 	return { ctx: { ...ctx, filesReader: filesReaderOf(opts) }, captured };
+}
+
+const STUB_EVENT_TYPES = {
+	FileCreated: "FileCreated",
+	FileDeleted: "FileDeleted",
+	FileMetadataUpdated: "FileMetadataUpdated",
+	FileOwnershipTransferred: "FileOwnershipTransferred",
+	AllowlistCreated: "AllowlistCreated",
+	AllowlistDeleted: "AllowlistDeleted",
+	MemberAdded: "MemberAdded",
+	MemberRemoved: "MemberRemoved",
+	CapTransferred: "CapTransferred",
+} as FileListContext["eventTypes"];
+
+const EMPTY_EVENTS = {
+	queryEvents: () =>
+		Promise.resolve({ data: [], hasNextPage: false, nextCursor: null }),
+} as unknown as FileListContext["events"];
+
+export function fileListContext(opts: ReadFixtureOptions = {}): {
+	ctx: FileListContext;
+	captured: CapturedOutput;
+} {
+	const { ctx, captured } = filesReadContext(opts);
+	return {
+		ctx: { ...ctx, events: EMPTY_EVENTS, eventTypes: STUB_EVENT_TYPES },
+		captured,
+	};
 }
 
 export interface DownloadFixtureOptions extends ReadFixtureOptions {

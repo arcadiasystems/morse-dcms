@@ -336,6 +336,12 @@ describe("file wrappers (offline guards)", () => {
 		await expect(dispatch(["file", "get", "not-an-id"])).rejects.toThrow();
 	});
 
+	test("list rejects a malformed --address before any RPC", async () => {
+		await expect(
+			dispatch(["file", "list", "--address", "not-an-address"]),
+		).rejects.toThrow();
+	});
+
 	test("download in --json without --out is a usage error", async () => {
 		await expect(
 			dispatch(["--json", "file", "download", FILE]),

@@ -5,9 +5,11 @@
  */
 
 import {
+	buildFilesEventTypes,
 	DefaultSealAdapter,
 	DefaultWalrusReadAdapter,
 	DefaultWalrusWriteAdapter,
+	type FilesEventTypes,
 	HttpAggregatorReadAdapter,
 	KeypairAdapter,
 	morseConfig,
@@ -18,12 +20,14 @@ import {
 	type WalrusReadAdapter,
 } from "@arcadiasystems/morse-sdk";
 import { SuiGrpcClient } from "@mysten/sui/grpc";
+import { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import type { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import type { Command } from "commander";
 import { type ResolvedSettings, resolveSettings } from "../config/profile.ts";
 import { loadConfig } from "../config/store.ts";
 import { accountAddress, resolveSigner } from "../keystore/source.ts";
 import { CliError } from "./errors.ts";
+import type { EventQuerier } from "./events.ts";
 import { ExitCode } from "./exit-codes.ts";
 import type { Output } from "./output.ts";
 import { sigintSignal } from "./prompts.ts";
@@ -268,5 +272,39 @@ export async function buildFileDownloadContext(
 		seal: DefaultSealAdapter.fromMorseConfig(base.config, {}, base.client),
 		unlockSigner: () =>
 			resolveSigner(base.settings.account, process.env, base.signal),
+	};
+}
+
+// File listing: an event source (JSON-RPC suix_queryEvents, or a --indexer-url
+// override) plus the morse event-type strings, fed into the SDK's pure reconcile
+// helpers. Carries the files reader too, for --hydrate.
+export interface FileListContext extends FilesReadContext {
+	readonly events: EventQuerier;
+	readonly eventTypes: FilesEventTypes;
+}
+
+export async function buildFileListContext(
+	command: Command,
+	opts: { indexerUrl?: string } = {},
+): Promise<FileListContext> {
+	const base = await buildReadContext(command);
+	const originPackageId = base.config.filesEventOriginPackageId;
+	if (originPackageId === undefined) {
+		throw new CliError(
+			"File listing is unavailable on this network: no filesEventOriginPackageId in the config. Use testnet, or supply a config that sets it.",
+			ExitCode.Usage,
+		);
+	}
+	const events = new SuiJsonRpcClient({
+		network: base.settings.network,
+		url: opts.indexerUrl ?? base.config.rpcUrl,
+	});
+	return {
+		...base,
+		filesReader: RpcFilesReader.fromMorseConfig(base.config, base.client),
+		// queryEvents satisfies EventQuerier structurally; the only divergence is
+		// the opaque pagination cursor, which the paginator round-trips untouched.
+		events: events as unknown as EventQuerier,
+		eventTypes: buildFilesEventTypes(originPackageId),
 	};
 }

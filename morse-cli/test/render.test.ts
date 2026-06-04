@@ -18,6 +18,7 @@ import {
 	renderEncryptedFile,
 	renderEntry,
 	renderEntryList,
+	renderFileList,
 	renderPublication,
 	renderPublicationList,
 	renderPublisherCapList,
@@ -202,5 +203,53 @@ describe("renderEncryptedFile", () => {
 		} as unknown as EncryptedFile);
 		expect(out).toContain("allowlist:");
 		expect(out).toContain(`0x${"7".repeat(64)}`);
+	});
+});
+
+describe("renderFileList", () => {
+	const base = {
+		kind: "summary" as const,
+		owner: `0x${"a".repeat(64)}`,
+		contentType: "text/plain",
+		createdAtMs: 1_700_000_000_000,
+	};
+
+	test("renders 'No files.' when empty", () => {
+		expect(renderFileList([])).toBe("No files.");
+	});
+
+	test("renders a header and a row with the expected columns", () => {
+		const out = renderFileList([
+			{
+				...base,
+				id: `0x${"9".repeat(64)}`,
+				name: "doc.pdf",
+				size: 1024,
+				encrypted: true,
+				allowlistId: `0x${"7".repeat(64)}`,
+			},
+		] as never);
+		const [header, row] = out.split("\n");
+		expect(header).toContain("id");
+		expect(header).toContain("encrypted");
+		expect(row).toContain("doc.pdf");
+		expect(row).toContain("1024");
+		expect(row).toContain("yes");
+		expect(row).toContain("2023-11-14"); // 1_700_000_000_000 ms -> date
+	});
+
+	test("renders a public file's allowlist column as 'public'", () => {
+		const out = renderFileList([
+			{
+				...base,
+				id: `0x${"9".repeat(64)}`,
+				name: "logo.png",
+				size: 10,
+				encrypted: false,
+				allowlistId: null,
+			},
+		] as never);
+		expect(out).toContain("public");
+		expect(out).toContain("no");
 	});
 });

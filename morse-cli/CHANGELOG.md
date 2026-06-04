@@ -4,6 +4,35 @@ All notable changes to `@arcadiasystems/morse-cli` are documented here. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-06-04
+
+Event-based file listing, wrapping the SDK 0.3.0 reconcile helpers. Purely
+additive; all existing commands are unchanged.
+
+### Added
+
+- `morse file list`: list files owned by an address (default: the active
+  account), or, with `--accessible`, files decryptable via allowlist membership.
+  `--address <addr>` queries another address, `--hydrate` fetches the full record
+  per file (adds `blobId`; one read each), `--limit <n>` caps results, `--json`
+  emits the summary array.
+- Event fetching via `cli/events.ts`: a paginator over `suix_queryEvents` feeding
+  the SDK's pure `reconcileFilesOwnedBy` / `reconcileFilesAccessibleBy` helpers.
+  `--indexer-url <url>` overrides the event source (any endpoint that speaks
+  `suix_queryEvents`).
+
+### Changed
+
+- Depends on `@arcadiasystems/morse-sdk` `^0.3.0`.
+
+### Notes
+
+- Listing reads `suix_queryEvents`, a deprecated Sui JSON-RPC endpoint Mysten is
+  sunsetting; on the public RPC it may degrade over time. Use `--indexer-url` to
+  point at your own indexer. Results are best-effort and eventually consistent.
+- Summaries omit `blobId`/`blobObjectId` (not in the `FileCreated` event); use
+  `--hydrate` to fetch them.
+
 ## [0.2.0] - 2026-06-04
 
 Wraps the allowlist + encrypted-file surface from `@arcadiasystems/morse-sdk`

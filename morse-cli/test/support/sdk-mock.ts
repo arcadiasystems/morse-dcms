@@ -17,6 +17,19 @@ function canned<T>(value: T): (...args: unknown[]) => Promise<T> {
 	return () => Promise.resolve(value);
 }
 
+/** Canned EncryptedFileSummary the reconcile mocks return by default. */
+export const SUMMARY = {
+	kind: "summary" as const,
+	id: `0x${"9".repeat(64)}`,
+	owner: `0x${"a".repeat(64)}`,
+	name: "file.txt",
+	contentType: "text/plain",
+	size: 10,
+	encrypted: true,
+	allowlistId: `0x${"7".repeat(64)}`,
+	createdAtMs: 1_700_000_000_000,
+};
+
 export const ops = {
 	createPublication: mock(
 		canned({
@@ -83,6 +96,9 @@ export const ops = {
 			gasUsedMist: 0n,
 		}),
 	),
+	// Sync reconcile helpers; tests override per-case with mockReturnValueOnce.
+	reconcileFilesOwnedBy: mock(() => [SUMMARY]),
+	reconcileFilesAccessibleBy: mock(() => [SUMMARY]),
 };
 
 mock.module("@arcadiasystems/morse-sdk", () => ({ ...real, ...ops }));

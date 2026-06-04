@@ -6,7 +6,7 @@ content entries from your terminal, signing with a locally encrypted key.
 Content is stored on [Walrus](https://walrus.xyz); private entries are encrypted
 with [Seal](https://github.com/MystenLabs/seal).
 
-> Status: v0.2.0, targeting Sui testnet. The command surface is stable; mainnet
+> Status: v0.3.0, targeting Sui testnet. The command surface is stable; mainnet
 > support lands when the contracts are frozen.
 
 ## Requirements
@@ -250,6 +250,7 @@ auto-resolved from the active account when `--cap` is omitted.
 | `file upload <path> --name <n> [-a <id>] [--public] [--content-type <m>] [--epochs <n>]` | Upload to Walrus and register; `-a` encrypts, `--public` is world-readable. |
 | `file register --blob-id <id> --name <n> --content-type <m> --size <bytes> [-a <id>] [--public] [--blob-object-id <id>]` | Register metadata for a blob already on Walrus. |
 | `file download <file> [--out <path>] [--seal-id <hex>] [--via-aggregator]` | Download content; decrypts in place when encrypted. |
+| `file list [--address <addr>] [--accessible] [--hydrate] [--limit <n>] [--indexer-url <url>]` | List files owned by (or, with `--accessible`, decryptable by) an address. |
 | `file get <file>` | Fetch a file's on-chain metadata. |
 | `file update <file> --name <n> --content-type <m>` | Update name and MIME (owner only). |
 | `file transfer-ownership <file> <newOwner> [-y]` | Transfer the metadata right (not decrypt access). |
@@ -257,9 +258,18 @@ auto-resolved from the active account when `--cap` is omitted.
 
 Encrypting a file (`file upload -a <allowlist>`) prints a **seal id**. It is not
 recoverable from the ciphertext, so save it: `file download` needs it (via
-`--seal-id`) plus allowlist membership to decrypt. Listing "files I can decrypt
-as a member" is not supported on-chain (encrypted files are shared objects with
-no owner index); track file ids yourself or index the contract events.
+`--seal-id`) plus allowlist membership to decrypt.
+
+`file list` reconstructs the file set from contract events. Encrypted files are
+shared objects with no on-chain owner index, so listing is event-derived, not a
+direct query. By default the command reads events via `suix_queryEvents` on the
+configured Sui RPC. That endpoint is **deprecated** (Mysten is sunsetting it), so
+listing may degrade or stop working on the public RPC over time; point
+`--indexer-url <url>` at any source that speaks `suix_queryEvents` (a self-hosted
+indexer, a third-party endpoint) to stay in control. Results are best-effort and
+eventually consistent (subject to indexer lag and retention). `EncryptedFileSummary`
+rows omit `blobId`/`blobObjectId`; add `--hydrate` to fetch the full record per
+file (one read each) when you need them.
 
 ## Output and scripting
 

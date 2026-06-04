@@ -6,7 +6,11 @@ import {
 	createPublicFile,
 	deleteFile,
 	type EncryptedFile,
+	type EncryptedFileSummary,
+	type EncryptedFileSummaryOrFull,
 	type FileUploadProgressEvent,
+	reconcileFilesAccessibleBy,
+	reconcileFilesOwnedBy,
 	type SealId,
 	toAllowlistId,
 	toBlobObjectId,
@@ -24,14 +28,17 @@ import type { Command } from "commander";
 import {
 	buildEncryptContext,
 	buildFileDownloadContext,
+	buildFileListContext,
 	buildFilesReadContext,
 	buildWriteContext,
 	type EncryptContext,
 	type FileDownloadContext,
+	type FileListContext,
 	type FilesReadContext,
 	type WriteContext,
 } from "../cli/context.ts";
 import { cancelled, UsageError } from "../cli/errors.ts";
+import { fetchEventStreams } from "../cli/events.ts";
 import { readContentBytes, resolveContentType } from "../cli/input.ts";
 import { writeFileContents } from "../cli/io.ts";
 import type { GlobalOptions } from "../cli/program.ts";
@@ -39,9 +46,9 @@ import { confirm } from "../cli/prompts.ts";
 import { globalOptions } from "../cli/runtime.ts";
 import { decodeHex, encodeHex } from "../format/hex.ts";
 import { shortId } from "../format/ids.ts";
-import { renderEncryptedFile } from "../format/render.ts";
+import { renderEncryptedFile, renderFileList } from "../format/render.ts";
 import { allowlistOption, viaAggregatorOption } from "./options.ts";
-import { parseByteSize, parsePositiveInt } from "./shared.ts";
+import { parseByteSize, parseLimit, parsePositiveInt } from "./shared.ts";
 
 // SessionKey lifetime; long enough for one decrypt, short enough to limit reuse.
 const SESSION_KEY_TTL_MIN = 10;
@@ -339,6 +346,71 @@ export async function runFileDownload(
 	process.stdout.write(content);
 }
 
+interface ListOptions {
+	readonly address?: string;
+	readonly accessible?: boolean;
+	readonly hydrate?: boolean;
+	readonly limit?: string;
+}
+
+export async function runFileList(
+	ctx: FileListContext,
+	options: ListOptions,
+): Promise<void> {
+	// Validate flags before the event fetch so a bad value fails fast.
+	const limit =
+		options.limit === undefined ? undefined : parseLimit(options.limit);
+	const address =
+		options.address === undefined
+			? ctx.ownerAddress
+			: toSuiAddress(options.address);
+	if (address === undefined) {
+		throw new UsageError(
+			"No address given and no active account. Pass --address or import an account.",
+		);
+	}
+	const types = ctx.eventTypes;
+	let summaries: EncryptedFileSummary[];
+	if (options.accessible) {
+		ctx.output.info("Fetching membership and file events...");
+		const events = await fetchEventStreams(
+			ctx.events,
+			[
+				types.MemberAdded,
+				types.MemberRemoved,
+				types.AllowlistDeleted,
+				types.FileCreated,
+				types.FileDeleted,
+			],
+			ctx.signal,
+		);
+		summaries = reconcileFilesAccessibleBy(events, address, types);
+	} else {
+		ctx.output.info("Fetching file events...");
+		const events = await fetchEventStreams(
+			ctx.events,
+			[types.FileCreated, types.FileOwnershipTransferred, types.FileDeleted],
+			ctx.signal,
+		);
+		summaries = reconcileFilesOwnedBy(events, address, types);
+	}
+	const limited = limit === undefined ? summaries : summaries.slice(0, limit);
+	let items: EncryptedFileSummaryOrFull[] = limited;
+	if (options.hydrate) {
+		ctx.output.info(`Hydrating ${limited.length} file(s)...`);
+		const full: EncryptedFileSummaryOrFull[] = [];
+		for (const summary of limited) {
+			const record = await ctx.filesReader.getEncryptedFile(
+				summary.id,
+				ctx.signal,
+			);
+			full.push({ ...record, kind: "full" });
+		}
+		items = full;
+	}
+	ctx.output.result(renderFileList(items), items);
+}
+
 export function registerFileCommands(program: Command): void {
 	const file = program
 		.command("file")
@@ -359,6 +431,39 @@ export function registerFileCommands(program: Command): void {
 			await runFileUpload(await buildEncryptContext(command), path, options);
 		},
 	);
+
+	file
+		.command("list")
+		.description(
+			"List files owned by (or accessible to) an address, via event indexing",
+		)
+		.option(
+			"--address <addr>",
+			"Address to query (default: the active account)",
+		)
+		.option(
+			"--accessible",
+			"List files you can decrypt via allowlist membership, not just owned",
+		)
+		.option("--hydrate", "Fetch full records (adds blobId; one read per file)")
+		.option("--limit <n>", "Cap the number of results")
+		.option(
+			"--indexer-url <url>",
+			"Event source URL (default: the RPC; uses suix_queryEvents, a deprecated Sui endpoint)",
+		)
+		.action(
+			async (
+				options: ListOptions & { indexerUrl?: string },
+				command: Command,
+			) => {
+				await runFileList(
+					await buildFileListContext(command, {
+						indexerUrl: options.indexerUrl,
+					}),
+					options,
+				);
+			},
+		);
 
 	const download = file
 		.command("download <file>")
