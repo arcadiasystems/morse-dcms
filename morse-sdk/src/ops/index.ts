@@ -3,6 +3,20 @@
  */
 
 export {
+	type AddMemberArgs,
+	type AllowlistOpResult,
+	addMember,
+	type CreateAllowlistArgs,
+	type CreateAllowlistResult,
+	createAllowlist,
+	type DeleteAllowlistArgs,
+	deleteAllowlist,
+	type RemoveMemberArgs,
+	removeMember,
+	type TransferAllowlistCapArgs,
+	transferAllowlistCap,
+} from "./allowlist.js";
+export {
 	type DestroyPublisherCapArgs,
 	type DestroyPublisherCapResult,
 	destroyPublisherCap,
@@ -52,6 +66,29 @@ export {
 	type ProgressCallback,
 	type ProgressEvent,
 } from "./entry-from-bytes.js";
+export {
+	type CreateEncryptedFileArgs,
+	type CreateFileResult,
+	type CreatePublicFileArgs,
+	createEncryptedFile,
+	createPublicFile,
+	type DeleteFileArgs,
+	deleteFile,
+	type FileOpResult,
+	type TransferFileOwnershipArgs,
+	transferFileOwnership,
+	type UpdateFileMetadataArgs,
+	updateFileMetadata,
+} from "./file.js";
+export {
+	type FileUploadProgressCallback,
+	type FileUploadProgressEvent,
+	type UploadEncryptedFileFromBytesArgs,
+	type UploadFileResult,
+	type UploadPublicFileFromBytesArgs,
+	uploadEncryptedFileFromBytes,
+	uploadPublicFileFromBytes,
+} from "./file-from-bytes.js";
 export {
 	type CreatePublicationArgs,
 	type CreatePublicationResult,

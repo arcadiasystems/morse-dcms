@@ -99,7 +99,13 @@ describe("ContractAbortError", () => {
 	});
 
 	test("fromAbortCode supports each known module", () => {
-		const modules: AbortModule[] = ["publication", "collection", "entry"];
+		const modules: AbortModule[] = [
+			"publication",
+			"collection",
+			"entry",
+			"allowlist",
+			"file",
+		];
 		for (const module of modules) {
 			const codes = Object.keys(ABORT_CODES[module]).map(Number);
 			expect(codes.length).toBeGreaterThan(0);
@@ -124,7 +130,13 @@ describe("ContractAbortError", () => {
 
 describe("ABORT_CODES table", () => {
 	test("every entry has a non-empty name and description", () => {
-		const modules: AbortModule[] = ["publication", "collection", "entry"];
+		const modules: AbortModule[] = [
+			"publication",
+			"collection",
+			"entry",
+			"allowlist",
+			"file",
+		];
 		for (const module of modules) {
 			const entries = ABORT_CODES[module];
 			const codes = Object.keys(entries);
@@ -161,5 +173,23 @@ describe("ABORT_CODES table", () => {
 		expect(names).toContain("ENameEmpty");
 		expect(names).toContain("EBlobNotDeletable");
 		expect(names).toContain("EInvalidQuiltPatchId");
+	});
+
+	test("allowlist module covers expected abort names", () => {
+		const names = Object.values(ABORT_CODES.allowlist).map((e) => e.name);
+		expect(names).toContain("EUnauthorized");
+		expect(names).toContain("EMemberAlreadyPresent");
+		expect(names).toContain("EMemberNotPresent");
+		expect(names).toContain("ESealInvalidId");
+		expect(names).toContain("ESealWrongPolicyTag");
+		expect(names).toContain("ENoAccess");
+	});
+
+	test("file module covers expected abort names", () => {
+		const names = Object.values(ABORT_CODES.file).map((e) => e.name);
+		expect(names).toContain("EUnauthorized");
+		expect(names).toContain("EBlobIdEmpty");
+		expect(names).toContain("ENameInvalid");
+		expect(names).toContain("EContentTypeInvalid");
 	});
 });

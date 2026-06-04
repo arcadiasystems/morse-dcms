@@ -24,6 +24,15 @@ export type OwnerCapId = Brand<string, "OwnerCapId">;
 /** Sui object ID of a `PublisherCap`. */
 export type PublisherCapId = Brand<string, "PublisherCapId">;
 
+/** Sui object ID of an `Allowlist` (file-ACL module). */
+export type AllowlistId = Brand<string, "AllowlistId">;
+
+/** Sui object ID of an `allowlist::Cap`, bound to an Allowlist. */
+export type AllowlistCapId = Brand<string, "AllowlistCapId">;
+
+/** Sui object ID of an `EncryptedFile`. */
+export type EncryptedFileId = Brand<string, "EncryptedFileId">;
+
 /** Sui object ID of a Walrus `Blob`. */
 export type BlobObjectId = Brand<string, "BlobObjectId">;
 
@@ -84,6 +93,7 @@ export type AccessPolicy = (typeof AccessPolicy)[keyof typeof AccessPolicy];
 /** Policy tag byte inside a Seal identity, identifying the approval entrypoint. */
 export const SealPolicyTag = {
 	Publisher: 1,
+	Allowlist: 2,
 } as const;
 export type SealPolicyTag = (typeof SealPolicyTag)[keyof typeof SealPolicyTag];
 
@@ -193,4 +203,44 @@ export interface TxReceipt {
 	readonly gasUsedMist: bigint;
 	readonly createdObjects: readonly TxCreatedObject[];
 	readonly deletedObjects: readonly TxDeletedObject[];
+}
+
+// Allowlist
+
+/** Per-wallet allowlist gating Seal-encrypted file decryption. */
+export interface Allowlist {
+	readonly id: AllowlistId;
+	readonly name: string;
+	readonly members: readonly SuiAddress[];
+}
+
+/** Admin capability for an Allowlist; required to add/remove members and delete. */
+export interface AllowlistCap {
+	readonly id: AllowlistCapId;
+	readonly allowlistId: AllowlistId;
+}
+
+// Encrypted file
+
+/**
+ * On-chain metadata record for a file stored on Walrus. `allowlistId` is set
+ * iff `encrypted === true`; public files carry `allowlistId: null`.
+ */
+export interface EncryptedFile {
+	readonly id: EncryptedFileId;
+	readonly owner: SuiAddress;
+	readonly blobId: WalrusBlobId;
+	readonly blobObjectId: BlobObjectId | null;
+	readonly name: string;
+	readonly contentType: string;
+	/**
+	 * Plaintext byte length for encrypted files; stored byte length for public
+	 * files. Mirrors the Move contract semantics. Note: the actual ciphertext
+	 * uploaded to Walrus is larger than this for encrypted files because Seal
+	 * adds an envelope.
+	 */
+	readonly size: number;
+	readonly encrypted: boolean;
+	readonly allowlistId: AllowlistId | null;
+	readonly createdAtMs: number;
 }

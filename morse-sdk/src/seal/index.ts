@@ -6,9 +6,15 @@
 export type {
 	SealAdapter,
 	SealDecryptOptions,
+	SealDecryptUnderAllowlistOptions,
 	SealEncryptOptions,
 	SealEncryptResult,
 } from "./adapter.js";
+export {
+	type AllowlistSealIdParts,
+	buildAllowlistSealId,
+	decodeAllowlistSealId,
+} from "./allowlist-identity.js";
 export {
 	DefaultSealAdapter,
 	type SealAdapterConfig,

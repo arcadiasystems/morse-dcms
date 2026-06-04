@@ -216,15 +216,25 @@ The full public surface, grouped by concern. Every export carries a JSDoc on its
 | `addEntry` / `addEncryptedEntry` | Lower-level: add entry against a pre-uploaded `blobObjectId`. |
 | `appendDraftRevision` / `appendEncryptedDraftRevision` / `publishFromDraft` / `publishDirect` | Revision lifecycle on existing entries. |
 | `deleteEntry` | Remove an entry and its revisions. |
+| `createAllowlist(adapter, config, args)` | Create + share allowlist; returns `{ allowlistId, capId }`. |
+| `addMember` / `removeMember` / `transferAllowlistCap` / `deleteAllowlist` | Allowlist lifecycle. Cap-gated. |
+| `createEncryptedFile(adapter, config, args)` | Register metadata for an encrypted file already on Walrus (low-level). |
+| `createPublicFile(adapter, config, args)` | Register metadata for a public (unencrypted) file already on Walrus. |
+| `uploadEncryptedFileFromBytes(adapter, config, args)` | **Recommended.** Encrypt via Seal under an allowlist + upload to Walrus + register metadata in 2 wallet popups. |
+| `uploadPublicFileFromBytes(adapter, config, args)` | Upload unencrypted bytes + register public file metadata. |
+| `updateFileMetadata` / `transferFileOwnership` / `deleteFile` | File metadata lifecycle (owner-only). |
 
 ### Reader (RPC-backed)
 
 | Export | Purpose |
 | --- | --- |
-| `RpcPublicationReader.fromMorseConfig(config, client)` | Construct a reader bound to the canonical `originalPackageId` for type filters. |
+| `RpcPublicationReader.fromMorseConfig(config, client)` | Construct a publication reader bound to the canonical `originalPackageId` for type filters. |
 | `reader.getPublication` / `getEntry` / `getRevision` / `getPublisherCap` | Single-object reads. |
 | `reader.listPublicationsOwnedBy` / `listPublisherCapsOwnedBy` / `listEntries` | Paginated lists. |
 | `reader.scanEntries` | Async-iterator over every entry in a collection. |
+| `RpcFilesReader.fromMorseConfig(config, client)` | Construct a files reader for the allowlist + encrypted-file modules. |
+| `filesReader.getAllowlist` / `getEncryptedFile` | Single-object reads. |
+| `filesReader.listAllowlistCapsOwnedBy` / `listEncryptedFilesOwnedBy` | Paginated lists by owner. |
 
 ### Adapters
 
@@ -247,7 +257,9 @@ The full public surface, grouped by concern. Every export carries a JSDoc on its
 | Export | Purpose |
 | --- | --- |
 | `buildPublisherSealId(publicationId, nonce)` | Build a publisher-policy Seal identity (`pubId(32) \|\| tag(1) \|\| nonce`). |
-| `decodePublisherSealId(sealId)` | Inspect an existing identity. Throws `ValidationError` on tampered tags. |
+| `decodePublisherSealId(sealId)` | Inspect a publisher identity. Throws `ValidationError` on tampered tags. |
+| `buildAllowlistSealId(allowlistId, nonce)` | Build an allowlist-policy Seal identity (`allowlistId(32) \|\| tag(2) \|\| nonce`). |
+| `decodeAllowlistSealId(sealId)` | Inspect an allowlist identity. Throws `ValidationError` on tampered tags. |
 
 ### Codecs (branded ID constructors)
 

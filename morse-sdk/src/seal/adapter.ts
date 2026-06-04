@@ -6,7 +6,7 @@
 
 import type { SessionKey } from "@mysten/seal";
 
-import type { PublisherCapId, SealId } from "../types.js";
+import type { AllowlistId, PublisherCapId, SealId } from "../types.js";
 
 export interface SealEncryptOptions {
 	readonly sealId: SealId;
@@ -26,6 +26,13 @@ export interface SealDecryptOptions {
 	readonly sessionKey: SessionKey;
 	readonly sealId: SealId;
 	readonly publisherCapId: PublisherCapId;
+}
+
+/** Options for decrypting content gated by the allowlist policy. */
+export interface SealDecryptUnderAllowlistOptions {
+	readonly sessionKey: SessionKey;
+	readonly sealId: SealId;
+	readonly allowlistId: AllowlistId;
 }
 
 /**
@@ -63,5 +70,23 @@ export interface SealAdapter {
 	decrypt(
 		ciphertext: Uint8Array,
 		options: SealDecryptOptions,
+	): Promise<Uint8Array>;
+	/**
+	 * Decrypt content gated by the allowlist policy. The Seal key servers
+	 * verify that `sessionKey.getAddress()` is a current member of `allowlistId`
+	 * by dry-running `allowlist::seal_approve(sealId, allowlist)`; non-members
+	 * surface as `SealError("no-access")`.
+	 *
+	 * Distinct from `decrypt`, which targets the publisher policy. Both can
+	 * coexist on the same adapter instance since policy targeting is decided
+	 * by the seal_approve PTB the adapter constructs internally.
+	 *
+	 * @throws {SealError} On Seal authorization failure (`no-access`),
+	 *   decryption failure (`decrypt-failed`), session-key expiry, or rate limiting.
+	 * @throws {TransportError} On network or PTB build failure.
+	 */
+	decryptUnderAllowlist(
+		ciphertext: Uint8Array,
+		options: SealDecryptUnderAllowlistOptions,
 	): Promise<Uint8Array>;
 }

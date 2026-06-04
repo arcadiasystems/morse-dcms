@@ -40,6 +40,8 @@ const KNOWN_ABORT_MODULES: ReadonlySet<AbortModule> = new Set([
 	"publication",
 	"collection",
 	"entry",
+	"allowlist",
+	"file",
 ]);
 
 /**

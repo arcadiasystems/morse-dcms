@@ -6,7 +6,10 @@
 import { ValidationError } from "./errors.js";
 import {
 	AccessPolicy,
+	type AllowlistCapId,
+	type AllowlistId,
 	type BlobObjectId,
+	type EncryptedFileId,
 	type OwnerCapId,
 	type PackageId,
 	type PublicationId,
@@ -75,6 +78,21 @@ export function toOwnerCapId(value: string): OwnerCapId {
 /** Construct a `PublisherCapId`. Input is normalized to canonical 64-char form. @throws {ValidationError} On invalid shape. */
 export function toPublisherCapId(value: string): PublisherCapId {
 	return normalizeObjectId(value, "PublisherCapId") as PublisherCapId;
+}
+
+/** Construct an `AllowlistId`. Input is normalized to canonical 64-char form. @throws {ValidationError} On invalid shape. */
+export function toAllowlistId(value: string): AllowlistId {
+	return normalizeObjectId(value, "AllowlistId") as AllowlistId;
+}
+
+/** Construct an `AllowlistCapId`. Input is normalized to canonical 64-char form. @throws {ValidationError} On invalid shape. */
+export function toAllowlistCapId(value: string): AllowlistCapId {
+	return normalizeObjectId(value, "AllowlistCapId") as AllowlistCapId;
+}
+
+/** Construct an `EncryptedFileId`. Input is normalized to canonical 64-char form. @throws {ValidationError} On invalid shape. */
+export function toEncryptedFileId(value: string): EncryptedFileId {
+	return normalizeObjectId(value, "EncryptedFileId") as EncryptedFileId;
 }
 
 /** Construct a `BlobObjectId`. Input is normalized to canonical 64-char form. @throws {ValidationError} On invalid shape. */

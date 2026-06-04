@@ -257,6 +257,7 @@ describe("addEncryptedEntryFromBytes", () => {
 		const seal: SealAdapter = {
 			encrypt: mock(async () => ({ ciphertext })),
 			decrypt: mock(async () => new Uint8Array()),
+			decryptUnderAllowlist: mock(async () => new Uint8Array()),
 		};
 		const sealId = buildPublisherSealId(
 			PUBLICATION_ID,
@@ -292,6 +293,7 @@ describe("addEncryptedEntryFromBytes", () => {
 		const seal: SealAdapter = {
 			encrypt: mock(async () => ({ ciphertext })),
 			decrypt: mock(async () => new Uint8Array()),
+			decryptUnderAllowlist: mock(async () => new Uint8Array()),
 		};
 		const sealId = buildPublisherSealId(
 			PUBLICATION_ID,
@@ -333,6 +335,7 @@ describe("addEncryptedEntryFromBytes", () => {
 				throw sealError;
 			}),
 			decrypt: mock(async () => new Uint8Array()),
+			decryptUnderAllowlist: mock(async () => new Uint8Array()),
 		};
 		const sealId = buildPublisherSealId(
 			PUBLICATION_ID,

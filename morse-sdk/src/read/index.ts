@@ -3,6 +3,12 @@
  */
 
 export {
+	type AllowlistCapListPage,
+	type FilesListOptions,
+	type FilesReader,
+	RpcFilesReader,
+} from "./files-reader.js";
+export {
 	type EntryListPage,
 	type ListEntriesOptions,
 	type ListPublicationsOptions,

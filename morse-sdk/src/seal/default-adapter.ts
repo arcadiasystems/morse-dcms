@@ -28,6 +28,7 @@ import {
 	ValidationError,
 } from "../errors.js";
 import type {
+	AllowlistId,
 	PackageId,
 	PublicationId,
 	PublisherCapId,
@@ -36,9 +37,11 @@ import type {
 import type {
 	SealAdapter,
 	SealDecryptOptions,
+	SealDecryptUnderAllowlistOptions,
 	SealEncryptOptions,
 	SealEncryptResult,
 } from "./adapter.js";
+import { decodeAllowlistSealId } from "./allowlist-identity.js";
 import { decodePublisherSealId } from "./identity.js";
 
 /**
@@ -49,6 +52,17 @@ import { decodePublisherSealId } from "./identity.js";
  */
 export interface SealAdapterConfig {
 	readonly packageId: PackageId;
+	/**
+	 * Package id used as the target of `seal_approve*` PTBs. Defaults to
+	 * `packageId` when omitted. Must be set explicitly when the seal_approve
+	 * function lives in a module added in a package upgrade (e.g.
+	 * `allowlist::seal_approve` was introduced in v2 and only exists at the
+	 * v2 published-at address; calling it at the original-id fails because
+	 * that address only has v1 bytecode). For backwards compat with the
+	 * publisher policy (introduced in v1, present at all upgrade addresses),
+	 * omit this field.
+	 */
+	readonly targetPackageId?: PackageId;
 	readonly serverConfigs: readonly KeyServerConfig[];
 	readonly threshold: number;
 	readonly verifyKeyServers?: boolean;
@@ -75,6 +89,7 @@ interface DefaultSealAdapterOptions {
 	readonly client: SealClientLike;
 	readonly suiClient: SealCompatibleClient;
 	readonly packageId: PackageId;
+	readonly targetPackageId: PackageId;
 	readonly threshold: number;
 }
 
@@ -83,12 +98,14 @@ export class DefaultSealAdapter implements SealAdapter {
 	private readonly client: SealClientLike;
 	private readonly suiClient: SealCompatibleClient;
 	private readonly packageId: PackageId;
+	private readonly targetPackageId: PackageId;
 	private readonly threshold: number;
 
 	constructor(options: DefaultSealAdapterOptions) {
 		this.client = options.client;
 		this.suiClient = options.suiClient;
 		this.packageId = options.packageId;
+		this.targetPackageId = options.targetPackageId;
 		this.threshold = options.threshold;
 	}
 
@@ -129,7 +146,17 @@ export class DefaultSealAdapter implements SealAdapter {
 		const threshold = seal.threshold ?? Math.min(2, serverConfigs.length);
 		return DefaultSealAdapter.fromConfig(
 			{
+				// Identity binding uses the original-id for crypto stability across
+				// upgrades. Ciphertexts encrypted under v1's package id remain
+				// decryptable after v2 / v3 upgrades.
 				packageId: morseConfig.originalPackageId ?? morseConfig.packageId,
+				// PTB targets use the current published-at because seal_approve
+				// functions in modules added by upgrades (e.g. allowlist) only
+				// exist at the current address. The publisher-policy
+				// seal_approve_publisher (defined in v1) is reachable at either
+				// the original-id or the current id; using the current id is
+				// safe for both cases.
+				targetPackageId: morseConfig.packageId,
 				serverConfigs,
 				threshold,
 				...(seal.verifyKeyServers === undefined
@@ -178,6 +205,7 @@ export class DefaultSealAdapter implements SealAdapter {
 			client,
 			suiClient,
 			packageId: config.packageId,
+			targetPackageId: config.targetPackageId ?? config.packageId,
 			threshold: config.threshold,
 		});
 	}
@@ -238,6 +266,44 @@ export class DefaultSealAdapter implements SealAdapter {
 		);
 	}
 
+	async decryptUnderAllowlist(
+		ciphertext: Uint8Array,
+		options: SealDecryptUnderAllowlistOptions,
+	): Promise<Uint8Array> {
+		let allowlistIdFromSealId: AllowlistId;
+		try {
+			({ allowlistId: allowlistIdFromSealId } = decodeAllowlistSealId(
+				options.sealId,
+			));
+		} catch (cause) {
+			throw new SealError(
+				"decrypt-failed",
+				`Seal identity is malformed or uses an unsupported policy tag for the allowlist policy: ${cause instanceof Error ? cause.message : String(cause)}`,
+				{ cause },
+			);
+		}
+		if ((allowlistIdFromSealId as string) !== (options.allowlistId as string)) {
+			throw new SealError(
+				"decrypt-failed",
+				`sealId's embedded allowlistId (${allowlistIdFromSealId}) does not match the supplied allowlistId (${options.allowlistId})`,
+			);
+		}
+		const txBytes = await this.buildAllowlistApproveTxBytes(
+			options.allowlistId,
+			options.sealId,
+			options.sessionKey,
+		);
+		return runSealCall(
+			() =>
+				this.client.decrypt({
+					data: ciphertext,
+					sessionKey: options.sessionKey,
+					txBytes,
+				}),
+			"seal.decryptUnderAllowlist",
+		);
+	}
+
 	private async buildSealApproveTxBytes(
 		publicationId: PublicationId,
 		publisherCapId: PublisherCapId,
@@ -246,7 +312,7 @@ export class DefaultSealAdapter implements SealAdapter {
 	): Promise<Uint8Array> {
 		const tx = new Transaction();
 		tx.moveCall({
-			target: `${this.packageId}::publication::seal_approve_publisher`,
+			target: `${this.targetPackageId}::publication::seal_approve_publisher`,
 			arguments: [
 				tx.pure.vector("u8", Array.from(sealId)),
 				tx.object(publicationId),
@@ -263,6 +329,33 @@ export class DefaultSealAdapter implements SealAdapter {
 			throw new TransportError("Failed to build seal_approve PTB", {
 				cause,
 				operation: "seal.buildApproveTx",
+			});
+		}
+	}
+
+	private async buildAllowlistApproveTxBytes(
+		allowlistId: AllowlistId,
+		sealId: SealId,
+		sessionKey: SessionKey,
+	): Promise<Uint8Array> {
+		const tx = new Transaction();
+		tx.moveCall({
+			target: `${this.targetPackageId}::allowlist::seal_approve`,
+			arguments: [
+				tx.pure.vector("u8", Array.from(sealId)),
+				tx.object(allowlistId),
+			],
+		});
+		tx.setSender(sessionKey.getAddress());
+		try {
+			return await tx.build({
+				client: this.suiClient as unknown as ClientWithCoreApi,
+				onlyTransactionKind: true,
+			});
+		} catch (cause) {
+			throw new TransportError("Failed to build allowlist seal_approve PTB", {
+				cause,
+				operation: "seal.buildAllowlistApproveTx",
 			});
 		}
 	}

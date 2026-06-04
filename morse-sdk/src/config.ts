@@ -111,8 +111,10 @@ const KNOWN_DEPLOYMENTS: Partial<
 	>
 > = {
 	testnet: {
+		// Updated 2026-06-04 for v2 upgrade (added allowlist + file modules).
+		// originalPackageId stays the same (used for type-filtered queries).
 		packageId: toPackageId(
-			"0x191946c5dc1ea1b978e664d85455e81ef9bdd1d3dbb221fd48cf9008d46a00f0",
+			"0xd1b847666a0b47b553444944c3e64e8db129994c85481cabbe9089a1fa218698",
 		),
 		originalPackageId: toPackageId(
 			"0x191946c5dc1ea1b978e664d85455e81ef9bdd1d3dbb221fd48cf9008d46a00f0",

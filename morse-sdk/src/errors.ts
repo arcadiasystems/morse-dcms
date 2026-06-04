@@ -35,7 +35,9 @@ export type NotFoundResource =
 	| "publisher-cap"
 	| "owner-cap"
 	| "registry"
-	| "blob";
+	| "blob"
+	| "allowlist"
+	| "encrypted-file";
 
 /** Resource not found on-chain. */
 export class NotFoundError extends MorseError {
@@ -206,7 +208,12 @@ export class SealError extends MorseError {
 // Contract abort
 
 /** Move module whose abort codes the SDK knows about. */
-export type AbortModule = "publication" | "collection" | "entry";
+export type AbortModule =
+	| "publication"
+	| "collection"
+	| "entry"
+	| "allowlist"
+	| "file";
 
 /** One row of the abort-code table. */
 export interface AbortEntry {
@@ -335,6 +342,51 @@ export const ABORT_CODES: {
 			name: "EInvalidQuiltPatchId",
 			description:
 				"QuiltPatchId must be exactly 37 bytes (quilt_blob_id || version || start_index || end_index).",
+		},
+	},
+	allowlist: {
+		0: {
+			name: "EUnauthorized",
+			description: "The cap does not match the supplied allowlist.",
+		},
+		1: {
+			name: "EMemberAlreadyPresent",
+			description: "Address is already a member of the allowlist.",
+		},
+		2: {
+			name: "EMemberNotPresent",
+			description: "Address is not a member of the allowlist.",
+		},
+		3: {
+			name: "ESealInvalidId",
+			description:
+				"Provided Seal identity does not match this allowlist namespace.",
+		},
+		4: {
+			name: "ESealWrongPolicyTag",
+			description: "Provided Seal identity has an unsupported policy tag.",
+		},
+		5: {
+			name: "ENoAccess",
+			description: "Sender is not a member of the allowlist.",
+		},
+	},
+	file: {
+		0: {
+			name: "EUnauthorized",
+			description: "Sender is not the file owner.",
+		},
+		1: {
+			name: "EBlobIdEmpty",
+			description: "blob_id must be non-empty.",
+		},
+		2: {
+			name: "ENameInvalid",
+			description: "name must be non-empty and within 256 chars.",
+		},
+		3: {
+			name: "EContentTypeInvalid",
+			description: "content_type must be non-empty and within 255 chars.",
 		},
 	},
 };

@@ -2,6 +2,84 @@
 
 All notable changes to `morse-sdk` will be documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-06-04
+
+Per-wallet allowlist + encrypted-file metadata module. Substantial new public surface; minor bump per pre-1.0 convention. **No breaking changes**: existing publication / collection / entry / wallet / Walrus / Seal-publisher-policy surface is byte-identical to 0.1.4.
+
+This release wraps the `allowlist` and `file` Move modules added in the morse-contracts v2 upgrade (deployed at `0xd1b847666a0b47b553444944c3e64e8db129994c85481cabbe9089a1fa218698` on testnet; `originalPackageId` unchanged).
+
+### Added: types
+
+- `AllowlistId`, `AllowlistCapId`, `EncryptedFileId` branded ID types.
+- `Allowlist`, `AllowlistCap`, `EncryptedFile` read-side records.
+- `SealPolicyTag.Allowlist = 2` (distinct from `Publisher = 1`).
+
+### Added: codecs
+
+- `toAllowlistId`, `toAllowlistCapId`, `toEncryptedFileId` (matching the existing `to*Id` shape: validate hex, normalize to 64-char canonical form).
+
+### Added: error codes
+
+- `AbortModule` union extended with `"allowlist" | "file"`.
+- Full `ABORT_CODES.allowlist` (6 codes: `EUnauthorized`, `EMemberAlreadyPresent`, `EMemberNotPresent`, `ESealInvalidId`, `ESealWrongPolicyTag`, `ENoAccess`) and `ABORT_CODES.file` (4 codes: `EUnauthorized`, `EBlobIdEmpty`, `ENameInvalid`, `EContentTypeInvalid`) tables.
+- `KeypairAdapter`'s simulation-abort mapper recognizes the new modules and surfaces them as `ContractAbortError` (not `TransportError`).
+
+### Added: Seal identity helpers
+
+- `buildAllowlistSealId(allowlistId, nonce)` / `decodeAllowlistSealId(sealId)`. Identity layout: `[allowlist_id(32) || tag=2 || nonce(>=1)]`. Same shape as the publisher policy with a distinct tag byte, so both policies coexist in one package with zero identity-collision risk.
+
+### Added: ops
+
+Allowlist:
+- `createAllowlist(adapter, config, { name }) → { allowlistId, capId, digest, gasUsedMist }` : creates + shares + transfers Cap to sender in one PTB.
+- `addMember`, `removeMember`, `transferAllowlistCap`, `deleteAllowlist`.
+
+File:
+- `createEncryptedFile`, `createPublicFile`. Register on-chain metadata for a file already on Walrus.
+- `updateFileMetadata`, `transferFileOwnership`, `deleteFile`. Owner-only mutations.
+
+High-level flow:
+- `uploadEncryptedFileFromBytes(adapter, config, { walrus, seal, allowlistId, sealId, plaintext, name, contentType, upload, ... })` : encrypt + upload + register in 2 wallet popups. Mirrors the `addEncryptedEntryFromBytes` shape.
+- `uploadPublicFileFromBytes`. Same flow without Seal encryption.
+- `FileUploadProgressCallback` / `FileUploadProgressEvent` for progress reporting (`encrypting`, `uploading`, `submitting`, `complete`).
+
+### Added: reader
+
+- `RpcFilesReader.fromMorseConfig(config, client)`. Separate from `RpcPublicationReader` to keep the existing `PublicationReader` interface untouched.
+- `getAllowlist`, `getEncryptedFile`, `listAllowlistCapsOwnedBy`, `listEncryptedFilesOwnedBy`.
+- "List files accessible by membership" deferred to a future indexer integration; documented in `INTEGRATION.md` with the event-based approach in the interim.
+
+### Added: Seal decrypt for allowlist policy
+
+- `DefaultSealAdapter.decryptUnderAllowlist(ciphertext, { sealId, allowlistId, sessionKey })` : builds the `allowlist::seal_approve` PTB internally; returns the plaintext.
+- `SealDecryptUnderAllowlistOptions` exported type.
+- The existing `decrypt(...)` (publisher policy) is unchanged.
+
+### Added: scripts
+
+- `scripts/phase-8-allowlist.ts`. Testnet smoke: create allowlist, add/remove member, reader checks, delete.
+- `scripts/phase-9-encrypted-file.ts`. Testnet smoke: encrypt + upload + register + decrypt round-trip.
+- `scripts/example-files-alice-bob.ts`. Narrative example with two keypairs (Alice creates, Bob decrypts).
+
+### Changed
+
+- `morseConfig({ network: 'testnet' })`'s `packageId` updated to the v2 published-at (`0xd1b8...8698`); `originalPackageId` unchanged.
+
+### Migration
+
+Consumers upgrading from 0.1.4 do not need to change any existing code. To start using the new file features:
+
+```ts
+import {
+  createAllowlist,
+  addMember,
+  buildAllowlistSealId,
+  uploadEncryptedFileFromBytes,
+} from "@arcadiasystems/morse-sdk";
+```
+
+See `INTEGRATION.md` in `morse-contracts/` and `scripts/example-files-alice-bob.ts` for the full flow.
+
 ## [0.1.4] - 2026-05-21
 
 Pluggable `PubkeyCache` for `fromAccountAsync` so Phantom users do not re-sign a probe message on every page reload.
@@ -131,6 +209,7 @@ See `README.md` for the full list. Headlines:
 - Wallet schemes other than Ed25519 ship as decoders with E2E unverified; `WalletStandardSigner.fromAccount` will accept them, but `@mysten/walrus` and `@mysten/seal` round-trip is not yet smoke-tested for those configurations.
 - gRPC client only at v0.1.0; the reader and adapter interfaces are typed against `Pick<SuiGrpcClient, ...>`. JSON-RPC fallback is planned for v0.2.0.
 
+[0.2.0]: https://github.com/arcadiasystems/morse-dcms/releases/tag/v0.2.0
 [0.1.4]: https://github.com/arcadiasystems/morse-dcms/releases/tag/v0.1.4
 [0.1.3]: https://github.com/arcadiasystems/morse-dcms/releases/tag/v0.1.3
 [0.1.2]: https://github.com/arcadiasystems/morse-dcms/releases/tag/v0.1.2
