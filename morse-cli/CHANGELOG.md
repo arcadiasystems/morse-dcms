@@ -4,6 +4,16 @@ All notable changes to `@arcadiasystems/morse-cli` are documented here. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] - 2026-06-05
+
+### Changed
+
+- Requires `@arcadiasystems/morse-sdk` `^0.4.2`. SDK 0.4.2 fixes a gRPC reader
+  bug (`Option<ID>` decoding) that prevented `morse file download` and `morse
+  file get` from reading a RecipientFile back. No CLI source changes; the fix is
+  internal to `RpcRecipientFilesReader.getRecipientFile`, which the CLI already
+  calls.
+
 ## [0.4.1] - 2026-06-05
 
 ### Changed

@@ -97,7 +97,7 @@ describe("RpcRecipientFilesReader.getRecipientFile", () => {
 		expect(result.blobId).toBe(ZERO_BLOB_ID_B64 as never);
 	});
 
-	test("parses blob_object_id when present", async () => {
+	test("parses blob_object_id from the JSON-RPC Option shape ({ vec: [id] })", async () => {
 		const blobObjectId =
 			"0x0000000000000000000000000000000000000000000000000000000000000abc";
 		const reader = RpcRecipientFilesReader.fromConfig(
@@ -108,6 +108,30 @@ describe("RpcRecipientFilesReader.getRecipientFile", () => {
 		);
 		const result = await reader.getRecipientFile(FILE_ID);
 		expect(result.blobObjectId as string).toBe(blobObjectId);
+	});
+
+	test("parses blob_object_id from the gRPC Option shape (bare string)", async () => {
+		// Regression: SuiGrpcClient encodes Some(ID) as a bare hex string,
+		// not as { vec: [...] }. Pre-0.4.2 the reader rejected this and
+		// broke every download path against a gRPC client. Any RecipientFile
+		// created by the upload helpers carries a Some blob_object_id.
+		const blobObjectId =
+			"0x1d293d56066e73d6eea45832f1f359cb32b534dcb8af07124d41847fa4e2e992";
+		const reader = RpcRecipientFilesReader.fromConfig(
+			makeReader(async () => fileResponse({ blob_object_id: blobObjectId })),
+			{ packageId: PACKAGE_ID },
+		);
+		const result = await reader.getRecipientFile(FILE_ID);
+		expect(result.blobObjectId as string).toBe(blobObjectId);
+	});
+
+	test("parses blob_object_id absent (null) as null", async () => {
+		const reader = RpcRecipientFilesReader.fromConfig(
+			makeReader(async () => fileResponse({ blob_object_id: null })),
+			{ packageId: PACKAGE_ID },
+		);
+		const result = await reader.getRecipientFile(FILE_ID);
+		expect(result.blobObjectId).toBe(null);
 	});
 
 	test("throws NotFoundError when the object envelope has no json", async () => {

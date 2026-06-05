@@ -2,6 +2,12 @@
 
 All notable changes to `morse-sdk` will be documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] - 2026-06-05
+
+### Fixed
+
+- `RpcRecipientFilesReader.getRecipientFile` threw `ValidationError: Field recipient_file.blob_object_id has unexpected shape: "0x..."` against `SuiGrpcClient` (the recommended client) for every file created by the upload helpers. Sui transports disagree on `Option<ID>` encoding in object JSON: JSON-RPC HTTP wraps it as `{ vec: [] | ["0x..."] }`, but gRPC encodes `Some(ID)` as a bare hex string and `None` as `null`. The reader now accepts both shapes plus the `null` / absent case. Regression covered by new tests in `read/recipient-files-reader.test.ts`. This broke the download/decrypt path on testnet for any RecipientFile produced by `uploadRecipientFileFromBytes` / `uploadEncryptedRecipientFileFromBytes`.
+
 ## [0.4.1] - 2026-06-05
 
 ### Fixed
