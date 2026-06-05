@@ -128,6 +128,52 @@ describe("uploadRecipientFileFromBytes", () => {
 		expect(adapter.signAndExecuteTransaction).toHaveBeenCalledTimes(1);
 	});
 
+	test("matches the created RecipientFile by recipientFileEventOriginPackageId across upgrades", async () => {
+		// Regression: on testnet (and any deployment with a v3 upgrade) Sui
+		// stamps the created RecipientFile under the type-origin id, not the
+		// current published-at. The lookup must match the origin id supplied
+		// via `recipientFileEventOriginPackageId`, not `packageId`.
+		const ORIGIN = toPackageId(
+			"0x0000000000000000000000000000000000000000000000000000000000000333",
+		);
+		const POST_UPGRADE_PACKAGE_ID = toPackageId(
+			"0x0000000000000000000000000000000000000000000000000000000000000444",
+		);
+		const adapter: WalletAdapter = {
+			address: SENDER,
+			signAndExecuteTransaction: mock(async () => ({
+				digest: "tx-combined",
+				gasUsedMist: 500n,
+				createdObjects: [
+					{
+						objectId: toSuiObjectId(FILE_ID),
+						objectType: `${ORIGIN}::recipient_file::RecipientFile`,
+					},
+				],
+				deletedObjects: [],
+			})),
+			simulateTransaction: mock(async () => []),
+		};
+		const walrus = new FakeWalrus({ kind: "ok", result: fakeUploadOk() });
+
+		const result = await uploadRecipientFileFromBytes(
+			adapter,
+			{
+				packageId: POST_UPGRADE_PACKAGE_ID,
+				recipientFileEventOriginPackageId: ORIGIN,
+			},
+			{
+				walrus,
+				bytes: new Uint8Array([1]),
+				recipients: [],
+				name: "x",
+				contentType: "text/plain",
+				upload: { epochs: 3, deletable: true },
+			},
+		);
+		expect(result.fileId as string).toBe(FILE_ID as string);
+	});
+
 	test("wraps a second-leg failure in UncertifiedBlobError", async () => {
 		const cause = new Error("user rejected");
 		const adapter: WalletAdapter = {

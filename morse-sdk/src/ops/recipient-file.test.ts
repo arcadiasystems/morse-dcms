@@ -77,30 +77,70 @@ describe("createRecipientFile", () => {
 		expect(result.fileId as string).toBe(FILE_ID as string);
 	});
 
-	test("looks up the RecipientFile by type at packageId, not originalPackageId", async () => {
-		// Sui's type identity uses the package id where the type was FIRST
-		// defined. RecipientFile was introduced in v3, so the type-string root
-		// is the current packageId. A receipt carrying the same id under the
-		// originalPackageId would NOT match.
+	test("looks up the RecipientFile by type at recipientFileEventOriginPackageId when supplied", async () => {
+		// Sui stamps a created object's type with the package id where the
+		// struct was FIRST defined, not the current published-at. For
+		// RecipientFile that is `recipientFileEventOriginPackageId`. The
+		// lookup must use that origin, not the (potentially newer) packageId.
+		const ORIGIN = toPackageId(
+			"0x0000000000000000000000000000000000000000000000000000000000000333",
+		);
 		const adapter = makeAdapter({
 			digest: "tx-create",
 			gasUsedMist: 500n,
 			createdObjects: [
 				{
 					objectId: toSuiObjectId(FILE_ID),
-					objectType: `${ORIGINAL_PACKAGE_ID}::recipient_file::RecipientFile`,
+					objectType: `${ORIGIN}::recipient_file::RecipientFile`,
 				},
 			],
 			deletedObjects: [],
 		});
-		await expect(
-			createRecipientFile(adapter, CONFIG, {
+		const result = await createRecipientFile(
+			adapter,
+			{ ...CONFIG, recipientFileEventOriginPackageId: ORIGIN },
+			{
 				blobId: BLOB_ID,
 				name: "x",
 				contentType: "text/plain",
 				size: 1,
 				recipients: [],
-			}),
+			},
+		);
+		expect(result.fileId as string).toBe(FILE_ID as string);
+	});
+
+	test("fails when the receipt's RecipientFile is stamped at a different package than recipientFileEventOriginPackageId", async () => {
+		// Mismatched type-origin id: receipt carries an object under packageId,
+		// but the SDK was told the origin is elsewhere. The lookup must miss
+		// and surface as TransportError rather than silently brand a foreign
+		// object.
+		const ORIGIN = toPackageId(
+			"0x0000000000000000000000000000000000000000000000000000000000000333",
+		);
+		const adapter = makeAdapter({
+			digest: "tx-create",
+			gasUsedMist: 500n,
+			createdObjects: [
+				{
+					objectId: toSuiObjectId(FILE_ID),
+					objectType: `${PACKAGE_ID}::recipient_file::RecipientFile`,
+				},
+			],
+			deletedObjects: [],
+		});
+		await expect(
+			createRecipientFile(
+				adapter,
+				{ ...CONFIG, recipientFileEventOriginPackageId: ORIGIN },
+				{
+					blobId: BLOB_ID,
+					name: "x",
+					contentType: "text/plain",
+					size: 1,
+					recipients: [],
+				},
+			),
 		).rejects.toThrow(TransportError);
 	});
 

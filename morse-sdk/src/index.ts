@@ -25,6 +25,7 @@ export {
 	DEFAULT_RPC_URLS,
 	type MorseConfigOptions,
 	type MorsePackageConfig,
+	type MorseRecipientFileConfig,
 	morseConfig,
 	Network,
 	type NetworkConfig,

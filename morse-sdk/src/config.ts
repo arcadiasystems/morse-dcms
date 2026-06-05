@@ -101,6 +101,18 @@ export type MorsePackageConfig = Pick<
 	"packageId" | "originalPackageId"
 >;
 
+/**
+ * Config shape for recipient-file ops and reader. Extends `MorsePackageConfig`
+ * with `recipientFileEventOriginPackageId`, which is needed for created-object
+ * type-string lookup: Sui stamps a created object's type with the package id
+ * where its struct was FIRST defined, not the current published-at. For
+ * `RecipientFile` that's the v3 upgrade address; matching against the current
+ * `packageId` (v4+) fails. When omitted, defaults to `packageId` (correct for
+ * a fresh deployment with no upgrades).
+ */
+export type MorseRecipientFileConfig = MorsePackageConfig &
+	Pick<NetworkConfig, "recipientFileEventOriginPackageId">;
+
 // morseConfig factory
 
 /**

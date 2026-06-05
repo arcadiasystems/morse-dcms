@@ -7,7 +7,10 @@
 import { Transaction } from "@mysten/sui/transactions";
 
 import { toRecipientFileId } from "../codecs.js";
-import type { MorsePackageConfig } from "../config.js";
+import type {
+	MorsePackageConfig,
+	MorseRecipientFileConfig,
+} from "../config.js";
 import {
 	buildAddRecipient,
 	buildDeleteRecipientFile,
@@ -66,7 +69,7 @@ export interface CreateRecipientFileArgs {
  */
 export async function createRecipientFile(
 	adapter: WalletAdapter,
-	config: MorsePackageConfig,
+	config: MorseRecipientFileConfig,
 	args: CreateRecipientFileArgs,
 ): Promise<CreateRecipientFileResult> {
 	const tx = new Transaction();
@@ -111,7 +114,7 @@ export interface CreateEncryptedRecipientFileArgs
  */
 export async function createEncryptedRecipientFile(
 	adapter: WalletAdapter,
-	config: MorsePackageConfig,
+	config: MorseRecipientFileConfig,
 	args: CreateEncryptedRecipientFileArgs,
 ): Promise<CreateRecipientFileResult> {
 	const tx = new Transaction();
@@ -259,15 +262,27 @@ export async function deleteRecipientFile(
 
 function parseCreateReceipt(
 	receipt: Awaited<ReturnType<WalletAdapter["signAndExecuteTransaction"]>>,
-	config: MorsePackageConfig,
+	config: MorseRecipientFileConfig,
 ): CreateRecipientFileResult {
-	// RecipientFile was first defined in the v3 upgrade and lives at the
-	// current published-at, not at originalPackageId. Type filters against
-	// originalPackageId would miss the created object.
-	const fileType = `${config.packageId}::recipient_file::RecipientFile`;
 	return {
 		digest: receipt.digest,
 		gasUsedMist: receipt.gasUsedMist,
-		fileId: toRecipientFileId(findCreatedId(receipt, fileType)),
+		fileId: toRecipientFileId(
+			findCreatedId(receipt, recipientFileType(config)),
+		),
 	};
+}
+
+/**
+ * Fully-qualified object-type string for a created `RecipientFile`.
+ *
+ * Sui stamps a created object with the package id where its struct was FIRST
+ * defined (the "type origin"), not the current published-at. For
+ * `RecipientFile` that origin is `recipientFileEventOriginPackageId`. Falls
+ * back to `packageId` for fresh deployments with no upgrades, where the two
+ * are equal.
+ */
+export function recipientFileType(config: MorseRecipientFileConfig): string {
+	const origin = config.recipientFileEventOriginPackageId ?? config.packageId;
+	return `${origin}::recipient_file::RecipientFile`;
 }

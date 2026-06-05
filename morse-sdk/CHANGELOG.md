@@ -2,6 +2,16 @@
 
 All notable changes to `morse-sdk` will be documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-06-05
+
+### Fixed
+
+- `uploadRecipientFileFromBytes`, `uploadEncryptedRecipientFileFromBytes`, `createRecipientFile`, and `createEncryptedRecipientFile` failed every testnet upload with `UncertifiedBlobError` wrapping `TransportError: Receipt is missing a created object of type 0x4687...::recipient_file::RecipientFile`. Sui stamps a created object's type with the package id where its struct was FIRST defined (the type origin), not the current published-at; for `RecipientFile` that is the v3 upgrade address tracked by `recipientFileEventOriginPackageId`. The lookup now uses that origin and falls back to `packageId` only when no origin is configured (fresh deployments). The object-type analogue of the event-type-origin fix already shipped in 0.4.0. Regression covered by new tests in `ops/recipient-file.test.ts` and `ops/recipient-file-from-bytes.test.ts`.
+
+### Added
+
+- `MorseRecipientFileConfig` type: `MorsePackageConfig + recipientFileEventOriginPackageId`. The recipient-file ops now accept this widened shape; passing a plain `morseConfig({ network })` continues to work because `NetworkConfig` is a superset.
+
 ## [0.4.0] - 2026-06-04
 
 Replaces the per-wallet `Allowlist` + `EncryptedFile` pair with a single `RecipientFile` primitive that carries its recipient set directly on the file. Target UX: 2 wallet popups for an encrypted upload to N recipients (was N+3). The SDK exposes the new surface only; the legacy `allowlist` and `file` modules remain in the contract bytecode for backward compat with 0.2 / 0.3 clients but no current SDK code paths reach them.

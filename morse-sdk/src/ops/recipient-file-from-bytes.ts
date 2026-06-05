@@ -18,7 +18,7 @@
 import type { Transaction } from "@mysten/sui/transactions";
 
 import { toRecipientFileId } from "../codecs.js";
-import type { MorsePackageConfig } from "../config.js";
+import type { MorseRecipientFileConfig } from "../config.js";
 import { TransportError, UncertifiedBlobError } from "../errors.js";
 import {
 	buildNewRecipientFile,
@@ -45,6 +45,7 @@ import {
 	type WalrusWriteAdapter,
 } from "../walrus/adapter.js";
 import { findCreatedId } from "./internal.js";
+import { recipientFileType } from "./recipient-file.js";
 
 /**
  * Coarse-grained progress phases.
@@ -102,7 +103,7 @@ export interface UploadRecipientFileArgs {
  */
 export async function uploadRecipientFileFromBytes(
 	adapter: WalletAdapter,
-	config: MorsePackageConfig,
+	config: MorseRecipientFileConfig,
 	args: UploadRecipientFileArgs,
 ): Promise<UploadRecipientFileResult> {
 	assertFlowCapable(args.walrus);
@@ -191,7 +192,7 @@ export interface UploadEncryptedRecipientFileResult
  */
 export async function uploadEncryptedRecipientFileFromBytes(
 	adapter: WalletAdapter,
-	config: MorsePackageConfig,
+	config: MorseRecipientFileConfig,
 	args: UploadEncryptedRecipientFileArgs,
 ): Promise<UploadEncryptedRecipientFileResult> {
 	assertFlowCapable(args.walrus);
@@ -258,17 +259,16 @@ interface SubmitCombinedArgs {
 async function submitCombinedTx(
 	adapter: WalletAdapter,
 	tx: Transaction,
-	config: MorsePackageConfig,
+	config: MorseRecipientFileConfig,
 	args: SubmitCombinedArgs,
 ): Promise<UploadRecipientFileResult> {
 	const receipt = await adapter.signAndExecuteTransaction(tx, args.signal);
-	// RecipientFile was added in the v3 upgrade; the type identity uses the
-	// current published-at, not originalPackageId.
-	const fileType = `${config.packageId}::recipient_file::RecipientFile`;
 	return {
 		digest: receipt.digest,
 		gasUsedMist: receipt.gasUsedMist,
-		fileId: toRecipientFileId(findCreatedId(receipt, fileType)),
+		fileId: toRecipientFileId(
+			findCreatedId(receipt, recipientFileType(config)),
+		),
 		blobObjectId: args.blobObjectId,
 		blobId: args.blobId,
 	};
