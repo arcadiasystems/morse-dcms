@@ -362,6 +362,7 @@ interface DownloadOptions {
 	readonly share?: string;
 	readonly prefix?: string;
 	readonly nonce?: string;
+	readonly raw?: boolean;
 	readonly viaAggregator?: boolean;
 }
 
@@ -448,13 +449,24 @@ export async function runFileDownload(
 		);
 	}
 	const target = resolveDownloadTarget(positional, options);
+	if (options.raw && target.decrypt !== undefined) {
+		ctx.output.warn(
+			"--raw is ignored because a decrypt input (--share/--prefix/--nonce) was given; decrypting.",
+		);
+	}
 	const fileId = toRecipientFileId(target.fileId);
 	const file = await ctx.filesReader.getRecipientFile(fileId, ctx.signal);
 	// A public file has no recipients; any with a recipient list was encrypted.
-	// Without a share string (or prefix/nonce) we can only return ciphertext.
+	// Without a share string (or prefix/nonce) we can only return ciphertext, so
+	// refuse by default and require --raw to opt into the unusable bytes.
 	if (target.decrypt === undefined && file.members.length > 0) {
+		if (!options.raw) {
+			throw new UsageError(
+				"This file has a recipient list, so its bytes are encrypted. Pass --share (or --prefix and --nonce) to decrypt, or --raw to write the raw ciphertext anyway.",
+			);
+		}
 		ctx.output.warn(
-			"This file has a recipient list, so its bytes are likely encrypted. Pass --share (or --prefix and --nonce) to decrypt; writing the raw bytes as-is.",
+			"Writing raw ciphertext (--raw); the output is unusable without decryption.",
 		);
 	}
 	ctx.output.info("Fetching content from Walrus...");
@@ -512,10 +524,13 @@ export async function runFileList(
 	let summaries: RecipientFileSummary[];
 	if (options.accessible) {
 		ctx.output.info("Fetching recipient and file events...");
+		// Include metadata-update events so a renamed file shows its current name
+		// without --hydrate; the reducer applies them to the summary.
 		const events = await fetchEventStreams(
 			ctx.events,
 			[
 				types.RecipientFileCreated,
+				types.RecipientFileMetadataUpdated,
 				types.RecipientAdded,
 				types.RecipientRemoved,
 				types.RecipientFileDeleted,
@@ -525,11 +540,16 @@ export async function runFileList(
 		summaries = reconcileRecipientFilesAccessibleBy(events, address, types);
 	} else {
 		ctx.output.info("Fetching file events...");
+		// Metadata-update and recipient events keep the summary's name and
+		// recipient count current without a per-file --hydrate read.
 		const events = await fetchEventStreams(
 			ctx.events,
 			[
 				types.RecipientFileCreated,
+				types.RecipientFileMetadataUpdated,
 				types.RecipientFileOwnershipTransferred,
+				types.RecipientAdded,
+				types.RecipientRemoved,
 				types.RecipientFileDeleted,
 			],
 			ctx.signal,
@@ -617,7 +637,11 @@ export function registerFileCommands(program: Command): void {
 			"Share string from upload (bundles file id, prefix, nonce)",
 		)
 		.option("--prefix <hex>", "Seal prefix (with --nonce) to decrypt")
-		.option("--nonce <hex>", "Seal nonce (with --prefix) to decrypt");
+		.option("--nonce <hex>", "Seal nonce (with --prefix) to decrypt")
+		.option(
+			"--raw",
+			"Write the raw (still-encrypted) bytes when no decrypt input is given",
+		);
 	viaAggregatorOption(download).action(
 		async (
 			target: string | undefined,

@@ -14,13 +14,14 @@ beforeEach(resetSdkMock);
 
 const ID = `0x${"1".repeat(64)}`;
 
-function readerWithCaps() {
+function readerWithCaps(entries: unknown[] = []) {
 	return {
 		listPublisherCapsOwnedBy: () =>
 			Promise.resolve({
 				results: [{ id: `0x${"d".repeat(64)}`, publicationId: ID }],
 				nextCursor: null,
 			}),
+		listEntries: () => Promise.resolve({ results: entries, nextCursor: null }),
 	} as never;
 }
 
@@ -74,11 +75,23 @@ describe("runCollectionCreate", () => {
 });
 
 describe("runCollectionDelete", () => {
-	test("aborts without --yes in a non-interactive context", async () => {
+	test("aborts without --yes in a non-interactive context (empty collection)", async () => {
+		// readerWithCaps() reports no entries, so the emptiness check passes and the
+		// missing confirmation is what aborts.
 		const { ctx } = writeContext({ reader: readerWithCaps() });
 		await expect(
 			runCollectionDelete(ctx, "posts", { publication: ID }, { yes: false }),
 		).rejects.toThrow(/--yes/);
+		expect(ops.deleteCollection).not.toHaveBeenCalled();
+	});
+
+	test("refuses to delete a non-empty collection before prompting", async () => {
+		const { ctx } = writeContext({
+			reader: readerWithCaps([{ id: 0, name: "post" }]),
+		});
+		await expect(
+			runCollectionDelete(ctx, "posts", { publication: ID }, { yes: true }),
+		).rejects.toThrow(/still has entries/);
 		expect(ops.deleteCollection).not.toHaveBeenCalled();
 	});
 

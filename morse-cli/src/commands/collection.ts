@@ -1,6 +1,10 @@
 /** `morse collection`: create, list, and delete collections within a publication. */
 
-import { createCollection, deleteCollection } from "@arcadiasystems/morse-sdk";
+import {
+	createCollection,
+	deleteCollection,
+	StorageMode,
+} from "@arcadiasystems/morse-sdk";
 import type { Command } from "commander";
 
 import {
@@ -9,7 +13,7 @@ import {
 	type ReadContext,
 	type WriteContext,
 } from "../cli/context.ts";
-import { cancelled } from "../cli/errors.ts";
+import { cancelled, UsageError } from "../cli/errors.ts";
 import type { GlobalOptions } from "../cli/program.ts";
 import { confirm } from "../cli/prompts.ts";
 import { globalOptions } from "../cli/runtime.ts";
@@ -55,6 +59,11 @@ export async function runCollectionCreate(
 		options.publisherCap,
 		ctx.signal,
 	);
+	if (storageMode === StorageMode.Quilt) {
+		ctx.output.warn(
+			"Quilt collections cannot yet be populated with `morse entry add` (only blob collections are supported).",
+		);
+	}
 	ctx.output.info(`Creating collection "${name}" (${storageMode})...`);
 	const result = await createCollection(ctx.adapter, ctx.config, {
 		publicationId: id,
@@ -78,6 +87,17 @@ export async function runCollectionDelete(
 	gopts: GlobalOptions,
 ): Promise<void> {
 	const id = await resolvePublication(ctx, options.publication);
+	// Check emptiness before prompting or submitting; the contract aborts on a
+	// non-empty collection, but that surfaces as a raw transaction error.
+	const entries = await ctx.reader.listEntries(id, name, {
+		limit: 1,
+		signal: ctx.signal,
+	});
+	if (entries.results.length > 0) {
+		throw new UsageError(
+			`Cannot delete collection "${name}": it still has entries. Delete them first.`,
+		);
+	}
 	const proceed = await confirm(
 		`Delete collection "${name}" from ${shortId(id)}? It must be empty.`,
 		{ assumeYes: Boolean(gopts.yes), signal: ctx.signal },

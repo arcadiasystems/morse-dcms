@@ -58,7 +58,22 @@ describe("runFileDownload", () => {
 		expect(captured.stdout()).toContain(`Wrote 6 bytes to ${out}`);
 	});
 
-	test("warns when downloading a file with recipients but no decrypt option", async () => {
+	test("refuses to write ciphertext for an encrypted file without a decrypt option", async () => {
+		const { ctx } = fileDownloadContext({
+			filesReader: {
+				getRecipientFile: () =>
+					Promise.resolve(fileRecord({ members: [`0x${"7".repeat(64)}`] })),
+			},
+			walrusRead: {
+				readBlob: () => Promise.resolve(new TextEncoder().encode("cipher")),
+			},
+		});
+		await expect(
+			runFileDownload(ctx, FILE, { out: files.path("x") }),
+		).rejects.toThrow(/--share|--raw/);
+	});
+
+	test("--raw writes the ciphertext with a warning", async () => {
 		const out = files.path("ciphertext.bin");
 		const { ctx, captured } = fileDownloadContext({
 			filesReader: {
@@ -69,8 +84,8 @@ describe("runFileDownload", () => {
 				readBlob: () => Promise.resolve(new TextEncoder().encode("cipher")),
 			},
 		});
-		await runFileDownload(ctx, FILE, { out });
-		expect(captured.stderr()).toContain("--share");
+		await runFileDownload(ctx, FILE, { out, raw: true });
+		expect(captured.stderr()).toContain("raw ciphertext");
 		expect(await readFile(out, "utf8")).toBe("cipher");
 	});
 

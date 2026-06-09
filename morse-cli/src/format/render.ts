@@ -85,11 +85,22 @@ export function renderPublicationList(
 		.join("\n");
 }
 
+/** True when the entry has a draft revision newer than its published head. */
+export function hasPendingDraft(
+	entry: Pick<Entry, "draftHead" | "publicHead">,
+): boolean {
+	if (entry.draftHead === null) {
+		return false;
+	}
+	return entry.publicHead === null || entry.draftHead > entry.publicHead;
+}
+
 export function renderEntry(entry: Entry): string {
 	const lines = [
 		`#${entry.id} ${entry.name}`,
-		`publicHead: ${headLabel(entry.publicHead)}  draftHead: ${headLabel(entry.draftHead)}`,
-		`revisions:  ${entry.revisions.length}`,
+		`publicHead:   ${headLabel(entry.publicHead)}  draftHead: ${headLabel(entry.draftHead)}`,
+		`pendingDraft: ${hasPendingDraft(entry) ? "yes" : "no"}`,
+		`revisions:    ${entry.revisions.length}`,
 	];
 	for (const revision of entry.revisions) {
 		lines.push(`  ${renderRevisionLine(revision)}`);
@@ -102,10 +113,10 @@ export function renderEntryList(entries: readonly Entry[]): string {
 		return "No entries in this collection.";
 	}
 	return entries
-		.map(
-			(entry) =>
-				`#${entry.id} ${entry.name} (${entry.revisions.length} revisions)`,
-		)
+		.map((entry) => {
+			const marker = hasPendingDraft(entry) ? " [draft]" : "";
+			return `#${entry.id} ${entry.name} (${entry.revisions.length} revisions)${marker}`;
+		})
 		.join("\n");
 }
 

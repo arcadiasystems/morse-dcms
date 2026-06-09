@@ -23,6 +23,25 @@ describe("runFileList", () => {
 		expect(ops.reconcileRecipientFilesOwnedBy).not.toHaveBeenCalled();
 	});
 
+	test("owned listing fetches metadata and recipient events so renames/recipients are current", async () => {
+		const queried: string[] = [];
+		const { ctx } = fileListContext();
+		const events = {
+			queryEvents: (params: { query: { MoveEventType: string } }) => {
+				queried.push(params.query.MoveEventType);
+				return Promise.resolve({
+					data: [],
+					hasNextPage: false,
+					nextCursor: null,
+				});
+			},
+		};
+		await runFileList({ ...ctx, events } as never, {});
+		expect(queried).toContain("RecipientFileMetadataUpdated");
+		expect(queried).toContain("RecipientAdded");
+		expect(queried).toContain("RecipientRemoved");
+	});
+
 	test("throws when no address and no active account", async () => {
 		const { ctx } = fileListContext({ ownerAddress: undefined });
 		await expect(runFileList(ctx, {})).rejects.toThrow(

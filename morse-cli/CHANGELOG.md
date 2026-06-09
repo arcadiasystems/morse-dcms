@@ -4,6 +4,42 @@ All notable changes to `@arcadiasystems/morse-cli` are documented here. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-06-09
+
+Hardening pass from CLI testing: fail fast before paying for Walrus storage,
+clearer errors on doomed operations, and accurate listings.
+
+### Added
+
+- `revision publish-from-draft` now reuses the draft's already-uploaded content
+  by default (no re-upload, no extra WAL, and the published bytes match what was
+  reviewed). Pass `--file`/`--stdin` only to publish replacement content.
+- `entry list` / `entry scan` accept `--drafts-only` to show just entries with a
+  pending (unpublished) draft. `entry list`/`entry get` now show a draft marker /
+  `pendingDraft` line.
+- `file download --raw` writes the still-encrypted bytes when no decrypt input is
+  given.
+
+### Changed
+
+- `file download` now refuses to write ciphertext when a file has recipients and
+  no `--share`/`--prefix`+`--nonce` is given; pass `--raw` to opt in. Previously
+  it warned and wrote the raw bytes.
+- `entry add` verifies the collection exists (and is blob-mode) before uploading
+  to Walrus, so a missing or quilt collection fails without burning storage.
+- `collection delete` checks the collection is empty up front and returns a clear
+  error instead of a raw transaction abort.
+- `file list` now reconciles metadata-update and recipient events, so renames and
+  recipient counts are current without `--hydrate`.
+- `collection create --mode quilt` warns that quilt collections cannot yet be
+  populated with `entry add`.
+
+### Fixed
+
+- The `revision` commands refuse to append an unencrypted revision to an entry
+  that has encrypted revisions, instead of silently producing a mixed-encryption
+  entry.
+
 ## [0.4.2] - 2026-06-05
 
 ### Changed

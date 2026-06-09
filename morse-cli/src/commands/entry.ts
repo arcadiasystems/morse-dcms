@@ -4,6 +4,8 @@ import {
 	addEntryFromBytes,
 	deleteEntry,
 	type Entry,
+	type PublicationId,
+	StorageMode,
 } from "@arcadiasystems/morse-sdk";
 import type { Command } from "commander";
 
@@ -25,7 +27,11 @@ import { confirm } from "../cli/prompts.ts";
 import { globalOptions } from "../cli/runtime.ts";
 import { resolveCollection, resolvePublication } from "../cli/target.ts";
 import { shortId } from "../format/ids.ts";
-import { renderEntry, renderEntryList } from "../format/render.ts";
+import {
+	hasPendingDraft,
+	renderEntry,
+	renderEntryList,
+} from "../format/render.ts";
 import { registerEncryptedEntryCommands } from "./encrypted.ts";
 import {
 	type ContentOptions,
@@ -39,9 +45,39 @@ import {
 import { resolvePublisherCap } from "./resolve.ts";
 import { parseId, parseLimit, parsePositiveInt } from "./shared.ts";
 
-type ListOptions = TargetOptions & { limit?: string; cursor?: string };
+type ListOptions = TargetOptions & {
+	limit?: string;
+	cursor?: string;
+	draftsOnly?: boolean;
+};
+type ScanOptions = TargetOptions & { draftsOnly?: boolean };
 type DeleteOptions = TargetOptions & { publisherCap?: string };
 type ReadOptions = TargetOptions & { out?: string; viaAggregator?: boolean };
+
+// Verify the collection exists (and is a kind `entry add` can populate) before
+// any Walrus upload, so a missing or quilt collection fails fast instead of
+// after the user has already paid for storage on a doomed transaction.
+async function assertEntryAddCollection(
+	ctx: ReadContext,
+	publicationId: PublicationId,
+	collection: string,
+): Promise<void> {
+	const publication = await ctx.reader.getPublication(
+		publicationId,
+		ctx.signal,
+	);
+	const found = publication.collections.find((c) => c.name === collection);
+	if (found === undefined) {
+		throw new UsageError(
+			`Publication ${shortId(publicationId)} has no collection "${collection}".`,
+		);
+	}
+	if (found.storageMode === StorageMode.Quilt) {
+		throw new UsageError(
+			`Collection "${collection}" uses quilt storage, which \`entry add\` does not support yet. Use a blob-mode collection.`,
+		);
+	}
+}
 
 export async function runEntryGet(
 	ctx: ReadContext,
@@ -75,15 +111,18 @@ export async function runEntryList(
 	if (page.nextCursor !== null) {
 		ctx.output.info(`More results: pass --cursor "${page.nextCursor}"`);
 	}
-	ctx.output.result(renderEntryList(page.results), {
-		results: page.results,
+	const results = options.draftsOnly
+		? page.results.filter(hasPendingDraft)
+		: page.results;
+	ctx.output.result(renderEntryList(results), {
+		results,
 		nextCursor: page.nextCursor,
 	});
 }
 
 export async function runEntryScan(
 	ctx: ReadContext,
-	options: TargetOptions,
+	options: ScanOptions,
 ): Promise<void> {
 	const id = await resolvePublication(ctx, options.publication);
 	const collection = resolveCollection(ctx, options.collection);
@@ -91,7 +130,9 @@ export async function runEntryScan(
 	for await (const item of ctx.reader.scanEntries(id, collection, {
 		signal: ctx.signal,
 	})) {
-		entries.push(item);
+		if (!options.draftsOnly || hasPendingDraft(item)) {
+			entries.push(item);
+		}
 	}
 	ctx.output.result(renderEntryList(entries), { results: entries });
 }
@@ -109,6 +150,10 @@ export async function runEntryAdd(
 		options.contentType,
 		options.stdin ? undefined : options.file,
 	);
+	// Check the collection before the cap lookup and the upload, so a missing or
+	// quilt collection fails on the cheapest network call and never burns Walrus
+	// storage on a doomed transaction.
+	await assertEntryAddCollection(ctx, id, collection);
 	const publisherCapId = await resolvePublisherCap(
 		ctx.reader,
 		ctx.address,
@@ -250,7 +295,11 @@ export function registerEntryCommands(program: Command): void {
 		.command("list")
 		.description("List entries in a collection")
 		.option("--limit <n>", "Maximum results per page")
-		.option("--cursor <cursor>", "Continue from a previous page cursor");
+		.option("--cursor <cursor>", "Continue from a previous page cursor")
+		.option(
+			"--drafts-only",
+			"Show only entries with a pending (unpublished) draft",
+		);
 	collectionOption(publicationOption(list)).action(
 		async (options: ListOptions, command: Command) => {
 			await runEntryList(await buildReadContext(command), options);
@@ -259,9 +308,13 @@ export function registerEntryCommands(program: Command): void {
 
 	const scan = entry
 		.command("scan")
-		.description("List every entry in a collection (auto-paginated)");
+		.description("List every entry in a collection (auto-paginated)")
+		.option(
+			"--drafts-only",
+			"Show only entries with a pending (unpublished) draft",
+		);
 	collectionOption(publicationOption(scan)).action(
-		async (options: TargetOptions, command: Command) => {
+		async (options: ScanOptions, command: Command) => {
 			await runEntryScan(await buildReadContext(command), options);
 		},
 	);

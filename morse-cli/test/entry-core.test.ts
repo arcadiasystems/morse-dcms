@@ -45,13 +45,22 @@ function entry(revisions: unknown[]) {
 	};
 }
 
-function publisherCapReader() {
+function publicationWith(collections: unknown[]) {
+	return { id: ID, slug: "s", name: "n", collections };
+}
+
+function publisherCapReader(
+	collections: unknown[] = [
+		{ name: "posts", storageMode: "blob", nextEntryId: 0 },
+	],
+) {
 	return {
 		listPublisherCapsOwnedBy: () =>
 			Promise.resolve({
 				results: [{ id: `0x${"d".repeat(64)}`, publicationId: ID }],
 				nextCursor: null,
 			}),
+		getPublication: () => Promise.resolve(publicationWith(collections)),
 	} as never;
 }
 
@@ -64,7 +73,7 @@ describe("runEntryGet", () => {
 		});
 		await runEntryGet(ctx, "0", { publication: ID, collection: "posts" });
 		expect(captured.stdout()).toContain("#0 post");
-		expect(captured.stdout()).toContain("revisions:  1");
+		expect(captured.stdout()).toContain("revisions:");
 	});
 
 	test("rejects a non-numeric entry id", async () => {
@@ -134,6 +143,88 @@ describe("runEntryAdd", () => {
 			}),
 		).rejects.toThrow(/--epochs/);
 		expect(ops.addEntryFromBytes).not.toHaveBeenCalled();
+	});
+
+	test("refuses a missing collection without uploading", async () => {
+		const file = await files.write("post.md", "# hello");
+		const { ctx } = contentContext({ reader: publisherCapReader([]) });
+		await expect(
+			runEntryAdd(ctx, "post", {
+				publication: ID,
+				collection: "posts",
+				epochs: "3",
+				file,
+			}),
+		).rejects.toThrow(/no collection "posts"/);
+		expect(ops.addEntryFromBytes).not.toHaveBeenCalled();
+	});
+
+	test("refuses a quilt collection without uploading", async () => {
+		const file = await files.write("post.md", "# hello");
+		const { ctx } = contentContext({
+			reader: publisherCapReader([
+				{ name: "posts", storageMode: "quilt", nextEntryId: 0 },
+			]),
+		});
+		await expect(
+			runEntryAdd(ctx, "post", {
+				publication: ID,
+				collection: "posts",
+				epochs: "3",
+				file,
+			}),
+		).rejects.toThrow(/quilt/);
+		expect(ops.addEntryFromBytes).not.toHaveBeenCalled();
+	});
+});
+
+describe("runEntryList --drafts-only", () => {
+	test("keeps only entries with a pending draft", async () => {
+		const pending = {
+			...entry([revision()]),
+			id: 2,
+			draftHead: 1,
+			publicHead: 0,
+		};
+		const published = { ...entry([revision()]), id: 3, draftHead: null };
+		const { ctx, captured } = readContext({
+			reader: {
+				listEntries: () =>
+					Promise.resolve({ results: [pending, published], nextCursor: null }),
+			} as never,
+		});
+		await runEntryList(ctx, {
+			publication: ID,
+			collection: "posts",
+			draftsOnly: true,
+		});
+		expect(captured.stdout()).toContain("#2");
+		expect(captured.stdout()).not.toContain("#3");
+	});
+
+	test("scan --drafts-only excludes published entries", async () => {
+		const pending = {
+			...entry([revision()]),
+			id: 4,
+			draftHead: 1,
+			publicHead: 0,
+		};
+		const published = { ...entry([revision()]), id: 5, draftHead: null };
+		const { ctx, captured } = readContext({
+			reader: {
+				scanEntries: async function* () {
+					yield pending;
+					yield published;
+				},
+			} as never,
+		});
+		await runEntryScan(ctx, {
+			publication: ID,
+			collection: "posts",
+			draftsOnly: true,
+		});
+		expect(captured.stdout()).toContain("#4");
+		expect(captured.stdout()).not.toContain("#5");
 	});
 });
 

@@ -3,6 +3,7 @@
 import {
 	appendDraftRevision,
 	type BlobObjectId,
+	type Entry,
 	type PublicationId,
 	type PublisherCapId,
 	publishDirect,
@@ -11,6 +12,7 @@ import {
 import type { Command } from "commander";
 
 import { buildContentContext, type ContentContext } from "../cli/context.ts";
+import { UsageError } from "../cli/errors.ts";
 import { readContentBytes, resolveContentType } from "../cli/input.ts";
 import { resolveCollection, resolvePublication } from "../cli/target.ts";
 import {
@@ -31,7 +33,6 @@ interface ResolvedTarget {
 interface PreparedContent {
 	readonly blobObjectId: BlobObjectId;
 	readonly contentType: string;
-	readonly publisherCapId: PublisherCapId;
 }
 
 function revisionOptions(command: Command): Command {
@@ -49,27 +50,57 @@ async function resolveTarget(
 	return { publicationId, collection };
 }
 
-async function prepareContent(
+// Read the entry and refuse if it holds any encrypted revision. The revision
+// commands only produce unencrypted revisions, so appending to an encrypted
+// entry would leave it in a mixed state; reading first also fails fast before
+// any Walrus upload when the entry id is wrong.
+async function loadWritableEntry(
 	ctx: ContentContext,
 	publicationId: PublicationId,
+	collection: string,
+	entryId: number,
+): Promise<Entry> {
+	const entry = await ctx.reader.getEntry(
+		publicationId,
+		collection,
+		entryId,
+		ctx.signal,
+	);
+	if (entry.revisions.some((revision) => revision.encrypted)) {
+		throw new UsageError(
+			`Entry #${entryId} has encrypted revisions; the CLI cannot append an unencrypted revision to it. Encrypted revisions are not yet supported.`,
+		);
+	}
+	return entry;
+}
+
+interface LocalContent {
+	readonly bytes: Uint8Array;
+	readonly contentType: string;
+	readonly epochs: number;
+}
+
+// Read and validate content from --file/--stdin without any network IO, so a
+// missing content source fails fast before the entry-guard read or any upload.
+async function readLocalContent(
 	options: ContentOptions,
-): Promise<PreparedContent> {
+): Promise<LocalContent> {
 	const epochs = parsePositiveInt(options.epochs, "--epochs");
 	const bytes = await readContentBytes(options);
 	const contentType = resolveContentType(
 		options.contentType,
 		options.stdin ? undefined : options.file,
 	);
-	const publisherCapId = await resolvePublisherCap(
-		ctx.reader,
-		ctx.address,
-		publicationId,
-		options.publisherCap,
-		ctx.signal,
-	);
-	ctx.output.info(`Uploading ${bytes.length} bytes to Walrus...`);
-	const upload = await ctx.walrus.uploadBlob(bytes, {
-		epochs,
+	return { bytes, contentType, epochs };
+}
+
+async function uploadLocal(
+	ctx: ContentContext,
+	local: LocalContent,
+): Promise<PreparedContent> {
+	ctx.output.info(`Uploading ${local.bytes.length} bytes to Walrus...`);
+	const upload = await ctx.walrus.uploadBlob(local.bytes, {
+		epochs: local.epochs,
 		deletable: true,
 	});
 	// Surface the blob id before the on-chain op so a failed attach leaves the
@@ -77,7 +108,21 @@ async function prepareContent(
 	ctx.output.info(
 		`Blob uploaded (${upload.blobObjectId}). Submitting transaction...`,
 	);
-	return { blobObjectId: upload.blobObjectId, contentType, publisherCapId };
+	return { blobObjectId: upload.blobObjectId, contentType: local.contentType };
+}
+
+function capFor(
+	ctx: ContentContext,
+	publicationId: PublicationId,
+	options: ContentOptions,
+): Promise<PublisherCapId> {
+	return resolvePublisherCap(
+		ctx.reader,
+		ctx.address,
+		publicationId,
+		options.publisherCap,
+		ctx.signal,
+	);
 }
 
 export async function runRevisionPublishDirect(
@@ -87,10 +132,13 @@ export async function runRevisionPublishDirect(
 ): Promise<void> {
 	const { publicationId, collection } = await resolveTarget(ctx, options);
 	const numericEntryId = parseId(entryId, "entryId");
-	const prepared = await prepareContent(ctx, publicationId, options);
+	const local = await readLocalContent(options);
+	await loadWritableEntry(ctx, publicationId, collection, numericEntryId);
+	const publisherCapId = await capFor(ctx, publicationId, options);
+	const prepared = await uploadLocal(ctx, local);
 	const result = await publishDirect(ctx.adapter, ctx.config, {
 		publicationId,
-		publisherCapId: prepared.publisherCapId,
+		publisherCapId,
 		collectionName: collection,
 		entryId: numericEntryId,
 		blobObjectId: prepared.blobObjectId,
@@ -110,10 +158,13 @@ export async function runRevisionAppendDraft(
 ): Promise<void> {
 	const { publicationId, collection } = await resolveTarget(ctx, options);
 	const numericEntryId = parseId(entryId, "entryId");
-	const prepared = await prepareContent(ctx, publicationId, options);
+	const local = await readLocalContent(options);
+	await loadWritableEntry(ctx, publicationId, collection, numericEntryId);
+	const publisherCapId = await capFor(ctx, publicationId, options);
+	const prepared = await uploadLocal(ctx, local);
 	const result = await appendDraftRevision(ctx.adapter, ctx.config, {
 		publicationId,
-		publisherCapId: prepared.publisherCapId,
+		publisherCapId,
 		collectionName: collection,
 		entryId: numericEntryId,
 		blobObjectId: prepared.blobObjectId,
@@ -126,6 +177,29 @@ export async function runRevisionAppendDraft(
 	);
 }
 
+// Resolve the draft revision's existing blob so the reviewed bytes are
+// published unchanged (no re-upload, no extra WAL).
+function reuseDraftBlob(
+	entry: Entry,
+	draftRevisionId: number,
+): PreparedContent {
+	const draft = entry.revisions.find((r) => r.id === draftRevisionId);
+	if (draft === undefined) {
+		throw new UsageError(
+			`Entry #${entry.id} has no revision #${draftRevisionId} to publish.`,
+		);
+	}
+	if (draft.blobRef.kind !== "blob") {
+		throw new UsageError(
+			`Draft #${draftRevisionId} uses quilt storage, which cannot be reused; pass --file or --stdin to publish new content.`,
+		);
+	}
+	return {
+		blobObjectId: draft.blobRef.blobObjectId,
+		contentType: draft.contentType,
+	};
+}
+
 export async function runRevisionPublishFromDraft(
 	ctx: ContentContext,
 	entryId: string,
@@ -135,10 +209,28 @@ export async function runRevisionPublishFromDraft(
 	const { publicationId, collection } = await resolveTarget(ctx, options);
 	const numericEntryId = parseId(entryId, "entryId");
 	const draftId = parseId(draftRevisionId, "draftRevisionId");
-	const prepared = await prepareContent(ctx, publicationId, options);
+	// Read replacement content (if any) offline first, so a bad file path fails
+	// before the entry-guard read and the cap lookup, matching the other two
+	// revision commands.
+	const providedNewContent =
+		options.file !== undefined || Boolean(options.stdin);
+	const local = providedNewContent
+		? await readLocalContent(options)
+		: undefined;
+	const entry = await loadWritableEntry(
+		ctx,
+		publicationId,
+		collection,
+		numericEntryId,
+	);
+	const publisherCapId = await capFor(ctx, publicationId, options);
+	const prepared =
+		local === undefined
+			? reuseDraftBlob(entry, draftId)
+			: await uploadLocal(ctx, local);
 	const result = await publishFromDraft(ctx.adapter, ctx.config, {
 		publicationId,
-		publisherCapId: prepared.publisherCapId,
+		publisherCapId,
 		collectionName: collection,
 		entryId: numericEntryId,
 		draftRevisionId: draftId,
@@ -189,7 +281,7 @@ export function registerRevisionCommands(program: Command): void {
 		revision
 			.command("publish-from-draft <entryId> <draftRevisionId>")
 			.description(
-				"Upload content and publish it as a new revision, referencing a draft",
+				"Publish a draft as a new revision (reuses the draft's content; pass --file/--stdin to publish replacement content)",
 			),
 	).action(
 		async (

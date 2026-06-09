@@ -94,8 +94,31 @@ describe("renderEntry", () => {
 		} as unknown as Entry;
 		const out = renderEntry(entry);
 		expect(out).toContain("#3 post");
-		expect(out).toContain("publicHead: 0");
+		expect(out).toContain("publicHead:");
+		expect(out).toContain("pendingDraft: no");
 		expect(out).toContain("text/plain");
+	});
+
+	test("flags a pending draft", () => {
+		const entry = {
+			id: 4,
+			name: "wip",
+			draftHead: 2,
+			publicHead: 1,
+			revisions: [],
+		} as unknown as Entry;
+		expect(renderEntry(entry)).toContain("pendingDraft: yes");
+	});
+
+	test("a draft at the published head is not pending", () => {
+		const entry = {
+			id: 5,
+			name: "done",
+			draftHead: 0,
+			publicHead: 0,
+			revisions: [],
+		} as unknown as Entry;
+		expect(renderEntry(entry)).toContain("pendingDraft: no");
 	});
 });
 
@@ -136,6 +159,17 @@ describe("renderEntryList", () => {
 			{ id: 1, name: "a", revisions: [], draftHead: null, publicHead: null },
 		] as unknown as Entry[];
 		expect(renderEntryList(entries)).toContain("#1 a");
+	});
+
+	test("marks entries with a pending draft", () => {
+		const entries = [
+			{ id: 1, name: "a", revisions: [], draftHead: 2, publicHead: 1 },
+			{ id: 2, name: "b", revisions: [], draftHead: null, publicHead: 0 },
+		] as unknown as Entry[];
+		const out = renderEntryList(entries);
+		expect(out).toContain("#1 a (0 revisions) [draft]");
+		expect(out).toContain("#2 b (0 revisions)");
+		expect(out).not.toContain("#2 b (0 revisions) [draft]");
 	});
 });
 

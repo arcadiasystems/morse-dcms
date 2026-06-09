@@ -188,8 +188,8 @@ and `-C, --collection <name>`, both defaulting to the active context.
 | --- | --- |
 | `entry get <entryId> [-P …] [-C …]` | Fetch a single entry's metadata. |
 | `entry read <entryId> [revisionIndex] [--out <path>] [--via-aggregator] [-P …] [-C …]` | Fetch a public entry's content to stdout or a file. |
-| `entry list [-P …] [-C …]` | List entries (paginated). |
-| `entry scan [-P …] [-C …]` | List every entry (auto-paginated). |
+| `entry list [--drafts-only] [-P …] [-C …]` | List entries (paginated); `--drafts-only` shows just entries with a pending draft. |
+| `entry scan [--drafts-only] [-P …] [-C …]` | List every entry (auto-paginated). |
 | `entry add <name> --file <path> [-P …] [-C …]` | Upload content and add a new entry; prints a viewable link. |
 | `entry delete <entryId> [-P …] [-C …]` | Delete an entry. |
 | `entry add-encrypted <name> --file <path> [-P …] [-C …]` | Encrypt, upload, and add a new entry. |
@@ -212,7 +212,7 @@ commands; pure on-chain commands (publication, collection, cap) have no epochs.
 | --- | --- |
 | `revision publish-direct <entryId> --file <path> [-P …] [-C …]` | Upload content and append a public revision. |
 | `revision append-draft <entryId> --file <path> [-P …] [-C …]` | Upload content and append a draft revision. |
-| `revision publish-from-draft <entryId> <draftRevisionId> --file <path> [-P …] [-C …]` | Publish a new revision, referencing a draft. |
+| `revision publish-from-draft <entryId> <draftRevisionId> [--file <path>] [-P …] [-C …]` | Publish a draft as a new revision. Reuses the draft's content by default; pass `--file`/`--stdin` to publish replacement content. |
 
 ### cap
 
@@ -238,7 +238,7 @@ There is no separate allowlist object.
 | --- | --- |
 | `file upload <path> --name <n> (--public \| --encrypt \| -r <addr>...) [--content-type <m>] [--epochs <n>]` | Upload to Walrus and register. `--public` is world-readable; `--encrypt` (or supplying `-r`) encrypts, and the sender is always a recipient. One of the three is required. |
 | `file register --blob-id <id> --name <n> --content-type <m> --size <bytes> (--public \| --encrypted --seal-prefix <hex>) [-r <addr>...] [--blob-object-id <id>]` | Register metadata for a blob already on Walrus. |
-| `file download [file] [--out <path>] [--share <s>] [--prefix <hex> --nonce <hex>] [--via-aggregator]` | Download content; decrypts in place with a share string (or prefix + nonce). |
+| `file download [file] [--out <path>] [--share <s>] [--prefix <hex> --nonce <hex>] [--raw] [--via-aggregator]` | Download content; decrypts in place with a share string (or prefix + nonce). For an encrypted file with no decrypt input, it refuses unless `--raw` is given. |
 | `file list [--address <addr>] [--accessible] [--hydrate] [--limit <n>] [--indexer-url <url>]` | List files owned by (or, with `--accessible`, decryptable by) an address. |
 | `file get <file>` | Fetch a file's on-chain metadata and recipient list. |
 | `file update <file> --name <n> --content-type <m>` | Update name and MIME (owner only). |
@@ -311,6 +311,14 @@ to fetch the full record per file (one read each) when you need them.
   to read through the Walrus aggregator HTTP service instead: more reliable when
   storage nodes are flaky (common on testnet), at the cost of trusting the
   aggregator's bytes (no client-side verification).
+- Encrypted entries cannot be revised. The `revision` commands and `entry add`
+  only produce unencrypted content, so the CLI refuses to append to an entry that
+  already has encrypted revisions (to avoid a mixed-encryption entry). Use
+  `entry add-encrypted` for new encrypted entries.
+- `entry add` supports blob-mode collections only. Quilt collections can be
+  created but not yet populated through the CLI; `entry add` refuses them.
+- There is no command to query Walrus blob storage expiry; `--epochs` sets the
+  lease at upload time, but remaining lease time is not exposed by the SDK.
 - Mainnet is not yet deployed; use `testnet`.
 
 ## Publishing

@@ -13,8 +13,31 @@ const files = useTempFiles();
 
 const ID = `0x${"1".repeat(64)}`;
 const BLOB = `0x${"7".repeat(64)}`;
+const DRAFT_BLOB = `0x${"5".repeat(64)}`;
 
-function fixture() {
+function revision(over: Record<string, unknown> = {}) {
+	return {
+		id: 0,
+		contentType: "text/plain",
+		blobRef: { kind: "blob", blobObjectId: `0x${"9".repeat(64)}` },
+		author: `0x${"a".repeat(64)}`,
+		encrypted: false,
+		sealId: null,
+		...over,
+	};
+}
+
+function entry(revisions: unknown[]) {
+	return {
+		id: 0,
+		name: "post",
+		publicHead: 0,
+		draftHead: 1,
+		revisions,
+	};
+}
+
+function fixture(entryRevisions: unknown[] = [revision()]) {
 	return contentContext({
 		reader: {
 			listPublisherCapsOwnedBy: () =>
@@ -22,6 +45,7 @@ function fixture() {
 					results: [{ id: `0x${"d".repeat(64)}`, publicationId: ID }],
 					nextCursor: null,
 				}),
+			getEntry: () => Promise.resolve(entry(entryRevisions)),
 		} as never,
 		walrus: { uploadBlob: () => Promise.resolve({ blobObjectId: BLOB }) },
 	});
@@ -71,7 +95,7 @@ describe("runRevisionAppendDraft", () => {
 });
 
 describe("runRevisionPublishFromDraft", () => {
-	test("publishes referencing the draft id", async () => {
+	test("uploads new content when --file is given", async () => {
 		const file = await files.write("final.txt", "final");
 		const { ctx, captured } = fixture();
 		await runRevisionPublishFromDraft(ctx, "0", "1", { ...baseOptions, file });
@@ -82,5 +106,57 @@ describe("runRevisionPublishFromDraft", () => {
 			blobObjectId: BLOB,
 		});
 		expect(captured.stdout()).toContain("from draft #1");
+	});
+
+	test("reuses the draft's blob when no content is given", async () => {
+		const draft = revision({
+			id: 1,
+			blobRef: { kind: "blob", blobObjectId: DRAFT_BLOB },
+		});
+		const { ctx, captured } = fixture([revision(), draft]);
+		await runRevisionPublishFromDraft(ctx, "0", "1", baseOptions);
+		// blobObjectId is the draft's own blob (DRAFT_BLOB), not a fresh upload
+		// (which the fixture's uploadBlob would return as BLOB).
+		expect(ops.publishFromDraft.mock.calls[0]?.[2]).toMatchObject({
+			draftRevisionId: 1,
+			blobObjectId: DRAFT_BLOB,
+		});
+		expect(captured.stdout()).toContain("from draft #1");
+	});
+
+	test("errors when the referenced draft id is not found", async () => {
+		const { ctx } = fixture([revision()]);
+		await expect(
+			runRevisionPublishFromDraft(ctx, "0", "9", baseOptions),
+		).rejects.toThrow(/no revision #9/);
+		expect(ops.publishFromDraft).not.toHaveBeenCalled();
+	});
+});
+
+describe("encrypted-entry guard", () => {
+	test("publish-direct refuses to append to an encrypted entry", async () => {
+		const file = await files.write("v.txt", "content");
+		const { ctx } = fixture([revision({ encrypted: true })]);
+		await expect(
+			runRevisionPublishDirect(ctx, "0", { ...baseOptions, file }),
+		).rejects.toThrow(/encrypted/);
+		expect(ops.publishDirect).not.toHaveBeenCalled();
+	});
+
+	test("append-draft refuses to append to an encrypted entry", async () => {
+		const file = await files.write("v.txt", "content");
+		const { ctx } = fixture([revision({ encrypted: true })]);
+		await expect(
+			runRevisionAppendDraft(ctx, "0", { ...baseOptions, file }),
+		).rejects.toThrow(/encrypted/);
+		expect(ops.appendDraftRevision).not.toHaveBeenCalled();
+	});
+
+	test("publish-from-draft refuses to publish on an encrypted entry", async () => {
+		const { ctx } = fixture([revision({ encrypted: true })]);
+		await expect(
+			runRevisionPublishFromDraft(ctx, "0", "1", baseOptions),
+		).rejects.toThrow(/encrypted/);
+		expect(ops.publishFromDraft).not.toHaveBeenCalled();
 	});
 });
