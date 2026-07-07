@@ -2,6 +2,16 @@
 
 All notable changes to `morse-sdk` will be documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.3] - 2026-07-07
+
+### Fixed
+
+- **`@mysten/seal` and `@mysten/walrus` are now required peer dependencies** (previously marked optional). The package's main entry re-exports the default Seal and Walrus adapters, whose static imports made both packages mandatory at runtime: a "minimal" install following the old README crashed with `ERR_MODULE_NOT_FOUND` on the very first `import` from the SDK. Declaring them required means npm 7+ auto-installs them and every documented install path yields a working import. No code changes; installs that already included all three Mysten packages are unaffected.
+- **README regenerated against the real 0.4.x surface.** The published README still documented the pre-0.4.0 allowlist/file API (`createAllowlist`, `addMember`, `createEncryptedFile`, `uploadEncryptedFileFromBytes`, `RpcFilesReader`, `buildAllowlistSealId`, …— all removed in 0.4.0) and never mentioned the `RecipientFile` API that replaced it. API tables, reader section, Seal identity section, and types now match `dist/index.d.ts`.
+- **Quick-start slug is collision-proof.** The README and examples used the fixed slug `"my-publication"`, which is already registered on testnet — every reader who ran the quick start verbatim hit `ESlugAlreadyExists`. Examples now derive a unique slug and call out that slugs are globally unique on-chain.
+- **Dead Walrus faucet link replaced.** `docs.walrus.site` no longer resolves; WAL acquisition now points at the working [stake-wal.wal.app](https://stake-wal.wal.app/?network=testnet) swap, matching docs.morsecms.xyz.
+- Stale version references cleaned up (compatibility table now lists 0.4.x; removed "at v0.1.0" qualifiers) and a "storage is epoch-funded, not permanent" note added to Known limitations.
+
 ## [0.4.2] - 2026-06-05
 
 ### Fixed

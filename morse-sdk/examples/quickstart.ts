@@ -30,7 +30,7 @@ export async function quickstart(privateKey: string): Promise<void> {
 	//    both transferred to the adapter's address atomically.
 	const created = await createPublication(ctx.adapter, ctx.config, {
 		name: "My Publication",
-		slug: "my-publication",
+		slug: `my-pub-${Date.now()}`, // slugs are globally unique on-chain
 	});
 
 	// 2. Create a blob-mode collection inside it. `storageMode` is fixed at

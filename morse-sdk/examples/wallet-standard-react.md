@@ -164,7 +164,7 @@ export function CreatePublicationButton() {
   async function onClick() {
     const result = await createPublication(morse.adapter, morse.config, {
       name: "My Publication",
-      slug: "my-publication",
+      slug: `my-pub-${Date.now()}`, // slugs are globally unique on-chain
     });
     console.log("created", result.publicationId);
   }
