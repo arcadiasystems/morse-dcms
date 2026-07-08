@@ -15,7 +15,7 @@ with [Seal](https://github.com/MystenLabs/seal).
   published CLI runs under either.
 - A funded Sui testnet address for gas, and testnet WAL for Walrus storage when
   adding content. Get SUI from the [Sui faucet](https://faucet.sui.io/) and WAL
-  from the [Walrus testnet faucet](https://docs.walrus.site/usage/web-tool.html).
+  by swapping SUI for WAL at [stake-wal.wal.app](https://stake-wal.wal.app/?network=testnet).
 
 ## Install
 
