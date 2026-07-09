@@ -8,32 +8,27 @@ Pre-release. Testnet only. The Move contract addresses are baked in via `morseCo
 
 ## Install
 
+All three Mysten packages are required peer dependencies. Pin the minors the SDK is verified against (see [Compatibility](#compatibility)):
+
 Bun:
 
 ```sh
-bun add @arcadiasystems/morse-sdk @mysten/sui
-# Optional - install only what you use:
-bun add @mysten/walrus     # for DefaultWalrusWriteAdapter
-bun add @mysten/seal       # for DefaultSealAdapter and encrypted entries
+bun add @arcadiasystems/morse-sdk @mysten/sui@2.16.2 @mysten/walrus@1.1.6 @mysten/seal@1.1.3
 ```
 
 npm:
 
 ```sh
-npm install @arcadiasystems/morse-sdk @mysten/sui
-npm install @mysten/walrus    # optional
-npm install @mysten/seal      # optional
+npm install @arcadiasystems/morse-sdk @mysten/sui@2.16.2 @mysten/walrus@1.1.6 @mysten/seal@1.1.3
 ```
 
 pnpm:
 
 ```sh
-pnpm add @arcadiasystems/morse-sdk @mysten/sui
-pnpm add @mysten/walrus       # optional
-pnpm add @mysten/seal         # optional
+pnpm add @arcadiasystems/morse-sdk @mysten/sui@2.16.2 @mysten/walrus@1.1.6 @mysten/seal@1.1.3
 ```
 
-`@mysten/sui` is required: the SDK takes types from it (`Transaction`, `Signer`) and you construct the gRPC client and keypairs directly. `@mysten/walrus` and `@mysten/seal` are optional peer dependencies; you only pay the install cost for the surface you actually import.
+`@mysten/sui` provides the client, keypairs, and transaction types; `@mysten/walrus` backs the default storage adapters (any publish path needs it); `@mysten/seal` backs threshold encryption. All three are imported by the SDK's public surface, so they must be installed even if you only use a subset — npm 7+ installs required peers automatically when you omit them.
 
 ## Compatibility
 
@@ -41,9 +36,10 @@ morse-sdk is built and tested against specific minor versions of its Mysten subs
 
 | morse-sdk | `@mysten/sui` | `@mysten/walrus` | `@mysten/seal` | Sui network | Verified  |
 | --------- | ------------- | ---------------- | -------------- | ----------- | --------- |
+| 0.4.x     | 2.16.2-2.16.x | 1.1.6-1.1.x      | 1.1.3-1.1.x    | testnet     | 2026-06-05 |
 | 0.1.x     | 2.16.2-2.16.x | 1.1.6-1.1.x      | 1.1.3-1.1.x    | testnet     | 2026-05-10 |
 
-Mysten ships breaking changes inside major version boundaries. When `@mysten/walrus@1.2.0` (or any minor bump on these libraries) is released, morse-sdk needs a coordinated minor bump and re-verification before the new minor is supported. Pin via `bun add @arcadiasystems/morse-sdk@~0.1.0` if you want patch updates without surprise minors.
+Mysten ships breaking changes inside major version boundaries. Newer minors (e.g. `@mysten/walrus@1.2.x`, `@mysten/sui@2.17+`) are outside the verified ranges and may produce runtime errors; morse-sdk needs a coordinated bump and re-verification before a new Mysten minor is supported. Pin via `bun add @arcadiasystems/morse-sdk@~0.4.0` if you want patch updates without surprise minors.
 
 The verification protocol is documented in [`CONTRIBUTING.md`](./CONTRIBUTING.md): every Mysten dep bump runs the full `scripts/phase-N-*.ts` smoke suite against testnet before the bump lands.
 
@@ -65,6 +61,7 @@ Setup once at startup:
 
 ```ts
 import { SuiGrpcClient } from "@mysten/sui/grpc";
+import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import {
   KeypairAdapter,
   morseConfig,
@@ -73,7 +70,8 @@ import {
 
 const config = morseConfig({ network: "testnet" });
 const client = new SuiGrpcClient({ network: "testnet", baseUrl: config.rpcUrl });
-const adapter = KeypairAdapter.fromSecretKey(privateKey, client);
+const keypair = Ed25519Keypair.fromSecretKey(privateKey); // Bech32 "suiprivkey1..."
+const adapter = new KeypairAdapter(keypair, client);
 // Browser apps swap KeypairAdapter for a WalletAdapter impl against the
 // connected wallet's signer - see "Adapter pattern" below.
 const reader = RpcPublicationReader.fromMorseConfig(config, client);
@@ -90,9 +88,11 @@ import {
   StorageMode,
 } from "@arcadiasystems/morse-sdk";
 
+// Slugs are globally unique on-chain (like usernames) - make yours
+// collision-proof rather than copying a fixed example value.
 const created = await createPublication(adapter, config, {
   name: "My Publication",
-  slug: "my-publication",
+  slug: `my-pub-${Date.now()}`,
 });
 await createCollection(adapter, config, {
   publicationId: created.publicationId,
@@ -216,13 +216,12 @@ The full public surface, grouped by concern. Every export carries a JSDoc on its
 | `addEntry` / `addEncryptedEntry` | Lower-level: add entry against a pre-uploaded `blobObjectId`. |
 | `appendDraftRevision` / `appendEncryptedDraftRevision` / `publishFromDraft` / `publishDirect` | Revision lifecycle on existing entries. |
 | `deleteEntry` | Remove an entry and its revisions. |
-| `createAllowlist(adapter, config, args)` | Create + share allowlist; returns `{ allowlistId, capId }`. |
-| `addMember` / `removeMember` / `transferAllowlistCap` / `deleteAllowlist` | Allowlist lifecycle. Cap-gated. |
-| `createEncryptedFile(adapter, config, args)` | Register metadata for an encrypted file already on Walrus (low-level). |
-| `createPublicFile(adapter, config, args)` | Register metadata for a public (unencrypted) file already on Walrus. |
-| `uploadEncryptedFileFromBytes(adapter, config, args)` | **Recommended.** Encrypt via Seal under an allowlist + upload to Walrus + register metadata in 2 wallet popups. |
-| `uploadPublicFileFromBytes(adapter, config, args)` | Upload unencrypted bytes + register public file metadata. |
-| `updateFileMetadata` / `transferFileOwnership` / `deleteFile` | File metadata lifecycle (owner-only). |
+| `createRecipientFile(adapter, config, args)` | Register + share a `RecipientFile` for a blob already on Walrus (single PTB). |
+| `createEncryptedRecipientFile(adapter, config, args)` | Same, for a blob already Seal-encrypted under a caller-supplied `sealIdPrefix`. |
+| `uploadRecipientFileFromBytes(adapter, config, args)` | **Recommended.** Upload bytes + register + share a `RecipientFile` addressed to N recipients in 2 wallet popups. |
+| `uploadEncryptedRecipientFileFromBytes(adapter, config, args)` | **Recommended.** Encrypt via Seal + upload + register in 2 wallet popups; returns `{ sealIdPrefix, sealNonce, fileId, ... }` for later decrypt. |
+| `addRecipient` / `removeRecipient` | Mutate the file's embedded recipient set (owner-only). |
+| `updateRecipientFileMetadata` / `transferRecipientFileOwnership` / `deleteRecipientFile` | RecipientFile lifecycle (owner-only). |
 
 ### Reader (RPC-backed)
 
@@ -232,9 +231,10 @@ The full public surface, grouped by concern. Every export carries a JSDoc on its
 | `reader.getPublication` / `getEntry` / `getRevision` / `getPublisherCap` | Single-object reads. |
 | `reader.listPublicationsOwnedBy` / `listPublisherCapsOwnedBy` / `listEntries` | Paginated lists. |
 | `reader.scanEntries` | Async-iterator over every entry in a collection. |
-| `RpcFilesReader.fromMorseConfig(config, client)` | Construct a files reader for the allowlist + encrypted-file modules. |
-| `filesReader.getAllowlist` / `getEncryptedFile` | Single-object reads. |
-| `filesReader.listAllowlistCapsOwnedBy` / `listEncryptedFilesOwnedBy` | Paginated lists by owner. |
+| `RpcRecipientFilesReader.fromMorseConfig(config, client)` | Construct a reader for the `recipient_file` module. |
+| `filesReader.getRecipientFile(id)` | Live single-object read (parses embedded `members`, blob refs). |
+| `buildRecipientFileEventTypes(originPackageId)` | Fully-qualified event type strings for the `RecipientFile*` events; pass `config.recipientFileEventOriginPackageId`. |
+| `reconcileRecipientFilesOwnedBy(events, address, eventTypes)` / `reconcileRecipientFilesAccessibleBy(...)` | Pure event-reconciliation helpers — bring your own indexer, get current file sets back. |
 
 ### Adapters
 
@@ -258,8 +258,10 @@ The full public surface, grouped by concern. Every export carries a JSDoc on its
 | --- | --- |
 | `buildPublisherSealId(publicationId, nonce)` | Build a publisher-policy Seal identity (`pubId(32) \|\| tag(1) \|\| nonce`). |
 | `decodePublisherSealId(sealId)` | Inspect a publisher identity. Throws `ValidationError` on tampered tags. |
-| `buildAllowlistSealId(allowlistId, nonce)` | Build an allowlist-policy Seal identity (`allowlistId(32) \|\| tag(2) \|\| nonce`). |
-| `decodeAllowlistSealId(sealId)` | Inspect an allowlist identity. Throws `ValidationError` on tampered tags. |
+| `buildRecipientFileSealId(prefix, nonce)` | Build a recipient-file Seal identity (`prefix \|\| tag(3) \|\| nonce`). |
+| `decodeRecipientFileSealId(sealId, prefixLength)` | Inspect a recipient-file identity (layout is not self-delimiting; caller supplies `prefixLength`). |
+| `randomSealPrefix()` / `randomSealNonce()` | Helpers for the common case: 32 random prefix bytes / 16 random nonce bytes. |
+| `RECOMMENDED_SEAL_PREFIX_BYTES` / `RECOMMENDED_SEAL_NONCE_BYTES` | The recommended sizes as constants (32 / 16). |
 
 ### Codecs (branded ID constructors)
 
@@ -287,7 +289,7 @@ The full public surface, grouped by concern. Every export carries a JSDoc on its
 
 ### Types
 
-`Publication`, `Collection`, `Entry`, `Revision`, `PublisherCap`, `OwnerCap`, `BlobRef`, `AccessPolicy`, `StorageMode`, `SealPolicyTag`, branded ID types (`PublicationId`, `BlobObjectId`, `WalrusBlobId`, `QuiltPatchId`, etc.).
+`Publication`, `Collection`, `Entry`, `Revision`, `PublisherCap`, `OwnerCap`, `BlobRef`, `AccessPolicy`, `StorageMode`, `SealPolicyTag`, `RecipientFile` / `RecipientFileSummary` / `RecipientFileFull`, branded ID types (`PublicationId`, `RecipientFileId`, `BlobObjectId`, `WalrusBlobId`, `QuiltPatchId`, etc.).
 
 ## Conceptual model
 
@@ -451,8 +453,9 @@ const config = morseConfig({
 - **`Subscription` access policy is reserved**, not enforced.
 - **`listEntries` ordering is dynamic-field object-store order**, not chronological. Sort by `entry.id` for insertion order.
 - **Walrus testnet flakiness**. `NotEnoughBlobConfirmationsError` from the underlying client is environmental; rerun. The SDK preserves the original error as the `cause` (use `instanceof` for narrowing — Walrus error classes don't set `.name`). Browser consumers may additionally see `NoBlobMetadataReceivedError` on reads from testnet due to CORS gaps on a subset of Walrus storage nodes; the CLI smoke scripts hit the full node pool and are more reliable for verification.
-- **Walrus uploads need WAL, not just SUI**. Fund the address from the [Walrus testnet faucet](https://docs.walrus.site/usage/web-tool.html#testnet-tokens) in addition to the [Sui faucet](https://faucet.sui.io/). Uploads error with `Insufficient balance of ::wal::WAL` if you skip this.
-- **gRPC client only at v0.1.0**. The reader and adapter interfaces are typed against `Pick<SuiGrpcClient, ...>` from `@mysten/sui/grpc`. `SuiJsonRpcClient` from `@mysten/sui/jsonRpc` has differently-named methods (`getDynamicFields` vs `listDynamicFields`, etc.) and is not yet a drop-in alternative. JSON-RPC fallback is planned for v0.2.0; for now, environments that block gRPC need to proxy or use a gRPC-compatible RPC endpoint.
+- **Walrus uploads need WAL, not just SUI**. Get testnet SUI from the [Sui faucet](https://faucet.sui.io/), then swap some for WAL at [stake-wal.wal.app](https://stake-wal.wal.app/?network=testnet). Uploads error with `Insufficient balance of ::wal::WAL` if you skip this.
+- **Walrus storage is epoch-funded, not permanent**. Blobs persist for the epochs you pay for (a testnet epoch is roughly a day) and expire afterwards unless renewed; Walrus testnet is also periodically wiped. The on-chain revision history is immutable, but treat testnet payloads as disposable.
+- **gRPC client only**. The reader and adapter interfaces are typed against `Pick<SuiGrpcClient, ...>` from `@mysten/sui/grpc`. `SuiJsonRpcClient` from `@mysten/sui/jsonRpc` has differently-named methods (`getDynamicFields` vs `listDynamicFields`, etc.) and is not yet a drop-in alternative. JSON-RPC fallback is planned; for now, environments that block gRPC need to proxy or use a gRPC-compatible RPC endpoint.
 
 ## Smoke scripts
 
@@ -482,7 +485,7 @@ bun install
 bun run lint
 bun run typecheck
 bun run test
-bun run test:coverage   # 265 tests, ~97% line / ~96% function coverage at v0.1.0
+bun run test:coverage   # per-file coverage report
 bun run build
 ```
 
