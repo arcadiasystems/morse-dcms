@@ -7,32 +7,32 @@ use publication::collection;
 use publication::entry;
 
 #[test]
-fun test_new_collection() {
+fun new_collection() {
   let ctx = &mut tx_context::dummy();
 
   let collection_obj = collection::new_collection(b"articles".to_string(), collection::storage_mode_blob(), ctx);
 
-  assert_eq!(collection::get_name(&collection_obj), b"articles".to_string());
-  assert_eq!(collection::get_storage_mode(&collection_obj), collection::storage_mode_blob());
+  assert_eq!(collection::name(&collection_obj), b"articles".to_string());
+  assert_eq!(collection::storage_mode(&collection_obj), collection::storage_mode_blob());
   assert_eq!(collection::next_entry_id(&collection_obj), 0);
 
   unit_test::destroy(collection_obj);
 }
 
 #[test]
-fun test_new_quilt_collection() {
+fun new_quilt_collection() {
   let ctx = &mut tx_context::dummy();
 
   let collection_obj = collection::new_collection(b"pages".to_string(), collection::storage_mode_quilt(), ctx);
 
-  assert_eq!(collection::get_name(&collection_obj), b"pages".to_string());
-  assert_eq!(collection::get_storage_mode(&collection_obj), collection::storage_mode_quilt());
+  assert_eq!(collection::name(&collection_obj), b"pages".to_string());
+  assert_eq!(collection::storage_mode(&collection_obj), collection::storage_mode_quilt());
 
   unit_test::destroy(collection_obj);
 }
 
 #[test, expected_failure(abort_code = collection::EInvalidStorageMode)]
-fun test_invalid_storage_mode_fails() {
+fun invalid_storage_mode_fails() {
   let ctx = &mut tx_context::dummy();
   // Aborts before creating the collection, no cleanup needed.
   let collection_obj = collection::new_collection(b"bad".to_string(), 99, ctx);
@@ -40,7 +40,7 @@ fun test_invalid_storage_mode_fails() {
 }
 
 #[test]
-fun test_add_entry() {
+fun add_entry() {
   let ctx = &mut tx_context::dummy();
 
   let mut collection_obj = collection::new_collection(b"articles".to_string(), collection::storage_mode_blob(), ctx);
@@ -69,7 +69,7 @@ fun test_add_entry() {
 }
 
 #[test]
-fun test_delete_entry() {
+fun delete_entry() {
   let ctx = &mut tx_context::dummy();
 
   let mut collection_obj = collection::new_collection(b"articles".to_string(), collection::storage_mode_blob(), ctx);
@@ -101,7 +101,7 @@ fun test_delete_entry() {
 }
 
 #[test]
-fun test_delete_then_add_uses_monotonic_entry_id() {
+fun delete_then_add_uses_monotonic_entry_id() {
   let ctx = &mut tx_context::dummy();
 
   let mut collection_obj = collection::new_collection(b"articles".to_string(), collection::storage_mode_blob(), ctx);
@@ -182,7 +182,7 @@ fun test_delete_then_add_uses_monotonic_entry_id() {
 }
 
 #[test, expected_failure(abort_code = collection::EEntryNotFound)]
-fun test_delete_missing_entry_id_fails() {
+fun delete_missing_entry_id_fails() {
   let ctx = &mut tx_context::dummy();
 
   let mut collection_obj = collection::new_collection(b"articles".to_string(), collection::storage_mode_blob(), ctx);

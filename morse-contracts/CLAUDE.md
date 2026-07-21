@@ -140,6 +140,8 @@ When a test creates two publications, use distinct slugs (e.g. `"pub-a"` and `"p
 
 Organize module source files by **logical component** (the feature/concept they belong to), not by technical kind (all structs together, all constants together, etc.).
 
+> This deliberately supersedes the generic top-to-bottom "by kind" ordering in the installed `sui-dev-skills` skill's `move/syntax/SKILL.md` — that guidance is a reasonable default for a fresh package but not what this codebase follows.
+
 Each component section groups its related items together in this order:
 1. Error constants
 2. Structs
@@ -170,7 +172,7 @@ public struct CollectionRemoved has copy, drop { ... }
 public(package) fun collections_length(...): u64 { ... }
 
 // internal
-fun get_collection_entry_for_write(...): &mut Entry { ... }
+fun entry_mut(...): &mut Entry { ... }
 ```
 
 **Rationale:** grouping by component keeps all the context for a feature in one place (error codes, types, functions, events), making it easier to read, review, and extend without scrolling across the file.

@@ -134,7 +134,7 @@ public fun contains_slug(registry: &PublicationRegistry, slug: String): bool {
 }
 
 /// Return the publication ID for a slug.
-public fun get_publication_id_by_slug(registry: &PublicationRegistry, slug: String): &ID {
+public fun publication_id_by_slug(registry: &PublicationRegistry, slug: String): &ID {
   registry.slugs.borrow(slug)
 }
 
@@ -322,7 +322,7 @@ public fun create_collection(
 
   let publication_id = object::id(publication);
   let collection = collection::new_collection(name, storage_mode, ctx);
-  let collection_name = collection.get_name();
+  let collection_name = collection.name();
   publication.collections.insert(collection_name, collection);
 
   event::emit(CollectionAdded { publication: publication_id, name: collection_name });
@@ -390,7 +390,7 @@ public fun add_entry_to_collection(
   assert_active_publisher_cap(publication, cap, ctx);
   let sender = ctx.sender();
   let collection = publication.collections.get_mut(&collection_name);
-  let blob_ref = entry::make_blob_ref(collection.get_storage_mode(), blob, quilt_patch_id);
+  let blob_ref = entry::make_blob_ref(collection.storage_mode(), blob, quilt_patch_id);
   let new_entry = entry::new_entry(name, blob_ref, content_type, encrypted, sender, access_policy, seal_id);
   collection::add_entry(collection, new_entry)
 }
@@ -427,8 +427,8 @@ public fun append_collection_entry_draft_revision(
   assert_active_publisher_cap(publication, cap, ctx);
   let sender = ctx.sender();
   let collection = publication.collections.get_mut(&collection_name);
-  let blob_ref = entry::make_blob_ref(collection.get_storage_mode(), blob, quilt_patch_id);
-  let entry_ref = collection::get_entry_mut(collection, entry_id);
+  let blob_ref = entry::make_blob_ref(collection.storage_mode(), blob, quilt_patch_id);
+  let entry_ref = collection::entry_mut(collection, entry_id);
   entry::append_draft_revision(entry_ref, blob_ref, content_type, encrypted, sender, access_policy, seal_id)
 }
 
@@ -449,8 +449,8 @@ public fun publish_collection_entry_from_draft(
   assert_active_publisher_cap(publication, cap, ctx);
   let sender = ctx.sender();
   let collection = publication.collections.get_mut(&collection_name);
-  let blob_ref = entry::make_blob_ref(collection.get_storage_mode(), blob, quilt_patch_id);
-  let entry_ref = collection::get_entry_mut(collection, entry_id);
+  let blob_ref = entry::make_blob_ref(collection.storage_mode(), blob, quilt_patch_id);
+  let entry_ref = collection::entry_mut(collection, entry_id);
   entry::publish_from_draft(entry_ref, draft_revision_id, blob_ref, content_type, sender)
 }
 
@@ -470,50 +470,50 @@ public fun publish_collection_entry_direct(
   assert_active_publisher_cap(publication, cap, ctx);
   let sender = ctx.sender();
   let collection = publication.collections.get_mut(&collection_name);
-  let blob_ref = entry::make_blob_ref(collection.get_storage_mode(), blob, quilt_patch_id);
-  let entry_ref = collection::get_entry_mut(collection, entry_id);
+  let blob_ref = entry::make_blob_ref(collection.storage_mode(), blob, quilt_patch_id);
+  let entry_ref = collection::entry_mut(collection, entry_id);
   entry::publish_direct(entry_ref, blob_ref, content_type, sender)
 }
 
 #[test_only]
 public(package) fun collection_storage_mode(publication: &Publication, collection_name: String): u8 {
   let collection = publication.collections.get(&collection_name);
-  collection.get_storage_mode()
+  collection.storage_mode()
 }
 
 #[test_only]
 public(package) fun collection_entry_public_head(publication: &mut Publication, collection_name: String, entry_id: u64): Option<u64> {
   let collection = publication.collections.get_mut(&collection_name);
-  let entry_ref = collection::get_entry_mut(collection, entry_id);
-  entry::get_public_head(entry_ref)
+  let entry_ref = collection::entry_mut(collection, entry_id);
+  entry::public_head(entry_ref)
 }
 
 #[test_only]
 public(package) fun collection_entry_encrypted(publication: &mut Publication, collection_name: String, entry_id: u64): bool {
   let collection = publication.collections.get_mut(&collection_name);
-  let entry_ref = collection::get_entry_mut(collection, entry_id);
-  entry::get_encrypted(entry_ref)
+  let entry_ref = collection::entry_mut(collection, entry_id);
+  entry::encrypted(entry_ref)
 }
 
 #[test_only]
 public(package) fun collection_entry_access_policy(publication: &mut Publication, collection_name: String, entry_id: u64): u8 {
   let collection = publication.collections.get_mut(&collection_name);
-  let entry_ref = collection::get_entry_mut(collection, entry_id);
-  entry::get_access_policy(entry_ref)
+  let entry_ref = collection::entry_mut(collection, entry_id);
+  entry::access_policy(entry_ref)
 }
 
 #[test_only]
 public(package) fun collection_entry_has_seal_id(publication: &mut Publication, collection_name: String, entry_id: u64): bool {
   let collection = publication.collections.get_mut(&collection_name);
-  let entry_ref = collection::get_entry_mut(collection, entry_id);
-  option::is_some(&entry::get_seal_id(entry_ref))
+  let entry_ref = collection::entry_mut(collection, entry_id);
+  option::is_some(&entry::seal_id(entry_ref))
 }
 
 #[test_only]
 public(package) fun collection_entry_draft_head(publication: &mut Publication, collection_name: String, entry_id: u64): Option<u64> {
   let collection = publication.collections.get_mut(&collection_name);
-  let entry_ref = collection::get_entry_mut(collection, entry_id);
-  entry::get_draft_head(entry_ref)
+  let entry_ref = collection::entry_mut(collection, entry_id);
+  entry::draft_head(entry_ref)
 }
 
 /// Test bypass for `add_entry_to_collection`: accepts raw blob_id/quilt_patch_id instead of `&Blob`.
@@ -534,7 +534,7 @@ public(package) fun add_entry_to_collection_for_testing(
   assert_active_publisher_cap(publication, cap, ctx);
   let sender = ctx.sender();
   let collection = publication.collections.get_mut(&collection_name);
-  let blob_ref = entry::make_blob_ref_for_testing(collection.get_storage_mode(), blob_id, quilt_patch_id);
+  let blob_ref = entry::make_blob_ref_for_testing(collection.storage_mode(), blob_id, quilt_patch_id);
   let new_entry = entry::new_entry_for_testing(name, blob_ref, content_type, encrypted, sender, access_policy, seal_id);
   collection::add_entry(collection, new_entry)
 }
@@ -554,8 +554,8 @@ public(package) fun publish_collection_entry_direct_for_testing(
   assert_active_publisher_cap(publication, cap, ctx);
   let sender = ctx.sender();
   let collection = publication.collections.get_mut(&collection_name);
-  let blob_ref = entry::make_blob_ref_for_testing(collection.get_storage_mode(), blob_id, quilt_patch_id);
-  let entry_ref = collection::get_entry_mut(collection, entry_id);
+  let blob_ref = entry::make_blob_ref_for_testing(collection.storage_mode(), blob_id, quilt_patch_id);
+  let entry_ref = collection::entry_mut(collection, entry_id);
   entry::publish_direct_for_testing(entry_ref, blob_ref, content_type, sender)
 }
 
@@ -577,8 +577,8 @@ public(package) fun append_collection_entry_draft_revision_for_testing(
   assert_active_publisher_cap(publication, cap, ctx);
   let sender = ctx.sender();
   let collection = publication.collections.get_mut(&collection_name);
-  let blob_ref = entry::make_blob_ref_for_testing(collection.get_storage_mode(), blob_id, quilt_patch_id);
-  let entry_ref = collection::get_entry_mut(collection, entry_id);
+  let blob_ref = entry::make_blob_ref_for_testing(collection.storage_mode(), blob_id, quilt_patch_id);
+  let entry_ref = collection::entry_mut(collection, entry_id);
   entry::append_draft_revision_for_testing(entry_ref, blob_ref, content_type, encrypted, sender, access_policy, seal_id)
 }
 
@@ -598,8 +598,8 @@ public(package) fun publish_collection_entry_from_draft_for_testing(
   assert_active_publisher_cap(publication, cap, ctx);
   let sender = ctx.sender();
   let collection = publication.collections.get_mut(&collection_name);
-  let blob_ref = entry::make_blob_ref_for_testing(collection.get_storage_mode(), blob_id, quilt_patch_id);
-  let entry_ref = collection::get_entry_mut(collection, entry_id);
+  let blob_ref = entry::make_blob_ref_for_testing(collection.storage_mode(), blob_id, quilt_patch_id);
+  let entry_ref = collection::entry_mut(collection, entry_id);
   entry::publish_from_draft_for_testing(entry_ref, draft_revision_id, blob_ref, content_type, sender)
 }
 

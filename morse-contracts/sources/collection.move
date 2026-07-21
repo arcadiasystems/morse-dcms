@@ -53,12 +53,12 @@ public(package) fun delete_collection(collection: Collection) {
   table::destroy_empty(entries);
 }
 
-public fun get_name(collection: &Collection): String {
+public fun name(collection: &Collection): String {
   collection.name
 }
 
 /// Return the storage mode for this collection: STORAGE_MODE_BLOB (0) or STORAGE_MODE_QUILT (1).
-public fun get_storage_mode(collection: &Collection): u8 {
+public fun storage_mode(collection: &Collection): u8 {
   collection.storage_mode
 }
 
@@ -101,7 +101,7 @@ public(package) fun storage_mode_blob(): u8 { STORAGE_MODE_BLOB }
 public(package) fun storage_mode_quilt(): u8 { STORAGE_MODE_QUILT }
 
 // internal
-public(package) fun get_entry_mut(collection: &mut Collection, entry_id: u64): &mut Entry {
+public(package) fun entry_mut(collection: &mut Collection, entry_id: u64): &mut Entry {
   assert!(collection.entries.contains(entry_id), EEntryNotFound);
   collection.entries.borrow_mut(entry_id)
 }

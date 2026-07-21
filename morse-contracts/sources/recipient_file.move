@@ -383,7 +383,7 @@ entry fun seal_approve_with_prefix(
 /// Returns the attached seal identity prefix, or `none` if the file was
 /// created via the legacy `new_recipient_file` path. Lets clients decide
 /// which `seal_approve` variant to use at decrypt time.
-public fun get_seal_id_prefix(file: &RecipientFile): Option<vector<u8>> {
+public fun seal_id_prefix(file: &RecipientFile): Option<vector<u8>> {
   if (df::exists_(&file.id, SealPrefixKey {})) {
     let prefix: &vector<u8> = df::borrow(&file.id, SealPrefixKey {});
     option::some(*prefix)
@@ -402,13 +402,13 @@ public struct RecipientFileSealPrefixAttached has copy, drop {
 
 // -- Reads --
 
-public fun get_owner(file: &RecipientFile): address { file.owner }
-public fun get_blob_id(file: &RecipientFile): vector<u8> { file.blob_id }
-public fun get_blob_object_id(file: &RecipientFile): Option<ID> { file.blob_object_id }
-public fun get_name(file: &RecipientFile): String { file.name }
-public fun get_content_type(file: &RecipientFile): String { file.content_type }
-public fun get_size(file: &RecipientFile): u64 { file.size }
-public fun get_created_at_ms(file: &RecipientFile): u64 { file.created_at_ms }
+public fun owner(file: &RecipientFile): address { file.owner }
+public fun blob_id(file: &RecipientFile): vector<u8> { file.blob_id }
+public fun blob_object_id(file: &RecipientFile): Option<ID> { file.blob_object_id }
+public fun name(file: &RecipientFile): String { file.name }
+public fun content_type(file: &RecipientFile): String { file.content_type }
+public fun size(file: &RecipientFile): u64 { file.size }
+public fun created_at_ms(file: &RecipientFile): u64 { file.created_at_ms }
 public fun is_recipient(file: &RecipientFile, addr: address): bool {
   file.members.contains(&addr)
 }

@@ -28,7 +28,7 @@ fun repeated_ascii_string(len: u64, byte: u8): String {
 // -- Creation --
 
 #[test]
-fun test_new_recipient_file_auto_adds_sender() {
+fun new_recipient_file_auto_adds_sender() {
   let owner = @0xa1;
   let alice = @0xa11ce;
   let bob = @0xb0b;
@@ -46,7 +46,7 @@ fun test_new_recipient_file_auto_adds_sender() {
     scenario.ctx(),
   );
 
-  assert_eq!(recipient_file::get_owner(&file), owner);
+  assert_eq!(recipient_file::owner(&file), owner);
   assert_eq!(recipient_file::is_recipient(&file, owner), true);
   assert_eq!(recipient_file::is_recipient(&file, alice), true);
   assert_eq!(recipient_file::is_recipient(&file, bob), true);
@@ -58,7 +58,7 @@ fun test_new_recipient_file_auto_adds_sender() {
 }
 
 #[test]
-fun test_new_recipient_file_deduplicates_recipients() {
+fun new_recipient_file_deduplicates_recipients() {
   let owner = @0xa1;
   let alice = @0xa11ce;
   let mut scenario = test_scenario::begin(owner);
@@ -87,7 +87,7 @@ fun test_new_recipient_file_deduplicates_recipients() {
 }
 
 #[test]
-fun test_new_recipient_file_with_empty_recipients_owner_only() {
+fun new_recipient_file_with_empty_recipients_owner_only() {
   let owner = @0xa1;
   let mut scenario = test_scenario::begin(owner);
 
@@ -112,7 +112,7 @@ fun test_new_recipient_file_with_empty_recipients_owner_only() {
 }
 
 #[test, expected_failure(abort_code = recipient_file::EBlobIdEmpty)]
-fun test_new_recipient_file_with_empty_blob_id_fails() {
+fun new_recipient_file_with_empty_blob_id_fails() {
   let ctx = &mut tx_context::dummy();
   let clk = clock::create_for_testing(ctx);
   let file = recipient_file::new_recipient_file(
@@ -130,7 +130,7 @@ fun test_new_recipient_file_with_empty_blob_id_fails() {
 }
 
 #[test, expected_failure(abort_code = recipient_file::ENameInvalid)]
-fun test_new_recipient_file_with_empty_name_fails() {
+fun new_recipient_file_with_empty_name_fails() {
   let ctx = &mut tx_context::dummy();
   let clk = clock::create_for_testing(ctx);
   let file = recipient_file::new_recipient_file(
@@ -148,7 +148,7 @@ fun test_new_recipient_file_with_empty_name_fails() {
 }
 
 #[test, expected_failure(abort_code = recipient_file::ENameInvalid)]
-fun test_new_recipient_file_with_too_long_name_fails() {
+fun new_recipient_file_with_too_long_name_fails() {
   let ctx = &mut tx_context::dummy();
   let clk = clock::create_for_testing(ctx);
   let long_name = repeated_ascii_string(257, 65u8);
@@ -167,7 +167,7 @@ fun test_new_recipient_file_with_too_long_name_fails() {
 }
 
 #[test, expected_failure(abort_code = recipient_file::EContentTypeInvalid)]
-fun test_new_recipient_file_with_empty_content_type_fails() {
+fun new_recipient_file_with_empty_content_type_fails() {
   let ctx = &mut tx_context::dummy();
   let clk = clock::create_for_testing(ctx);
   let file = recipient_file::new_recipient_file(
@@ -187,7 +187,7 @@ fun test_new_recipient_file_with_empty_content_type_fails() {
 // -- add_recipient / remove_recipient --
 
 #[test]
-fun test_add_then_remove_recipient() {
+fun add_then_remove_recipient() {
   let owner = @0xa1;
   let later = @0xc0ffee;
   let mut scenario = test_scenario::begin(owner);
@@ -218,7 +218,7 @@ fun test_add_then_remove_recipient() {
 }
 
 #[test, expected_failure(abort_code = recipient_file::ERecipientAlreadyPresent)]
-fun test_add_duplicate_recipient_fails() {
+fun add_duplicate_recipient_fails() {
   let owner = @0xa1;
   let mut scenario = test_scenario::begin(owner);
 
@@ -242,7 +242,7 @@ fun test_add_duplicate_recipient_fails() {
 }
 
 #[test, expected_failure(abort_code = recipient_file::ERecipientNotPresent)]
-fun test_remove_nonexistent_recipient_fails() {
+fun remove_nonexistent_recipient_fails() {
   let owner = @0xa1;
   let mut scenario = test_scenario::begin(owner);
 
@@ -266,7 +266,7 @@ fun test_remove_nonexistent_recipient_fails() {
 }
 
 #[test, expected_failure(abort_code = recipient_file::EUnauthorized)]
-fun test_add_recipient_by_non_owner_fails() {
+fun add_recipient_by_non_owner_fails() {
   let owner = @0xa1;
   let other = @0xb0b;
   let mut scenario = test_scenario::begin(owner);
@@ -296,7 +296,7 @@ fun test_add_recipient_by_non_owner_fails() {
 // -- update_metadata / transfer_ownership / delete_file --
 
 #[test]
-fun test_update_metadata() {
+fun update_metadata() {
   let owner = @0xa1;
   let mut scenario = test_scenario::begin(owner);
 
@@ -319,8 +319,8 @@ fun test_update_metadata() {
     scenario.ctx(),
   );
 
-  assert_eq!(recipient_file::get_name(&file), b"new.md".to_string());
-  assert_eq!(recipient_file::get_content_type(&file), b"text/markdown".to_string());
+  assert_eq!(recipient_file::name(&file), b"new.md".to_string());
+  assert_eq!(recipient_file::content_type(&file), b"text/markdown".to_string());
 
   clock::destroy_for_testing(clk);
   unit_test::destroy(file);
@@ -328,7 +328,7 @@ fun test_update_metadata() {
 }
 
 #[test, expected_failure(abort_code = recipient_file::EUnauthorized)]
-fun test_update_metadata_by_non_owner_fails() {
+fun update_metadata_by_non_owner_fails() {
   let owner = @0xa1;
   let other = @0xb0b;
   let mut scenario = test_scenario::begin(owner);
@@ -361,7 +361,7 @@ fun test_update_metadata_by_non_owner_fails() {
 }
 
 #[test]
-fun test_transfer_ownership_does_not_touch_members() {
+fun transfer_ownership_does_not_touch_members() {
   let owner = @0xa1;
   let new_owner = @0xb0b;
   let mut scenario = test_scenario::begin(owner);
@@ -380,7 +380,7 @@ fun test_transfer_ownership_does_not_touch_members() {
 
   recipient_file::transfer_ownership(&mut file, new_owner, scenario.ctx());
 
-  assert_eq!(recipient_file::get_owner(&file), new_owner);
+  assert_eq!(recipient_file::owner(&file), new_owner);
   // Original owner is STILL in members (handover doesn't auto-remove).
   assert_eq!(recipient_file::is_recipient(&file, owner), true);
   // Alice is still there.
@@ -394,7 +394,7 @@ fun test_transfer_ownership_does_not_touch_members() {
 }
 
 #[test, expected_failure(abort_code = recipient_file::EUnauthorized)]
-fun test_transfer_ownership_by_non_owner_fails() {
+fun transfer_ownership_by_non_owner_fails() {
   let owner = @0xa1;
   let other = @0xb0b;
   let mut scenario = test_scenario::begin(owner);
@@ -422,7 +422,7 @@ fun test_transfer_ownership_by_non_owner_fails() {
 }
 
 #[test]
-fun test_delete_file() {
+fun delete_file() {
   let owner = @0xa1;
   let mut scenario = test_scenario::begin(owner);
 
@@ -444,7 +444,7 @@ fun test_delete_file() {
 }
 
 #[test, expected_failure(abort_code = recipient_file::EUnauthorized)]
-fun test_delete_file_by_non_owner_fails() {
+fun delete_file_by_non_owner_fails() {
   let owner = @0xa1;
   let other = @0xb0b;
   let mut scenario = test_scenario::begin(owner);
@@ -473,7 +473,7 @@ fun test_delete_file_by_non_owner_fails() {
 // -- Seal approval --
 
 #[test]
-fun test_seal_approve_for_recipient() {
+fun seal_approve_for_recipient() {
   let owner = @0xa1;
   let recipient = @0xb0b;
   let mut scenario = test_scenario::begin(owner);
@@ -502,7 +502,7 @@ fun test_seal_approve_for_recipient() {
 }
 
 #[test]
-fun test_seal_approve_for_owner() {
+fun seal_approve_for_owner() {
   // Owner is auto-included as a member.
   let owner = @0xa1;
   let mut scenario = test_scenario::begin(owner);
@@ -528,7 +528,7 @@ fun test_seal_approve_for_owner() {
 }
 
 #[test, expected_failure(abort_code = recipient_file::ENoAccess)]
-fun test_seal_approve_for_non_recipient_fails() {
+fun seal_approve_for_non_recipient_fails() {
   let owner = @0xa1;
   let stranger = @0xff;
   let mut scenario = test_scenario::begin(owner);
@@ -557,7 +557,7 @@ fun test_seal_approve_for_non_recipient_fails() {
 }
 
 #[test, expected_failure(abort_code = recipient_file::ESealInvalidId)]
-fun test_seal_approve_with_wrong_namespace_fails() {
+fun seal_approve_with_wrong_namespace_fails() {
   let owner = @0xa1;
   let mut scenario = test_scenario::begin(owner);
 
@@ -594,7 +594,7 @@ fun test_seal_approve_with_wrong_namespace_fails() {
 }
 
 #[test, expected_failure(abort_code = recipient_file::ESealWrongPolicyTag)]
-fun test_seal_approve_with_wrong_policy_tag_fails() {
+fun seal_approve_with_wrong_policy_tag_fails() {
   let owner = @0xa1;
   let mut scenario = test_scenario::begin(owner);
 
@@ -622,7 +622,7 @@ fun test_seal_approve_with_wrong_policy_tag_fails() {
 }
 
 #[test, expected_failure(abort_code = recipient_file::ESealInvalidId)]
-fun test_seal_approve_with_short_id_fails() {
+fun seal_approve_with_short_id_fails() {
   let owner = @0xa1;
   let mut scenario = test_scenario::begin(owner);
 
@@ -647,7 +647,7 @@ fun test_seal_approve_with_short_id_fails() {
 }
 
 #[test]
-fun test_seal_policy_tag_is_distinct_from_publisher_and_allowlist() {
+fun seal_policy_tag_is_distinct_from_publisher_and_allowlist() {
   // Coexistence with publisher (1) and allowlist (2) in the same package
   // requires this tag to be 3.
   assert_eq!(recipient_file::seal_policy_tag_recipient_file_for_testing(), 3u8);
@@ -656,7 +656,7 @@ fun test_seal_policy_tag_is_distinct_from_publisher_and_allowlist() {
 // -- Seal with caller-supplied prefix --
 
 #[test]
-fun test_new_with_seal_prefix_attaches_prefix_and_seal_approve_with_prefix_succeeds() {
+fun new_with_seal_prefix_attaches_prefix_and_seal_approve_with_prefix_succeeds() {
   let owner = @0xa1;
   let alice = @0xa11ce;
   let mut scenario = test_scenario::begin(owner);
@@ -675,7 +675,7 @@ fun test_new_with_seal_prefix_attaches_prefix_and_seal_approve_with_prefix_succe
     scenario.ctx(),
   );
 
-  let stored_prefix = recipient_file::get_seal_id_prefix(&file);
+  let stored_prefix = recipient_file::seal_id_prefix(&file);
   assert_eq!(option::is_some(&stored_prefix), true);
   assert_eq!(*option::borrow(&stored_prefix), prefix);
 
@@ -688,7 +688,7 @@ fun test_new_with_seal_prefix_attaches_prefix_and_seal_approve_with_prefix_succe
 }
 
 #[test]
-fun test_get_seal_id_prefix_returns_none_for_legacy_files() {
+fun seal_id_prefix_returns_none_for_legacy_files() {
   let owner = @0xa1;
   let mut scenario = test_scenario::begin(owner);
 
@@ -704,7 +704,7 @@ fun test_get_seal_id_prefix_returns_none_for_legacy_files() {
     scenario.ctx(),
   );
 
-  let stored_prefix = recipient_file::get_seal_id_prefix(&file);
+  let stored_prefix = recipient_file::seal_id_prefix(&file);
   assert_eq!(option::is_none(&stored_prefix), true);
 
   clock::destroy_for_testing(clk);
@@ -714,7 +714,7 @@ fun test_get_seal_id_prefix_returns_none_for_legacy_files() {
 
 #[test]
 #[expected_failure(abort_code = 9, location = recipient_file)]
-fun test_new_with_seal_prefix_aborts_on_empty_prefix() {
+fun new_with_seal_prefix_aborts_on_empty_prefix() {
   let owner = @0xa1;
   let mut scenario = test_scenario::begin(owner);
 
@@ -738,7 +738,7 @@ fun test_new_with_seal_prefix_aborts_on_empty_prefix() {
 
 #[test]
 #[expected_failure(abort_code = 10, location = recipient_file)]
-fun test_seal_approve_with_prefix_aborts_when_no_prefix_attached() {
+fun seal_approve_with_prefix_aborts_when_no_prefix_attached() {
   let owner = @0xa1;
   let mut scenario = test_scenario::begin(owner);
 
@@ -766,7 +766,7 @@ fun test_seal_approve_with_prefix_aborts_when_no_prefix_attached() {
 
 #[test]
 #[expected_failure(abort_code = 6, location = recipient_file)]
-fun test_seal_approve_with_prefix_aborts_when_id_does_not_match_prefix() {
+fun seal_approve_with_prefix_aborts_when_id_does_not_match_prefix() {
   let owner = @0xa1;
   let mut scenario = test_scenario::begin(owner);
 
@@ -793,7 +793,7 @@ fun test_seal_approve_with_prefix_aborts_when_id_does_not_match_prefix() {
 
 #[test]
 #[expected_failure(abort_code = 8, location = recipient_file)]
-fun test_seal_approve_with_prefix_aborts_when_sender_is_not_recipient() {
+fun seal_approve_with_prefix_aborts_when_sender_is_not_recipient() {
   let owner = @0xa1;
   let intruder = @0xfade;
   let mut scenario = test_scenario::begin(owner);
@@ -823,7 +823,7 @@ fun test_seal_approve_with_prefix_aborts_when_sender_is_not_recipient() {
 
 #[test]
 #[expected_failure(abort_code = 7, location = recipient_file)]
-fun test_seal_approve_with_prefix_aborts_on_wrong_policy_tag() {
+fun seal_approve_with_prefix_aborts_on_wrong_policy_tag() {
   let owner = @0xa1;
   let mut scenario = test_scenario::begin(owner);
 
@@ -853,7 +853,7 @@ fun test_seal_approve_with_prefix_aborts_on_wrong_policy_tag() {
 }
 
 #[test]
-fun test_owner_can_add_recipient_then_seal_approve_with_prefix_passes_for_new_member() {
+fun owner_can_add_recipient_then_seal_approve_with_prefix_passes_for_new_member() {
   let owner = @0xa1;
   let new_member = @0xb0b;
   let mut scenario = test_scenario::begin(owner);

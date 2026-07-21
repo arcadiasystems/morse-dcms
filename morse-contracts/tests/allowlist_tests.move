@@ -20,11 +20,11 @@ fun fake_sender_ctx(addr: address): TxContext {
 // -- Allowlist creation + lifecycle --
 
 #[test]
-fun test_new_allowlist() {
+fun new_allowlist() {
   let ctx = &mut tx_context::dummy();
   let (allowlist_obj, cap) = setup(ctx);
 
-  assert_eq!(allowlist::get_name(&allowlist_obj), b"team-docs".to_string());
+  assert_eq!(allowlist::name(&allowlist_obj), b"team-docs".to_string());
   assert_eq!(allowlist::member_count(&allowlist_obj), 0);
   assert_eq!(allowlist::cap_allowlist_id(&cap), object::id(&allowlist_obj));
 
@@ -33,14 +33,14 @@ fun test_new_allowlist() {
 }
 
 #[test]
-fun test_delete_allowlist() {
+fun delete_allowlist() {
   let ctx = &mut tx_context::dummy();
   let (allowlist_obj, cap) = setup(ctx);
   allowlist::delete_allowlist(allowlist_obj, cap);
 }
 
 #[test, expected_failure(abort_code = allowlist::EUnauthorized)]
-fun test_delete_allowlist_with_wrong_cap_fails() {
+fun delete_allowlist_with_wrong_cap_fails() {
   let ctx = &mut tx_context::dummy();
   let (allowlist_a, cap_a) = setup(ctx);
   let (allowlist_b, cap_b) = allowlist::new_allowlist(b"other".to_string(), ctx);
@@ -55,7 +55,7 @@ fun test_delete_allowlist_with_wrong_cap_fails() {
 // -- Members --
 
 #[test]
-fun test_add_member() {
+fun add_member() {
   let ctx = &mut tx_context::dummy();
   let (mut allowlist_obj, cap) = setup(ctx);
   let alice = @0xa11ce;
@@ -70,7 +70,7 @@ fun test_add_member() {
 }
 
 #[test]
-fun test_add_multiple_members() {
+fun add_multiple_members() {
   let ctx = &mut tx_context::dummy();
   let (mut allowlist_obj, cap) = setup(ctx);
   allowlist::add_member(&mut allowlist_obj, &cap, @0xa1);
@@ -83,7 +83,7 @@ fun test_add_multiple_members() {
 }
 
 #[test, expected_failure(abort_code = allowlist::EUnauthorized)]
-fun test_add_member_with_wrong_cap_fails() {
+fun add_member_with_wrong_cap_fails() {
   let ctx = &mut tx_context::dummy();
   let (mut allowlist_a, cap_a) = setup(ctx);
   let (allowlist_b, cap_b) = allowlist::new_allowlist(b"other".to_string(), ctx);
@@ -98,7 +98,7 @@ fun test_add_member_with_wrong_cap_fails() {
 }
 
 #[test, expected_failure(abort_code = allowlist::EMemberAlreadyPresent)]
-fun test_add_duplicate_member_fails() {
+fun add_duplicate_member_fails() {
   let ctx = &mut tx_context::dummy();
   let (mut allowlist_obj, cap) = setup(ctx);
   allowlist::add_member(&mut allowlist_obj, &cap, @0xa1);
@@ -109,7 +109,7 @@ fun test_add_duplicate_member_fails() {
 }
 
 #[test]
-fun test_remove_member() {
+fun remove_member() {
   let ctx = &mut tx_context::dummy();
   let (mut allowlist_obj, cap) = setup(ctx);
   allowlist::add_member(&mut allowlist_obj, &cap, @0xa1);
@@ -125,7 +125,7 @@ fun test_remove_member() {
 }
 
 #[test, expected_failure(abort_code = allowlist::EMemberNotPresent)]
-fun test_remove_nonexistent_member_fails() {
+fun remove_nonexistent_member_fails() {
   let ctx = &mut tx_context::dummy();
   let (mut allowlist_obj, cap) = setup(ctx);
   allowlist::remove_member(&mut allowlist_obj, &cap, @0xa1);
@@ -135,7 +135,7 @@ fun test_remove_nonexistent_member_fails() {
 }
 
 #[test, expected_failure(abort_code = allowlist::EUnauthorized)]
-fun test_remove_member_with_wrong_cap_fails() {
+fun remove_member_with_wrong_cap_fails() {
   let ctx = &mut tx_context::dummy();
   let (mut allowlist_a, cap_a) = setup(ctx);
   let (allowlist_b, cap_b) = allowlist::new_allowlist(b"other".to_string(), ctx);
@@ -153,7 +153,7 @@ fun test_remove_member_with_wrong_cap_fails() {
 // -- Seal approval --
 
 #[test]
-fun test_seal_approve_for_member() {
+fun seal_approve_for_member() {
   let mut ctx = fake_sender_ctx(@0xa1);
   let (mut allowlist_obj, cap) = allowlist::new_allowlist(b"team".to_string(), &mut ctx);
   allowlist::add_member(&mut allowlist_obj, &cap, @0xa1);
@@ -166,7 +166,7 @@ fun test_seal_approve_for_member() {
 }
 
 #[test, expected_failure(abort_code = allowlist::ENoAccess)]
-fun test_seal_approve_for_non_member_fails() {
+fun seal_approve_for_non_member_fails() {
   let mut ctx = fake_sender_ctx(@0xb0b);
   let (allowlist_obj, cap) = allowlist::new_allowlist(b"team".to_string(), &mut ctx);
   // @0xb0b is not a member
@@ -179,7 +179,7 @@ fun test_seal_approve_for_non_member_fails() {
 }
 
 #[test, expected_failure(abort_code = allowlist::ESealInvalidId)]
-fun test_seal_approve_with_wrong_namespace_fails() {
+fun seal_approve_with_wrong_namespace_fails() {
   let mut ctx = fake_sender_ctx(@0xa1);
   let (mut allowlist_a, cap_a) = allowlist::new_allowlist(b"a".to_string(), &mut ctx);
   let (allowlist_b, cap_b) = allowlist::new_allowlist(b"b".to_string(), &mut ctx);
@@ -196,7 +196,7 @@ fun test_seal_approve_with_wrong_namespace_fails() {
 }
 
 #[test, expected_failure(abort_code = allowlist::ESealWrongPolicyTag)]
-fun test_seal_approve_with_wrong_policy_tag_fails() {
+fun seal_approve_with_wrong_policy_tag_fails() {
   let mut ctx = fake_sender_ctx(@0xa1);
   let (mut allowlist_obj, cap) = allowlist::new_allowlist(b"team".to_string(), &mut ctx);
   allowlist::add_member(&mut allowlist_obj, &cap, @0xa1);
@@ -212,7 +212,7 @@ fun test_seal_approve_with_wrong_policy_tag_fails() {
 }
 
 #[test, expected_failure(abort_code = allowlist::ESealInvalidId)]
-fun test_seal_approve_with_short_id_fails() {
+fun seal_approve_with_short_id_fails() {
   let mut ctx = fake_sender_ctx(@0xa1);
   let (mut allowlist_obj, cap) = allowlist::new_allowlist(b"team".to_string(), &mut ctx);
   allowlist::add_member(&mut allowlist_obj, &cap, @0xa1);
@@ -226,7 +226,7 @@ fun test_seal_approve_with_short_id_fails() {
 }
 
 #[test]
-fun test_seal_policy_tag_is_distinct_from_publisher() {
+fun seal_policy_tag_is_distinct_from_publisher() {
   // Sanity check: allowlist policy tag (2) must differ from publisher tag (1).
   // Co-existence in the same package depends on this.
   assert_eq!(allowlist::seal_policy_tag_allowlist_for_testing(), 2u8);
