@@ -30,7 +30,7 @@ fun fake_patch_id(): vector<u8> {
 // -- Publication tests --
 
 #[test]
-fun test_new_publication() {
+fun new_publication() {
   let ctx = &mut tx_context::dummy();
   let mut registry = publication::new_registry_for_testing(ctx);
   let publication_name = b"ArcSys Blog".to_string();
@@ -49,7 +49,7 @@ fun test_new_publication() {
 }
 
 #[test]
-fun test_slug_registry_lookup() {
+fun slug_registry_lookup() {
   let ctx = &mut tx_context::dummy();
   let mut registry = publication::new_registry_for_testing(ctx);
   let (publication_obj, owner_cap, publisher_cap) = publication::new_publication(
@@ -58,7 +58,7 @@ fun test_slug_registry_lookup() {
 
   assert_eq!(publication::contains_slug(&registry, b"my-personal-blog".to_string()), true);
   assert_eq!(
-    *publication::get_publication_id_by_slug(&registry, b"my-personal-blog".to_string()),
+    *publication::publication_id_by_slug(&registry, b"my-personal-blog".to_string()),
     object::id(&publication_obj),
   );
 
@@ -69,7 +69,7 @@ fun test_slug_registry_lookup() {
 }
 
 #[test, expected_failure(abort_code = publication::ESlugAlreadyExists)]
-fun test_duplicate_slug_fails() {
+fun duplicate_slug_fails() {
   let ctx = &mut tx_context::dummy();
   let mut registry = publication::new_registry_for_testing(ctx);
 
@@ -90,7 +90,7 @@ fun test_duplicate_slug_fails() {
 }
 
 #[test, expected_failure(abort_code = publication::ESlugInvalidChar)]
-fun test_invalid_slug_fails() {
+fun invalid_slug_fails() {
   let ctx = &mut tx_context::dummy();
   let mut registry = publication::new_registry_for_testing(ctx);
   let (publication_obj, owner_cap, publisher_cap) = publication::new_publication(
@@ -103,7 +103,7 @@ fun test_invalid_slug_fails() {
 }
 
 #[test]
-fun test_slug_reusable_after_delete() {
+fun slug_reusable_after_delete() {
   let ctx = &mut tx_context::dummy();
   let mut registry = publication::new_registry_for_testing(ctx);
 
@@ -127,7 +127,7 @@ fun test_slug_reusable_after_delete() {
 }
 
 #[test]
-fun test_delete_publication() {
+fun delete_publication() {
   let ctx = &mut tx_context::dummy();
   let mut registry = publication::new_registry_for_testing(ctx);
   let (publication_obj, owner_cap, publisher_cap) = publication::new_publication(
@@ -141,7 +141,7 @@ fun test_delete_publication() {
 }
 
 #[test]
-fun test_delete_publication_with_revoked_cap_succeeds() {
+fun delete_publication_with_revoked_cap_succeeds() {
   let ctx = &mut tx_context::dummy();
   let mut registry = publication::new_registry_for_testing(ctx);
   let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication(
@@ -159,7 +159,7 @@ fun test_delete_publication_with_revoked_cap_succeeds() {
 // -- Authorization tests --
 
 #[test]
-fun test_issue_publisher_cap() {
+fun issue_publisher_cap() {
   let ctx = &mut tx_context::dummy();
   let (mut registry, mut publication_obj, owner_cap, publisher_cap) = setup(ctx);
 
@@ -174,7 +174,7 @@ fun test_issue_publisher_cap() {
 }
 
 #[test]
-fun test_destroy_publisher_cap() {
+fun destroy_publisher_cap() {
   let ctx = &mut tx_context::dummy();
   let (mut registry, mut publication_obj, owner_cap, publisher_cap) = setup(ctx);
 
@@ -186,7 +186,7 @@ fun test_destroy_publisher_cap() {
 }
 
 #[test, expected_failure(abort_code = publication::EPublisherCapWrongHolder)]
-fun test_wrong_holder_cannot_use_publisher_cap() {
+fun wrong_holder_cannot_use_publisher_cap() {
   let ctx = &mut tx_context::dummy();
   let (mut registry, mut publication_obj, owner_cap, publisher_cap) = setup(ctx);
   let other_holder = @0xB;
@@ -202,7 +202,7 @@ fun test_wrong_holder_cannot_use_publisher_cap() {
 }
 
 #[test, expected_failure(abort_code = publication::EPublisherCapWrongHolder)]
-fun test_wrong_holder_cannot_destroy_publisher_cap() {
+fun wrong_holder_cannot_destroy_publisher_cap() {
   let ctx = &mut tx_context::dummy();
   let (mut registry, mut publication_obj, owner_cap, publisher_cap) = setup(ctx);
   let other_cap = publication::issue_publisher_cap(&mut publication_obj, &owner_cap, @0xB, ctx);
@@ -216,7 +216,7 @@ fun test_wrong_holder_cannot_destroy_publisher_cap() {
 }
 
 #[test]
-fun test_owner_can_revoke_publisher_cap() {
+fun owner_can_revoke_publisher_cap() {
   let ctx = &mut tx_context::dummy();
   let (mut registry, mut publication_obj, owner_cap, publisher_cap) = setup(ctx);
   let cap = publication::issue_publisher_cap(&mut publication_obj, &owner_cap, ctx.sender(), ctx);
@@ -233,7 +233,7 @@ fun test_owner_can_revoke_publisher_cap() {
 }
 
 #[test, expected_failure(abort_code = publication::EPublisherCapRevoked)]
-fun test_revoked_cap_cannot_write() {
+fun revoked_cap_cannot_write() {
   let ctx = &mut tx_context::dummy();
   let (mut registry, mut publication_obj, owner_cap, publisher_cap) = setup(ctx);
   let cap = publication::issue_publisher_cap(&mut publication_obj, &owner_cap, ctx.sender(), ctx);
@@ -250,7 +250,7 @@ fun test_revoked_cap_cannot_write() {
 }
 
 #[test, expected_failure(abort_code = publication::EUnauthorized)]
-fun test_wrong_owner_cannot_revoke_publisher_cap() {
+fun wrong_owner_cannot_revoke_publisher_cap() {
   let ctx = &mut tx_context::dummy();
   let mut registry = publication::new_registry_for_testing(ctx);
   let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication(
@@ -275,7 +275,7 @@ fun test_wrong_owner_cannot_revoke_publisher_cap() {
 }
 
 #[test, expected_failure(abort_code = publication::EPublisherCapRevoked)]
-fun test_double_revoke_fails() {
+fun double_revoke_fails() {
   let ctx = &mut tx_context::dummy();
   let (mut registry, mut publication_obj, owner_cap, publisher_cap) = setup(ctx);
   let cap = publication::issue_publisher_cap(&mut publication_obj, &owner_cap, ctx.sender(), ctx);
@@ -292,7 +292,7 @@ fun test_double_revoke_fails() {
 }
 
 #[test]
-fun test_destroy_revoked_cap_succeeds() {
+fun destroy_revoked_cap_succeeds() {
   let ctx = &mut tx_context::dummy();
   let (mut registry, mut publication_obj, owner_cap, publisher_cap) = setup(ctx);
   let cap = publication::issue_publisher_cap(&mut publication_obj, &owner_cap, ctx.sender(), ctx);
@@ -310,7 +310,7 @@ fun test_destroy_revoked_cap_succeeds() {
 // -- Collection tests --
 
 #[test]
-fun test_add_collection() {
+fun add_collection() {
   let ctx = &mut tx_context::dummy();
   let (mut registry, mut publication_obj, owner_cap, publisher_cap) = setup(ctx);
 
@@ -328,7 +328,7 @@ fun test_add_collection() {
 }
 
 #[test]
-fun test_create_collection() {
+fun create_collection() {
   let ctx = &mut tx_context::dummy();
   let (mut registry, mut publication_obj, owner_cap, publisher_cap) = setup(ctx);
 
@@ -344,7 +344,7 @@ fun test_create_collection() {
 }
 
 #[test]
-fun test_create_quilt_collection() {
+fun create_quilt_collection() {
   let ctx = &mut tx_context::dummy();
   let (mut registry, mut publication_obj, owner_cap, publisher_cap) = setup(ctx);
 
@@ -361,7 +361,7 @@ fun test_create_quilt_collection() {
 }
 
 #[test, expected_failure(abort_code = publication::ECollectionAlreadyExists)]
-fun test_create_duplicate_collection() {
+fun create_duplicate_collection() {
   let ctx = &mut tx_context::dummy();
   let (mut registry, mut publication_obj, owner_cap, publisher_cap) = setup(ctx);
 
@@ -375,7 +375,7 @@ fun test_create_duplicate_collection() {
 }
 
 #[test]
-fun test_delete_collection() {
+fun delete_collection() {
   let ctx = &mut tx_context::dummy();
   let (mut registry, mut publication_obj, owner_cap, publisher_cap) = setup(ctx);
 
@@ -393,7 +393,7 @@ fun test_delete_collection() {
 }
 
 #[test]
-fun test_publisher_can_create_collection() {
+fun publisher_can_create_collection() {
   let ctx = &mut tx_context::dummy();
   let (mut registry, mut publication_obj, owner_cap, root_publisher_cap) = setup(ctx);
 
@@ -410,7 +410,7 @@ fun test_publisher_can_create_collection() {
 }
 
 #[test, expected_failure(abort_code = publication::EUnauthorized)]
-fun test_unauthorized_create_collection() {
+fun unauthorized_create_collection() {
   let ctx = &mut tx_context::dummy();
   let mut registry = publication::new_registry_for_testing(ctx);
   let (mut publication_obj, owner_cap, publisher_cap) = publication::new_publication(
@@ -434,7 +434,7 @@ fun test_unauthorized_create_collection() {
 // -- Entry tests --
 
 #[test]
-fun test_add_entry_to_collection() {
+fun add_entry_to_collection() {
   let ctx = &mut tx_context::dummy();
   let (mut registry, mut publication_obj, owner_cap, publisher_cap) = setup(ctx);
 
@@ -460,7 +460,7 @@ fun test_add_entry_to_collection() {
 }
 
 #[test]
-fun test_delete_entry_from_collection() {
+fun delete_entry_from_collection() {
   let ctx = &mut tx_context::dummy();
   let (mut registry, mut publication_obj, owner_cap, publisher_cap) = setup(ctx);
 
@@ -486,7 +486,7 @@ fun test_delete_entry_from_collection() {
 }
 
 #[test]
-fun test_delete_then_add_entry_to_collection_uses_monotonic_entry_id() {
+fun delete_then_add_entry_to_collection_uses_monotonic_entry_id() {
   let ctx = &mut tx_context::dummy();
   let (mut registry, mut publication_obj, owner_cap, publisher_cap) = setup(ctx);
 
@@ -539,7 +539,7 @@ fun test_delete_then_add_entry_to_collection_uses_monotonic_entry_id() {
 }
 
 #[test]
-fun test_collection_entry_draft_and_publish_heads() {
+fun collection_entry_draft_and_publish_heads() {
   let ctx = &mut tx_context::dummy();
   let (mut registry, mut publication_obj, owner_cap, publisher_cap) = setup(ctx);
 
@@ -586,7 +586,7 @@ fun test_collection_entry_draft_and_publish_heads() {
 }
 
 #[test]
-fun test_add_quilt_entry_to_collection() {
+fun add_quilt_entry_to_collection() {
   let ctx = &mut tx_context::dummy();
   let (mut registry, mut publication_obj, owner_cap, publisher_cap) = setup(ctx);
 
@@ -612,7 +612,7 @@ fun test_add_quilt_entry_to_collection() {
 }
 
 #[test, expected_failure(abort_code = entry::EQuiltPatchIdRequired)]
-fun test_add_entry_to_quilt_collection_without_patch_id_fails() {
+fun add_entry_to_quilt_collection_without_patch_id_fails() {
   let ctx = &mut tx_context::dummy();
   let (mut registry, mut publication_obj, owner_cap, publisher_cap) = setup(ctx);
 
@@ -635,7 +635,7 @@ fun test_add_entry_to_quilt_collection_without_patch_id_fails() {
 }
 
 #[test, expected_failure(abort_code = entry::EQuiltPatchIdNotAllowed)]
-fun test_add_entry_to_blob_collection_with_patch_id_fails() {
+fun add_entry_to_blob_collection_with_patch_id_fails() {
   let ctx = &mut tx_context::dummy();
   let (mut registry, mut publication_obj, owner_cap, publisher_cap) = setup(ctx);
 
@@ -660,7 +660,7 @@ fun test_add_entry_to_blob_collection_with_patch_id_fails() {
 // -- Seal tests --
 
 #[test]
-fun test_seal_approve_publisher_succeeds_for_active_holder() {
+fun seal_approve_publisher_succeeds_for_active_holder() {
   let ctx = &mut tx_context::dummy();
   let (mut registry, publication_obj, owner_cap, publisher_cap) = setup(ctx);
   let id = publication::publisher_seal_id_for_testing(&publication_obj, b"nonce");
@@ -674,7 +674,7 @@ fun test_seal_approve_publisher_succeeds_for_active_holder() {
 }
 
 #[test, expected_failure(abort_code = publication::ESealInvalidId)]
-fun test_seal_approve_publisher_rejects_invalid_id_prefix() {
+fun seal_approve_publisher_rejects_invalid_id_prefix() {
   let ctx = &mut tx_context::dummy();
   let (mut registry, publication_obj, owner_cap, publisher_cap) = setup(ctx);
 
@@ -687,7 +687,7 @@ fun test_seal_approve_publisher_rejects_invalid_id_prefix() {
 }
 
 #[test, expected_failure(abort_code = publication::ESealWrongPolicyTag)]
-fun test_seal_approve_publisher_rejects_wrong_policy_tag() {
+fun seal_approve_publisher_rejects_wrong_policy_tag() {
   let ctx = &mut tx_context::dummy();
   let (mut registry, publication_obj, owner_cap, publisher_cap) = setup(ctx);
   let mut id = object::id(&publication_obj).to_bytes();
@@ -703,7 +703,7 @@ fun test_seal_approve_publisher_rejects_wrong_policy_tag() {
 }
 
 #[test, expected_failure(abort_code = publication::EPublisherCapWrongHolder)]
-fun test_seal_approve_publisher_rejects_wrong_holder() {
+fun seal_approve_publisher_rejects_wrong_holder() {
   let ctx = &mut tx_context::dummy();
   let (mut registry, mut publication_obj, owner_cap, root_publisher_cap) = setup(ctx);
   let holder_cap = publication::issue_publisher_cap(&mut publication_obj, &owner_cap, @0xB, ctx);
@@ -719,7 +719,7 @@ fun test_seal_approve_publisher_rejects_wrong_holder() {
 }
 
 #[test, expected_failure(abort_code = publication::EPublisherCapRevoked)]
-fun test_seal_approve_publisher_rejects_revoked_cap() {
+fun seal_approve_publisher_rejects_revoked_cap() {
   let ctx = &mut tx_context::dummy();
   let (mut registry, mut publication_obj, owner_cap, publisher_cap) = setup(ctx);
   let cap = publication::issue_publisher_cap(&mut publication_obj, &owner_cap, ctx.sender(), ctx);

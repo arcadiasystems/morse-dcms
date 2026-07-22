@@ -253,15 +253,15 @@ const MAX_CONTENT_TYPE_LENGTH: u64 = 255;
 
 // -- Reads --
 
-public fun get_owner(file: &EncryptedFile): address { file.owner }
-public fun get_blob_id(file: &EncryptedFile): vector<u8> { file.blob_id }
-public fun get_blob_object_id(file: &EncryptedFile): Option<ID> { file.blob_object_id }
-public fun get_name(file: &EncryptedFile): String { file.name }
-public fun get_content_type(file: &EncryptedFile): String { file.content_type }
-public fun get_size(file: &EncryptedFile): u64 { file.size }
+public fun owner(file: &EncryptedFile): address { file.owner }
+public fun blob_id(file: &EncryptedFile): vector<u8> { file.blob_id }
+public fun blob_object_id(file: &EncryptedFile): Option<ID> { file.blob_object_id }
+public fun name(file: &EncryptedFile): String { file.name }
+public fun content_type(file: &EncryptedFile): String { file.content_type }
+public fun size(file: &EncryptedFile): u64 { file.size }
 public fun is_encrypted(file: &EncryptedFile): bool { file.encrypted }
-public fun get_allowlist_id(file: &EncryptedFile): Option<ID> { file.allowlist_id }
-public fun get_created_at_ms(file: &EncryptedFile): u64 { file.created_at_ms }
+public fun allowlist_id(file: &EncryptedFile): Option<ID> { file.allowlist_id }
+public fun created_at_ms(file: &EncryptedFile): u64 { file.created_at_ms }
 
 // internal
 

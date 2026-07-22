@@ -151,7 +151,7 @@ public fun member_count(allowlist: &Allowlist): u64 {
 }
 
 /// Returns the allowlist name.
-public fun get_name(allowlist: &Allowlist): String {
+public fun name(allowlist: &Allowlist): String {
   allowlist.name
 }
 

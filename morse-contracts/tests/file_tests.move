@@ -31,7 +31,7 @@ fun repeated_ascii_string(len: u64, byte: u8): String {
 // -- Encrypted file creation --
 
 #[test]
-fun test_new_encrypted_file() {
+fun new_encrypted_file() {
   let ctx = &mut tx_context::dummy();
   let clk = clock::create_for_testing(ctx);
   let fake_allowlist_id = object::id_from_address(@0xa110);
@@ -47,19 +47,19 @@ fun test_new_encrypted_file() {
     ctx,
   );
 
-  assert_eq!(file::get_blob_id(&file_obj), b"walrus-blob-id-bytes");
-  assert_eq!(file::get_name(&file_obj), b"tax-2026.pdf".to_string());
-  assert_eq!(file::get_content_type(&file_obj), b"application/pdf".to_string());
-  assert_eq!(file::get_size(&file_obj), 12345u64);
+  assert_eq!(file::blob_id(&file_obj), b"walrus-blob-id-bytes");
+  assert_eq!(file::name(&file_obj), b"tax-2026.pdf".to_string());
+  assert_eq!(file::content_type(&file_obj), b"application/pdf".to_string());
+  assert_eq!(file::size(&file_obj), 12345u64);
   assert_eq!(file::is_encrypted(&file_obj), true);
-  assert_eq!(file::get_allowlist_id(&file_obj), option::some(fake_allowlist_id));
+  assert_eq!(file::allowlist_id(&file_obj), option::some(fake_allowlist_id));
 
   clock::destroy_for_testing(clk);
   unit_test::destroy(file_obj);
 }
 
 #[test]
-fun test_new_public_file_has_no_allowlist() {
+fun new_public_file_has_no_allowlist() {
   let ctx = &mut tx_context::dummy();
   let clk = clock::create_for_testing(ctx);
 
@@ -74,15 +74,15 @@ fun test_new_public_file_has_no_allowlist() {
   );
 
   assert_eq!(file::is_encrypted(&file_obj), false);
-  assert_eq!(file::get_allowlist_id(&file_obj), option::none());
-  assert_eq!(file::get_blob_object_id(&file_obj), option::none());
+  assert_eq!(file::allowlist_id(&file_obj), option::none());
+  assert_eq!(file::blob_object_id(&file_obj), option::none());
 
   clock::destroy_for_testing(clk);
   unit_test::destroy(file_obj);
 }
 
 #[test, expected_failure(abort_code = file::EBlobIdEmpty)]
-fun test_create_file_with_empty_blob_id_fails() {
+fun create_file_with_empty_blob_id_fails() {
   let ctx = &mut tx_context::dummy();
   let clk = clock::create_for_testing(ctx);
   let file_obj = file::new_public_file(
@@ -99,7 +99,7 @@ fun test_create_file_with_empty_blob_id_fails() {
 }
 
 #[test, expected_failure(abort_code = file::ENameInvalid)]
-fun test_create_file_with_empty_name_fails() {
+fun create_file_with_empty_name_fails() {
   let ctx = &mut tx_context::dummy();
   let clk = clock::create_for_testing(ctx);
   let file_obj = file::new_public_file(
@@ -116,7 +116,7 @@ fun test_create_file_with_empty_name_fails() {
 }
 
 #[test, expected_failure(abort_code = file::ENameInvalid)]
-fun test_create_file_with_too_long_name_fails() {
+fun create_file_with_too_long_name_fails() {
   let ctx = &mut tx_context::dummy();
   let clk = clock::create_for_testing(ctx);
   let long_name = repeated_ascii_string(257, 65u8); // 257 'A's, exceeds MAX_NAME_LENGTH
@@ -134,7 +134,7 @@ fun test_create_file_with_too_long_name_fails() {
 }
 
 #[test, expected_failure(abort_code = file::EContentTypeInvalid)]
-fun test_create_file_with_empty_content_type_fails() {
+fun create_file_with_empty_content_type_fails() {
   let ctx = &mut tx_context::dummy();
   let clk = clock::create_for_testing(ctx);
   let file_obj = file::new_public_file(
@@ -151,7 +151,7 @@ fun test_create_file_with_empty_content_type_fails() {
 }
 
 #[test, expected_failure(abort_code = file::EContentTypeInvalid)]
-fun test_create_file_with_too_long_content_type_fails() {
+fun create_file_with_too_long_content_type_fails() {
   let ctx = &mut tx_context::dummy();
   let clk = clock::create_for_testing(ctx);
   let long_ct = repeated_ascii_string(256, 65u8); // exceeds MAX_CONTENT_TYPE_LENGTH (255)
@@ -171,7 +171,7 @@ fun test_create_file_with_too_long_content_type_fails() {
 // -- update_metadata --
 
 #[test]
-fun test_update_metadata() {
+fun update_metadata() {
   let ctx = &mut tx_context::dummy();
   let clk = clock::create_for_testing(ctx);
   let mut file_obj = file::new_public_file(
@@ -186,15 +186,15 @@ fun test_update_metadata() {
 
   file::update_metadata(&mut file_obj, b"new.md".to_string(), b"text/markdown".to_string(), ctx);
 
-  assert_eq!(file::get_name(&file_obj), b"new.md".to_string());
-  assert_eq!(file::get_content_type(&file_obj), b"text/markdown".to_string());
+  assert_eq!(file::name(&file_obj), b"new.md".to_string());
+  assert_eq!(file::content_type(&file_obj), b"text/markdown".to_string());
 
   clock::destroy_for_testing(clk);
   unit_test::destroy(file_obj);
 }
 
 #[test, expected_failure(abort_code = file::EUnauthorized)]
-fun test_update_metadata_by_non_owner_fails() {
+fun update_metadata_by_non_owner_fails() {
   let owner = @0xa1;
   let other = @0xb0b;
   let mut scenario = test_scenario::begin(owner);
@@ -221,7 +221,7 @@ fun test_update_metadata_by_non_owner_fails() {
 }
 
 #[test, expected_failure(abort_code = file::ENameInvalid)]
-fun test_update_metadata_with_empty_name_fails() {
+fun update_metadata_with_empty_name_fails() {
   let ctx = &mut tx_context::dummy();
   let clk = clock::create_for_testing(ctx);
   let mut file_obj = file::new_public_file(
@@ -243,7 +243,7 @@ fun test_update_metadata_with_empty_name_fails() {
 // -- transfer_ownership --
 
 #[test]
-fun test_transfer_ownership() {
+fun transfer_ownership() {
   let ctx = &mut tx_context::dummy();
   let clk = clock::create_for_testing(ctx);
   let mut file_obj = file::new_public_file(
@@ -258,14 +258,14 @@ fun test_transfer_ownership() {
 
   file::transfer_ownership(&mut file_obj, @0xb0b, ctx);
 
-  assert_eq!(file::get_owner(&file_obj), @0xb0b);
+  assert_eq!(file::owner(&file_obj), @0xb0b);
 
   clock::destroy_for_testing(clk);
   unit_test::destroy(file_obj);
 }
 
 #[test, expected_failure(abort_code = file::EUnauthorized)]
-fun test_transfer_ownership_by_non_owner_fails() {
+fun transfer_ownership_by_non_owner_fails() {
   let owner = @0xa1;
   let other = @0xb0b;
   let mut scenario = test_scenario::begin(owner);
@@ -294,7 +294,7 @@ fun test_transfer_ownership_by_non_owner_fails() {
 // -- delete_file --
 
 #[test]
-fun test_delete_file() {
+fun delete_file() {
   let ctx = &mut tx_context::dummy();
   let clk = clock::create_for_testing(ctx);
   let file_obj = file::new_public_file(
@@ -312,7 +312,7 @@ fun test_delete_file() {
 }
 
 #[test, expected_failure(abort_code = file::EUnauthorized)]
-fun test_delete_file_by_non_owner_fails() {
+fun delete_file_by_non_owner_fails() {
   let owner = @0xa1;
   let other = @0xb0b;
   let mut scenario = test_scenario::begin(owner);

@@ -59,17 +59,17 @@ public fun new_entry(
 }
 
 /// Return the entry's display name.
-public fun get_name(entry: &Entry): String {
+public fun name(entry: &Entry): String {
   entry.name
 }
 
 /// Return draft head revision ID, if present.
-public fun get_draft_head(entry: &Entry): Option<u64> {
+public fun draft_head(entry: &Entry): Option<u64> {
   entry.draft_head
 }
 
 /// Return public head revision ID, if present.
-public fun get_public_head(entry: &Entry): Option<u64> {
+public fun public_head(entry: &Entry): Option<u64> {
   entry.public_head
 }
 
@@ -149,37 +149,37 @@ public fun access_policy_publisher(): u8 { ACCESS_PUBLISHER }
 public fun access_policy_subscription(): u8 { ACCESS_SUBSCRIPTION }
 
 /// Return the blob reference from the latest revision.
-public fun get_blob_ref(entry: &Entry): BlobRef {
+public fun blob_ref(entry: &Entry): BlobRef {
   vector::borrow(&entry.revisions, latest_revision_id(entry)).blob_ref
 }
 
 /// Return the entry's MIME content type from the latest revision.
-public fun get_content_type(entry: &Entry): String {
+public fun content_type(entry: &Entry): String {
   vector::borrow(&entry.revisions, latest_revision_id(entry)).content_type
 }
 
 /// Return whether the latest revision is encrypted.
-public fun get_encrypted(entry: &Entry): bool {
+public fun encrypted(entry: &Entry): bool {
   vector::borrow(&entry.revisions, latest_revision_id(entry)).encrypted
 }
 
 /// Return the access policy for the latest revision.
-public fun get_access_policy(entry: &Entry): u8 {
+public fun access_policy(entry: &Entry): u8 {
   vector::borrow(&entry.revisions, latest_revision_id(entry)).access_policy
 }
 
 /// Return the Seal identity for the latest revision, if any.
-public fun get_seal_id(entry: &Entry): Option<vector<u8>> {
+public fun seal_id(entry: &Entry): Option<vector<u8>> {
   vector::borrow(&entry.revisions, latest_revision_id(entry)).seal_id
 }
 
 /// Return the latest revision author address.
-public fun get_author(entry: &Entry): address {
+public fun author(entry: &Entry): address {
   vector::borrow(&entry.revisions, latest_revision_id(entry)).author
 }
 
 /// Return a specific revision by ID.
-public fun get_revision(entry: &Entry, revision_id: u64): &EntryRevision {
+public fun revision(entry: &Entry, revision_id: u64): &EntryRevision {
   assert!(revision_id < vector::length(&entry.revisions), ERevisionNotFound);
   vector::borrow(&entry.revisions, revision_id)
 }
@@ -255,17 +255,17 @@ public fun publish_direct(entry: &mut Entry, blob_ref: BlobRef, content_type: St
 
 #[test_only]
 public(package) fun revision_encrypted(entry: &Entry, revision_id: u64): bool {
-  get_revision(entry, revision_id).encrypted
+  revision(entry, revision_id).encrypted
 }
 
 #[test_only]
 public(package) fun revision_access_policy(entry: &Entry, revision_id: u64): u8 {
-  get_revision(entry, revision_id).access_policy
+  revision(entry, revision_id).access_policy
 }
 
 #[test_only]
 public(package) fun revision_has_seal_id(entry: &Entry, revision_id: u64): bool {
-  option::is_some(&get_revision(entry, revision_id).seal_id)
+  option::is_some(&revision(entry, revision_id).seal_id)
 }
 
 /// Test bypass for `new_entry`: accepts a raw `BlobRef` instead of requiring `make_blob_ref`.
