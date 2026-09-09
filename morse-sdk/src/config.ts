@@ -77,16 +77,24 @@ export interface NetworkConfig {
 	/**
 	 * Canonical Seal threshold-encryption key servers for the network. Used by
 	 * `DefaultSealAdapter.fromMorseConfig` when the consumer omits an explicit
-	 * `serverConfigs`. Empty for networks where the allowlist isn't pinned yet
-	 * (e.g. mainnet pre-freeze).
+	 * `serverConfigs`. Empty for networks with no pinned allowlist (localnet,
+	 * custom deployments), which makes the encrypted paths throw
+	 * `ConfigurationError` until the consumer supplies `serverConfigs`.
+	 *
+	 * Entries are `@mysten/seal` `KeyServerConfig` objects and are passed
+	 * through untouched. Seal distinguishes two server types and enforces the
+	 * distinction at client construction: a committee-mode server REQUIRES
+	 * `aggregatorUrl`, an independent server must NOT have it. Getting this
+	 * wrong surfaces as `InvalidClientOptionsError` at runtime, not at compile
+	 * time, so `config.test.ts` guards both directions.
 	 */
 	readonly sealKeyServers: readonly KeyServerConfig[];
 	/**
 	 * Canonical Walrus HTTP endpoints for the network. Used by
 	 * `HttpAggregatorReadAdapter.fromMorseConfig` (and the future publisher
 	 * equivalent when a "canonical" publisher exists). Aggregator is pinned
-	 * to Mysten's testnet service; publisher is intentionally left
-	 * undefined — pass `walrusEndpoints.publisher` to override.
+	 * to Mysten's service for the network; publisher is intentionally left
+	 * undefined - pass `walrusEndpoints.publisher` to override.
 	 */
 	readonly walrusEndpoints: WalrusEndpoints;
 }
@@ -116,9 +124,10 @@ export type MorseRecipientFileConfig = MorsePackageConfig &
 // morseConfig factory
 
 /**
- * Canonical Morse deployment addresses per network. Updated on every contract
- * redeploy during active development; expected to stabilize after Phase 7
- * when the contracts are frozen for v0.1.0.
+ * Canonical Morse deployment addresses per network. Mirrors
+ * `morse-contracts/Published.toml`; update on every contract publish or
+ * upgrade. Networks absent from this map require explicit `packageId` and
+ * `registryId` overrides.
  */
 const KNOWN_DEPLOYMENTS: Partial<
 	Record<
@@ -133,6 +142,53 @@ const KNOWN_DEPLOYMENTS: Partial<
 		}
 	>
 > = {
+	mainnet: {
+		// Published 2026-09-09, tx HmiywHYifmrNLMvY2oT8cP5W9hpQc2wFTJAaaQoM8mLY.
+		// A fresh v1 publish with no upgrades, so published-at, original-id, and
+		// the recipient_file type origin are all the same address. They are
+		// spelled out separately rather than aliased because the FIRST upgrade
+		// splits them: packageId moves, the other two stay here. See the testnet
+		// entry below for what that divergence looks like in practice.
+		packageId: toPackageId(
+			"0x4fc7af5d1e19f96e5fab4e677948214eec35e238b252a106c7d5036dcebdcae2",
+		),
+		originalPackageId: toPackageId(
+			"0x4fc7af5d1e19f96e5fab4e677948214eec35e238b252a106c7d5036dcebdcae2",
+		),
+		recipientFileEventOriginPackageId: toPackageId(
+			"0x4fc7af5d1e19f96e5fab4e677948214eec35e238b252a106c7d5036dcebdcae2",
+		),
+		// Shared PublicationRegistry created by the publish tx's init.
+		registryId: toRegistryId(
+			"0x8d8b23c7acd7c1b260c793f2c648c5be8eb06db7c107b9f06ca3f39b700868ea",
+		),
+		// Mysten's decentralized Seal committee. Unlike testnet (two independent
+		// servers), mainnet has no free open allowlist: the independent mainnet
+		// operators are commercial and issue API keys per consumer. The committee
+		// is the one no-signup option.
+		//
+		// Committee mode is a single logical server that fans out to 8 operators
+		// and needs 5 to agree, so `aggregatorUrl` is MANDATORY here (Seal throws
+		// InvalidClientOptionsError without it) and one entry with weight 1 is
+		// the correct shape. `DefaultSealAdapter.fromMorseConfig` derives
+		// threshold = min(2, 1) = 1, which is right: the real quorum is internal
+		// to the aggregator, not something this SDK can or should express.
+		// Consumers who would rather not route through one Mysten-run URL pass
+		// their own `seal.serverConfigs`.
+		sealKeyServers: [
+			{
+				objectId:
+					"0x686098f1439237fff9f36b99c7329683c22979d2005c2465cb891acb012a7595",
+				weight: 1,
+				aggregatorUrl: "https://seal-aggregator-mainnet.mystenlabs.com",
+			},
+		],
+		// Canonical Mysten-run Walrus mainnet aggregator. Publisher is left
+		// undefined for the same reason as testnet: no single canonical operator.
+		walrusEndpoints: {
+			aggregator: "https://aggregator.walrus-mainnet.walrus.space",
+		},
+	},
 	testnet: {
 		// Updated 2026-06-04 for v4 upgrade (recipient_file::new_recipient_file_with_seal_prefix
 		// + seal_approve_with_prefix added; legacy file/allowlist modules unused).
@@ -173,7 +229,7 @@ const KNOWN_DEPLOYMENTS: Partial<
 		// `HttpAggregatorReadAdapter.fromMorseConfig` for browser dapps that
 		// need a single CORS-friendly endpoint instead of the direct-protocol
 		// shard fanout (which has incomplete CORS coverage on testnet).
-		// Publisher is intentionally undefined — there is no single canonical
+		// Publisher is intentionally undefined - there is no single canonical
 		// testnet publisher; consumers wire their own (Nami, self-hosted, etc).
 		walrusEndpoints: {
 			aggregator: "https://aggregator.walrus-testnet.walrus.space",
@@ -214,11 +270,6 @@ export function morseConfig(options: MorseConfigOptions): NetworkConfig {
 	const registryId = options.registryId ?? deployment?.registryId;
 
 	if (!packageId || !registryId) {
-		if (options.network === "mainnet") {
-			throw new ConfigurationError(
-				"Morse is not yet deployed on mainnet. Use { network: 'testnet' } or supply packageId, originalPackageId, and registryId for a custom deployment.",
-			);
-		}
 		throw new ConfigurationError(
 			`No canonical Morse deployment for network "${options.network}". Supply packageId, originalPackageId, and registryId for a custom deployment.`,
 		);

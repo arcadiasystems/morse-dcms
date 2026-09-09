@@ -2,6 +2,29 @@
 
 All notable changes to `morse-sdk` will be documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-09-09
+
+Mainnet support. `morseConfig({ network: "mainnet" })` previously threw `ConfigurationError`; it now returns a complete `NetworkConfig` against the mainnet deployment (`published-at`: `0x4fc7af5d1e19f96e5fab4e677948214eec35e238b252a106c7d5036dcebdcae2`, published 2026-09-09 in tx `HmiywHYifmrNLMvY2oT8cP5W9hpQc2wFTJAaaQoM8mLY`). No API shape changed and no consumer code needs editing beyond the network literal.
+
+### Added
+
+- **Canonical mainnet deployment in `morseConfig`.** All six address fields are baked in, so mainnet consumers supply no addresses. Because the mainnet publish is an unupgraded v1, `packageId`, `originalPackageId`, and `recipientFileEventOriginPackageId` are all the same address; they are still stored as three separate fields because the first upgrade splits them, and a test pins the invariant so a half-finished upgrade fails loudly rather than silently returning empty type-filtered reads.
+- **Mainnet Seal key servers default to Mysten's decentralized committee** (`0x686098f1...`, aggregator `https://seal-aggregator-mainnet.mystenlabs.com`). Unlike testnet, mainnet has no free open key-server allowlist: the independent mainnet operators are commercial and issue per-consumer API keys, so the committee is the only zero-onboarding option. It is one endpoint fronting 8 operators with an internal 5-of-8 quorum, which `@mysten/seal` models as a single server with `serverType: "Committee"`. Two consequences worth knowing: the entry **must** carry `aggregatorUrl` (Seal throws `InvalidClientOptionsError: Committee server ... requires aggregatorUrl in config` without it, and throws the mirror-image error for an independent server that *has* it), and `DefaultSealAdapter.fromMorseConfig` correctly resolves the default threshold to 1 rather than 2, since the real quorum is enforced behind the aggregator and cannot be expressed as a share count. Pass `seal.serverConfigs` to route through your own servers instead.
+- **Mainnet Walrus aggregator** pinned to `https://aggregator.walrus-mainnet.walrus.space` for `HttpAggregatorReadAdapter.fromMorseConfig`. Publisher stays undefined on both networks, unchanged: there is no single canonical operator and picking one is a trust decision the SDK should not make for everyone.
+- First tests for `DefaultSealAdapter.fromMorseConfig`, which had none. Cover the default threshold for both the single-server (mainnet) and multi-server (testnet) shapes, the `originalPackageId` / `packageId` split between Seal identity binding and PTB targets, and the no-key-servers `ConfigurationError`.
+
+### Changed
+
+- The mainnet-specific `ConfigurationError` ("Morse is not yet deployed on mainnet") is gone, along with the branch that raised it. A network with no canonical deployment and no overrides now always gets the generic message naming the network. Only localnet reaches this path.
+- `ConfigurationError` message from `HttpAggregatorReadAdapter.fromMorseConfig` no longer claims testnet is the only network with a pinned aggregator.
+- Doc comments that described mainnet as unpinned or "pre-freeze" now describe the committee-mode constraint instead, in `config.ts`, `seal/default-adapter.ts`, and `walrus/http-aggregator-read-adapter.ts`.
+
+### Known gaps
+
+- **`TESTED_SUBSTRATE.suiNetwork` still reads `"testnet"`, deliberately.** It records where the paid `scripts/phase-N-*.ts` smoke suite has actually run end to end, and that is testnet only. Mainnet is verified at the config layer (unit tests) and the read layer (a live gRPC `listPublicationsOwnedBy` against the deployed package), not by a full paid write cycle. The constant and the README compatibility table get updated when a mainnet smoke actually runs.
+- `scripts/` and `examples/` remain hardcoded to testnet. `scripts/_shared.ts` is the single choke point if a `MORSE_NETWORK` override is added later. Neither directory ships in the npm tarball.
+- The Move contracts remain unaudited on both networks.
+
 ## [0.4.3] - 2026-07-07
 
 ### Fixed

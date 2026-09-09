@@ -7,7 +7,9 @@
  * committee. On testnet a subset of those nodes do not ship CORS headers,
  * so browser fetches frequently fail with `NoBlobMetadataReceivedError`
  * even when the blob is healthy. CLI smokes against the same blob succeed
- * because the CLI does not enforce CORS. The aggregator HTTP service is a
+ * because the CLI does not enforce CORS. Mainnet node CORS coverage has not
+ * been measured by this project, so treat the fanout path there as unproven
+ * from a browser rather than assumed good. The aggregator HTTP service is a
  * Walrus-operator-run wrapper that internally does the shard math and
  * exposes a single CORS-friendly endpoint.
  *
@@ -143,7 +145,7 @@ export class HttpAggregatorReadAdapter implements WalrusReadAdapter {
 	 * `headers` here if you want them; everything else is inferred.
 	 *
 	 * @throws {ConfigurationError} If the network has no canonical aggregator
-	 *   URL (e.g. mainnet pre-freeze, or a custom-deployment config without
+	 *   URL (localnet, or a custom-deployment config without
 	 *   `walrusEndpoints.aggregator` supplied).
 	 */
 	static fromMorseConfig(
@@ -157,7 +159,7 @@ export class HttpAggregatorReadAdapter implements WalrusReadAdapter {
 		const url = morseConfig.walrusEndpoints?.aggregator ?? "";
 		if (url.length === 0) {
 			throw new ConfigurationError(
-				"morseConfig.walrusEndpoints.aggregator is empty. Pass an aggregator URL explicitly to HttpAggregatorReadAdapter.fromConfig({ aggregatorUrl, suiClient }), or use a network where the endpoint is pinned (testnet).",
+				"morseConfig.walrusEndpoints.aggregator is empty. Pass an aggregator URL explicitly to HttpAggregatorReadAdapter.fromConfig({ aggregatorUrl, suiClient }), or use a network where the endpoint is pinned (mainnet, testnet).",
 			);
 		}
 		return new HttpAggregatorReadAdapter({

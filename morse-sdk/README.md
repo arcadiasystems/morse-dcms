@@ -4,7 +4,9 @@ TypeScript SDK for [Morse](../morse-contracts), a decentralized content manageme
 
 ## Status
 
-Pre-release. Testnet only. The Move contract addresses are baked in via `morseConfig({ network: "testnet" })` and re-pinned on every contract redeploy. Mainnet support arrives once the contracts are frozen.
+Pre-release. Mainnet and testnet are both wired: the Move contract addresses are baked in, so `morseConfig({ network: "mainnet" })` and `morseConfig({ network: "testnet" })` both return a complete config with no addresses to supply.
+
+**The contracts are unaudited.** On mainnet, SUI and WAL cost real money, there is no faucet, and a mistake is not recoverable. The end-to-end smoke suite has been run against testnet only (see [Compatibility](#compatibility)); mainnet is verified at the config and read layer, not by a full paid write cycle. Treat mainnet as usable but young, and size your first deployment accordingly.
 
 ## Install
 
@@ -36,12 +38,13 @@ morse-sdk is built and tested against specific minor versions of its Mysten subs
 
 | morse-sdk | `@mysten/sui` | `@mysten/walrus` | `@mysten/seal` | Sui network | Verified  |
 | --------- | ------------- | ---------------- | -------------- | ----------- | --------- |
+| 0.5.x     | 2.16.2-2.16.x | 1.1.6-1.1.x      | 1.1.3-1.1.x    | testnet     | 2026-06-05 |
 | 0.4.x     | 2.16.2-2.16.x | 1.1.6-1.1.x      | 1.1.3-1.1.x    | testnet     | 2026-06-05 |
 | 0.1.x     | 2.16.2-2.16.x | 1.1.6-1.1.x      | 1.1.3-1.1.x    | testnet     | 2026-05-10 |
 
 Mysten ships breaking changes inside major version boundaries. Newer minors (e.g. `@mysten/walrus@1.2.x`, `@mysten/sui@2.17+`) are outside the verified ranges and may produce runtime errors; morse-sdk needs a coordinated bump and re-verification before a new Mysten minor is supported. Pin via `bun add @arcadiasystems/morse-sdk@~0.4.0` if you want patch updates without surprise minors.
 
-The verification protocol is documented in [`CONTRIBUTING.md`](./CONTRIBUTING.md): every Mysten dep bump runs the full `scripts/phase-N-*.ts` smoke suite against testnet before the bump lands.
+The verification protocol is documented in [`CONTRIBUTING.md`](./CONTRIBUTING.md): every Mysten dep bump runs the full `scripts/phase-N-*.ts` smoke suite against testnet before the bump lands. The `Sui network` column records where that paid smoke suite actually ran, which is why it still reads `testnet` for 0.5.x even though mainnet addresses ship. `TESTED_SUBSTRATE.suiNetwork` reports the same thing programmatically.
 
 ### Runtime requirements
 
@@ -68,6 +71,9 @@ import {
   RpcPublicationReader,
 } from "@arcadiasystems/morse-sdk";
 
+// The quick start uses testnet on purpose: every step below spends gas and
+// WAL, and on mainnet that is real money. Switch both literals to "mainnet"
+// once the flow works for you.
 const config = morseConfig({ network: "testnet" });
 const client = new SuiGrpcClient({ network: "testnet", baseUrl: config.rpcUrl });
 const keypair = Ed25519Keypair.fromSecretKey(privateKey); // Bech32 "suiprivkey1..."
@@ -129,7 +135,7 @@ morse-sdk ships two pairs of Walrus adapters. They implement the same interfaces
 
 | Pair                                                              | Trust model      | Browser CORS    | Popup count for upload + addEntry | Storage cost paid by |
 | ----------------------------------------------------------------- | ---------------- | --------------- | --------------------------------- | -------------------- |
-| `DefaultWalrusReadAdapter` + `DefaultWalrusWriteAdapter`          | Trustless (direct fanout to ~30 storage nodes) | Spotty on testnet | 2 (with `addEntryFromBytes`) or 3 (split) | Consumer wallet (WAL + gas) |
+| `DefaultWalrusReadAdapter` + `DefaultWalrusWriteAdapter`          | Trustless (direct fanout to ~30 storage nodes) | Spotty on testnet; unmeasured on mainnet | 2 (with `addEntryFromBytes`) or 3 (split) | Consumer wallet (WAL + gas) |
 | `HttpAggregatorReadAdapter` + `HttpPublisherWriteAdapter`         | Operator-trusted | Reliable        | 1 (`uploadBlob` is a publisher HTTP call, only `addEntry` signs) | Publisher operator (WAL); consumer (Sui gas only) |
 
 **When to pick which:**
@@ -139,9 +145,10 @@ morse-sdk ships two pairs of Walrus adapters. They implement the same interfaces
 The HTTP adapters are NOT compatible with `addEntryFromBytes` / `addEncryptedEntryFromBytes`. Those functions require `WalrusFlowCapable` for the 2-popup combined PTB; the publisher-paid path is naturally 1-popup through standard `uploadBlob` + `addEntry`.
 
 ```ts
-// Default (direct, trustless, 2-3 popups)
-const reader = DefaultWalrusReadAdapter.fromConfig({ network: "testnet", suiClient });
-const writer = DefaultWalrusWriteAdapter.fromConfig({ network: "testnet", suiClient }, signer);
+// Default (direct, trustless, 2-3 popups). network is "mainnet" or "testnet";
+// Walrus has no localnet.
+const reader = DefaultWalrusReadAdapter.fromConfig({ network: "mainnet", suiClient });
+const writer = DefaultWalrusWriteAdapter.fromConfig({ network: "mainnet", suiClient }, signer);
 
 // HTTP (operator-trusted, 1 popup for upload+addEntry)
 const reader = HttpAggregatorReadAdapter.fromMorseConfig(config, suiClient);
@@ -151,7 +158,7 @@ const writer = HttpPublisherWriteAdapter.fromConfig({
 });
 ```
 
-The aggregator URL for testnet is baked into `morseConfig.walrusEndpoints.aggregator` (Mysten's canonical service). The publisher URL is intentionally not baked in — publishers are operator-specific and consumers pick one explicitly.
+The aggregator URL is baked into `morseConfig.walrusEndpoints.aggregator` for both mainnet and testnet (Mysten's canonical service for each). The publisher URL is intentionally not baked in - publishers are operator-specific and consumers pick one explicitly. Note that the publisher in the snippet above is a testnet operator; there is no mainnet equivalent the SDK will pick for you.
 
 `HttpPublisherWriteAdapter` parses Mysten's published publisher binary (camelCase JSON) and the documented OpenAPI schema (snake_case fallback). For non-standard publisher forks that serve a different shape, pass `parseResponse` to `HttpPublisherWriteAdapter.fromConfig({ ..., parseResponse })` — it receives the raw decoded JSON and returns an `UploadBlobResult`, replacing the built-in parser. Throws from the callback propagate verbatim.
 
@@ -197,8 +204,8 @@ The full public surface, grouped by concern. Every export carries a JSDoc on its
 
 | Export | Purpose |
 | --- | --- |
-| `morseConfig({ network })` | Build a `NetworkConfig` for testnet (canonical addresses baked in) or supply override fields for forks / local nodes. |
-| `Network` | Const enum-like: `"mainnet" \| "testnet" \| "localnet"`. Mainnet currently throws `ConfigurationError` (gates v1.0.0). |
+| `morseConfig({ network })` | Build a `NetworkConfig` for mainnet or testnet (canonical addresses baked in), or supply override fields for forks / local nodes. |
+| `Network` | Const enum-like: `"mainnet" \| "testnet" \| "localnet"`. Mainnet and testnet resolve to canonical deployments; localnet throws `ConfigurationError` unless you pass `packageId` and `registryId`. |
 | `DEFAULT_RPC_URLS` | Public Sui fullnode URLs per network. Read-only. |
 | `TESTED_SUBSTRATE` | Mysten substrate versions verified end-to-end. Diagnostic constant. |
 
@@ -248,7 +255,7 @@ The full public surface, grouped by concern. Every export carries a JSDoc on its
 | `DefaultWalrusReadAdapter.fromConfig(config)` | Walrus reads (`readBlob`, `readBlobByObjectId`, `readQuiltPatch`, `readBlobRef`). |
 | `HttpPublisherWriteAdapter.fromConfig({ publisherUrl, ownerAddress })` | Walrus uploads via a publisher HTTP service (operator pays storage; 1 popup for upload + addEntry). |
 | `HttpAggregatorReadAdapter.fromMorseConfig(config, suiClient)` / `.fromConfig({ aggregatorUrl, suiClient })` | Walrus reads via a single CORS-friendly aggregator endpoint instead of fanout to ~30 storage nodes. |
-| `DefaultSealAdapter.fromMorseConfig(config, options, suiClient)` | Threshold encryption / decryption. Defaults canonical testnet key servers. |
+| `DefaultSealAdapter.fromMorseConfig(config, options, suiClient)` | Threshold encryption / decryption. Defaults the canonical key servers for the network (two independent servers on testnet, Mysten's committee on mainnet). |
 | `WalletAdapter` / `WalrusWriteAdapter` / `WalrusReadAdapter` / `SealAdapter` | Interfaces for substituting custom implementations. |
 | `WalrusFlowCapable` / `isWalrusFlowCapable` | Optional capability for the 2-popup `addEntryFromBytes` path. |
 
@@ -426,12 +433,19 @@ Copy uses the protocol's own terminology ("publication", "entry", "PublisherCap"
 ## Network configuration
 
 ```ts
-const config = morseConfig({ network: "testnet" });
+const config = morseConfig({ network: "mainnet" }); // or "testnet"
 // {
-//   network, rpcUrl, packageId, originalPackageId, registryId,
-//   sealKeyServers: [{ objectId, weight }, ...]   // canonical testnet allowlist
+//   network, rpcUrl, packageId, originalPackageId,
+//   recipientFileEventOriginPackageId, registryId,
+//   sealKeyServers: [...],        // canonical allowlist for the network
+//   walrusEndpoints: { aggregator }
 // }
 ```
+
+The two networks differ in their Seal allowlist, and the difference is not cosmetic:
+
+- **testnet** pins two independent Mysten key servers, so the default threshold is 2 of 2.
+- **mainnet** pins Mysten's decentralized committee: one endpoint that fans out to 8 operators and needs 5 to agree. Seal models it as a single server, so the default threshold is 1 - the real quorum is enforced inside the aggregator, not by this SDK. Mainnet has no free open independent servers; the independent operators are commercial and issue per-consumer API keys. Pass `seal.serverConfigs` to `DefaultSealAdapter.fromMorseConfig` if you would rather not route through one Mysten-run URL.
 
 Override individual fields for forks or local nodes:
 
@@ -448,18 +462,18 @@ const config = morseConfig({
 
 ## Known limitations
 
-- **Testnet only at v0.x**. Mainnet config lands once the contracts are frozen.
+- **Unaudited contracts**. The Move package has not been audited. This is the main reason to be conservative about what you put on mainnet.
 - **No encrypted publish path**. The Move contract hardcodes `encrypted=false` on `publish_from_draft` and `publish_direct`. Encrypted content stays as drafts.
 - **`Subscription` access policy is reserved**, not enforced.
 - **`listEntries` ordering is dynamic-field object-store order**, not chronological. Sort by `entry.id` for insertion order.
-- **Walrus testnet flakiness**. `NotEnoughBlobConfirmationsError` from the underlying client is environmental; rerun. The SDK preserves the original error as the `cause` (use `instanceof` for narrowing — Walrus error classes don't set `.name`). Browser consumers may additionally see `NoBlobMetadataReceivedError` on reads from testnet due to CORS gaps on a subset of Walrus storage nodes; the CLI smoke scripts hit the full node pool and are more reliable for verification.
-- **Walrus uploads need WAL, not just SUI**. Get testnet SUI from the [Sui faucet](https://faucet.sui.io/), then swap some for WAL at [stake-wal.wal.app](https://stake-wal.wal.app/?network=testnet). Uploads error with `Insufficient balance of ::wal::WAL` if you skip this.
-- **Walrus storage is epoch-funded, not permanent**. Blobs persist for the epochs you pay for (a testnet epoch is roughly a day) and expire afterwards unless renewed; Walrus testnet is also periodically wiped. The on-chain revision history is immutable, but treat testnet payloads as disposable.
+- **Walrus flakiness**. `NotEnoughBlobConfirmationsError` from the underlying client is environmental; rerun. The SDK preserves the original error as the `cause` (use `instanceof` for narrowing - Walrus error classes don't set `.name`). Browser consumers may additionally see `NoBlobMetadataReceivedError` on reads from testnet due to CORS gaps on a subset of Walrus storage nodes; `HttpAggregatorReadAdapter` exists to route around that. Mainnet node CORS coverage has not been measured by this project, so browser fanout reads there are unproven rather than known-good.
+- **Walrus uploads need WAL, not just SUI**. Uploads error with `Insufficient balance of ::wal::WAL` if you skip this. On testnet, get SUI from the [Sui faucet](https://faucet.sui.io/) and swap some for WAL at [stake-wal.wal.app](https://stake-wal.wal.app/?network=testnet). On mainnet there is no faucet: both SUI and WAL have to be acquired, and every upload spends real value.
+- **Walrus storage is epoch-funded, not permanent**. Blobs persist for the epochs you pay for and expire afterwards unless renewed, on both networks. Epoch length differs (a testnet epoch is roughly a day; mainnet epochs are much longer), so the same `epochs` argument buys very different durations. Walrus testnet is additionally wiped periodically, so treat testnet payloads as disposable; mainnet blobs are not wiped but still lapse if you let storage expire. The on-chain revision history is immutable either way.
 - **gRPC client only**. The reader and adapter interfaces are typed against `Pick<SuiGrpcClient, ...>` from `@mysten/sui/grpc`. `SuiJsonRpcClient` from `@mysten/sui/jsonRpc` has differently-named methods (`getDynamicFields` vs `listDynamicFields`, etc.) and is not yet a drop-in alternative. JSON-RPC fallback is planned; for now, environments that block gRPC need to proxy or use a gRPC-compatible RPC endpoint.
 
 ## Smoke scripts
 
-The `scripts/` directory has end-to-end testnet smokes that cost real WAL and SUI. They're the canonical "this works against the live deployment" checks:
+The `scripts/` directory has end-to-end smokes that cost real WAL and SUI. They're the canonical "this works against the live deployment" checks. All of them are hardcoded to testnet via `scripts/_shared.ts`; running them against mainnet would spend real value and is not wired up.
 
 | Script                    | Exercises                                          |
 | ------------------------- | -------------------------------------------------- |
@@ -473,7 +487,7 @@ The `scripts/` directory has end-to-end testnet smokes that cost real WAL and SU
 | `phase-6-blob-http.ts`    | HTTP publisher upload + aggregator read; skips when `WALRUS_PUBLISHER_URL` unset |
 | `phase-7-encrypted-http.ts` | HTTP variant of phase-7; skips when `WALRUS_PUBLISHER_URL` unset |
 
-Each requires `PRIVATE_KEY` (Bech32 `suiprivkey1...`) on an address with testnet SUI; phase-5 onward also needs WAL on the same address. Phase-7 picks up Seal key servers from `morseConfig.sealKeyServers` (canonical testnet allowlist baked in) by default — pass `SEAL_KEY_SERVERS` only if you want to override with a custom set.
+Each requires `PRIVATE_KEY` (Bech32 `suiprivkey1...`) on an address with testnet SUI; phase-5 onward also needs WAL on the same address. Phase-7 picks up Seal key servers from `morseConfig.sealKeyServers` (the canonical testnet allowlist) by default - pass `SEAL_KEY_SERVERS` only if you want to override with a custom set.
 
 ## Development
 

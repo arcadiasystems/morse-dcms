@@ -111,8 +111,8 @@ export class DefaultSealAdapter implements SealAdapter {
 	/**
 	 * Build an adapter from a morse package config (typically
 	 * `morseConfig({ network })`). Defaults `serverConfigs` from
-	 * `morseConfig.sealKeyServers` (the canonical testnet allowlist baked
-	 * into morse-sdk) when omitted; defaults `threshold` to
+	 * `morseConfig.sealKeyServers` (the canonical allowlist baked into
+	 * morse-sdk for the network) when omitted; defaults `threshold` to
 	 * `min(2, serverConfigs.length)` when omitted. Picks
 	 * `originalPackageId ?? packageId` internally; passing a post-upgrade
 	 * `packageId` directly would silently produce ciphertexts that become
@@ -122,9 +122,17 @@ export class DefaultSealAdapter implements SealAdapter {
 	 * want a custom set (paid plans, alternate trust assumptions, region
 	 * pinning), or `threshold` when you want a non-default TSS shape.
 	 *
+	 * On the default threshold: mainnet's canonical allowlist is a single
+	 * committee-mode server, so `min(2, 1)` resolves to 1. That is correct and
+	 * not a weakened policy - a committee server is one endpoint fronting 8
+	 * operators with its own internal quorum, which Seal enforces behind the
+	 * aggregator and this SDK cannot express as a share count. Do not "fix"
+	 * this by forcing a higher threshold; `fromConfig` would reject it, since
+	 * threshold must be <= `serverConfigs.length`.
+	 *
 	 * @throws {ConfigurationError} If neither `seal.serverConfigs` nor
-	 *   `morseConfig.sealKeyServers` provide any servers (e.g. mainnet
-	 *   pre-freeze).
+	 *   `morseConfig.sealKeyServers` provide any servers (localnet, or a
+	 *   custom deployment with no allowlist supplied).
 	 */
 	static fromMorseConfig(
 		morseConfig: {

@@ -6,7 +6,7 @@ import {
 } from "@mysten/seal";
 
 import { toPackageId, toPublicationId } from "../codecs.js";
-import { SealError, TransportError } from "../errors.js";
+import { ConfigurationError, SealError, TransportError } from "../errors.js";
 import { DefaultSealAdapter } from "./default-adapter.js";
 import { buildPublisherSealId } from "./identity.js";
 
@@ -73,6 +73,140 @@ function fakeClient(
 	};
 	return { client, calls };
 }
+
+/**
+ * `fromMorseConfig` builds a real `SealClient`, so these tests read the
+ * adapter's resolved fields directly instead of driving `encrypt` (which would
+ * make the client fetch key servers over the network). `private` is erased at
+ * runtime, so the cast is sound.
+ */
+function internals(adapter: DefaultSealAdapter): {
+	packageId: string;
+	targetPackageId: string;
+	threshold: number;
+} {
+	return adapter as unknown as {
+		packageId: string;
+		targetPackageId: string;
+		threshold: number;
+	};
+}
+
+const UPGRADED_PACKAGE_ID = toPackageId(
+	"0x0000000000000000000000000000000000000000000000000000000000000222",
+);
+
+describe("DefaultSealAdapter.fromMorseConfig", () => {
+	test("defaults threshold to 1 for a single committee-mode key server", () => {
+		// The mainnet shape. min(2, 1) = 1 is correct here: the real quorum lives
+		// inside the committee aggregator. Raising it would trip fromConfig's
+		// threshold <= serverConfigs.length check.
+		const adapter = DefaultSealAdapter.fromMorseConfig(
+			{
+				packageId: PACKAGE_ID,
+				sealKeyServers: [
+					{
+						objectId: "0xcommittee",
+						weight: 1,
+						aggregatorUrl: "https://aggregator.example",
+					},
+				],
+			},
+			{},
+			fakeSuiClient(),
+		);
+		expect(internals(adapter).threshold).toBe(1);
+	});
+
+	test("defaults threshold to 2 for a multi-server allowlist", () => {
+		// The testnet shape.
+		const adapter = DefaultSealAdapter.fromMorseConfig(
+			{
+				packageId: PACKAGE_ID,
+				sealKeyServers: [
+					{ objectId: "0xone", weight: 1 },
+					{ objectId: "0xtwo", weight: 1 },
+				],
+			},
+			{},
+			fakeSuiClient(),
+		);
+		expect(internals(adapter).threshold).toBe(2);
+	});
+
+	test("explicit threshold wins over the default", () => {
+		const adapter = DefaultSealAdapter.fromMorseConfig(
+			{
+				packageId: PACKAGE_ID,
+				sealKeyServers: [
+					{ objectId: "0xone", weight: 1 },
+					{ objectId: "0xtwo", weight: 1 },
+				],
+			},
+			{ threshold: 1 },
+			fakeSuiClient(),
+		);
+		expect(internals(adapter).threshold).toBe(1);
+	});
+
+	test("binds identity to originalPackageId and PTB targets to packageId", () => {
+		// Swapping these silently produces ciphertexts that stop decrypting after
+		// the next package upgrade. On mainnet the two ids are currently equal, so
+		// only a config with a real upgrade (testnet) can catch a regression.
+		const adapter = DefaultSealAdapter.fromMorseConfig(
+			{
+				packageId: UPGRADED_PACKAGE_ID,
+				originalPackageId: PACKAGE_ID,
+				sealKeyServers: [{ objectId: "0xone", weight: 1 }],
+			},
+			{},
+			fakeSuiClient(),
+		);
+		expect(internals(adapter).packageId).toBe(PACKAGE_ID);
+		expect(internals(adapter).targetPackageId).toBe(UPGRADED_PACKAGE_ID);
+	});
+
+	test("falls back to packageId for identity when originalPackageId is absent", () => {
+		const adapter = DefaultSealAdapter.fromMorseConfig(
+			{
+				packageId: PACKAGE_ID,
+				sealKeyServers: [{ objectId: "0xone", weight: 1 }],
+			},
+			{},
+			fakeSuiClient(),
+		);
+		expect(internals(adapter).packageId).toBe(PACKAGE_ID);
+		expect(internals(adapter).targetPackageId).toBe(PACKAGE_ID);
+	});
+
+	test("seal.serverConfigs overrides the config allowlist", () => {
+		const adapter = DefaultSealAdapter.fromMorseConfig(
+			{
+				packageId: PACKAGE_ID,
+				sealKeyServers: [
+					{ objectId: "0xone", weight: 1 },
+					{ objectId: "0xtwo", weight: 1 },
+				],
+			},
+			{ serverConfigs: [{ objectId: "0xmine", weight: 1 }] },
+			fakeSuiClient(),
+		);
+		// Threshold follows the override's length, not the allowlist's.
+		expect(internals(adapter).threshold).toBe(1);
+	});
+
+	test("throws ConfigurationError when no key servers are available", () => {
+		// The localnet / custom-deployment path: morseConfig yields
+		// sealKeyServers: [] and the consumer supplied no override.
+		expect(() =>
+			DefaultSealAdapter.fromMorseConfig(
+				{ packageId: PACKAGE_ID, sealKeyServers: [] },
+				{},
+				fakeSuiClient(),
+			),
+		).toThrow(ConfigurationError);
+	});
+});
 
 describe("DefaultSealAdapter.encrypt", () => {
 	test("forwards plaintext + sealId hex + threshold + packageId", async () => {

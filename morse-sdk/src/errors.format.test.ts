@@ -186,10 +186,12 @@ describe("formatUserMessage — TransportError", () => {
 
 describe("formatUserMessage — ConfigurationError", () => {
 	test("uses err.message verbatim (ConfigurationError messages are already user-prose)", () => {
-		const err = new ConfigurationError("Morse is not yet deployed on mainnet.");
+		const message =
+			'No canonical Morse deployment for network "localnet". Supply packageId, originalPackageId, and registryId for a custom deployment.';
+		const err = new ConfigurationError(message);
 		const formatted = formatUserMessage(err);
 		expect(formatted.title).toBe("Configuration issue");
-		expect(formatted.description).toBe("Morse is not yet deployed on mainnet.");
+		expect(formatted.description).toBe(message);
 	});
 });
 

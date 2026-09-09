@@ -74,14 +74,33 @@ describe("morseConfig", () => {
 		expect(config.registryId).toBe(customRegistry);
 	});
 
-	test("throws ConfigurationError for mainnet with a specific message", () => {
-		try {
-			morseConfig({ network: "mainnet" });
-			throw new Error("expected throw");
-		} catch (error) {
-			expect(error).toBeInstanceOf(ConfigurationError);
-			expect((error as ConfigurationError).message).toContain("mainnet");
-		}
+	test("returns a fully-populated config for mainnet using canonical addresses", () => {
+		const config = morseConfig({ network: "mainnet" });
+		expect(config.network).toBe("mainnet");
+		expect(config.rpcUrl).toBe(DEFAULT_RPC_URLS.mainnet);
+		expect(config.packageId).toBe(
+			toPackageId(
+				"0x4fc7af5d1e19f96e5fab4e677948214eec35e238b252a106c7d5036dcebdcae2",
+			),
+		);
+		expect(config.registryId).toBe(
+			toRegistryId(
+				"0x8d8b23c7acd7c1b260c793f2c648c5be8eb06db7c107b9f06ca3f39b700868ea",
+			),
+		);
+		expect(config.walrusEndpoints.aggregator).toBe(
+			"https://aggregator.walrus-mainnet.walrus.space",
+		);
+		expect(config.walrusEndpoints.publisher).toBeUndefined();
+	});
+
+	test("mainnet is an unupgraded publish, so all three package ids coincide", () => {
+		// Not a tautology worth deleting: the day mainnet is upgraded, packageId
+		// moves and these must diverge. This test failing is the signal that the
+		// entry was half-updated.
+		const config = morseConfig({ network: "mainnet" });
+		expect(config.originalPackageId).toBe(config.packageId);
+		expect(config.recipientFileEventOriginPackageId).toBe(config.packageId);
 	});
 
 	test("throws ConfigurationError for localnet without overrides", () => {
@@ -130,6 +149,33 @@ describe("morseConfig", () => {
 			expect(typeof server.objectId).toBe("string");
 			expect(server.objectId.startsWith("0x")).toBe(true);
 			expect(server.weight).toBeGreaterThan(0);
+		}
+	});
+
+	test("mainnet Seal allowlist is one committee server carrying aggregatorUrl", () => {
+		// @mysten/seal throws InvalidClientOptionsError at client construction
+		// for a committee-mode server with no aggregatorUrl. That is a runtime
+		// failure on the first encrypt/decrypt, so it is pinned here.
+		const config = morseConfig({ network: "mainnet" });
+		expect(config.sealKeyServers).toHaveLength(1);
+		const committee = config.sealKeyServers[0];
+		expect(committee?.objectId).toBe(
+			"0x686098f1439237fff9f36b99c7329683c22979d2005c2465cb891acb012a7595",
+		);
+		expect(committee?.weight).toBe(1);
+		expect(committee?.aggregatorUrl).toBe(
+			"https://seal-aggregator-mainnet.mystenlabs.com",
+		);
+	});
+
+	test("testnet Seal allowlist carries no aggregatorUrl", () => {
+		// The mirror image of the check above: Seal rejects an INDEPENDENT server
+		// that has aggregatorUrl set, with the same error class. Testnet's two
+		// servers are independent, so the field must stay absent.
+		const config = morseConfig({ network: "testnet" });
+		expect(config.sealKeyServers.length).toBeGreaterThan(0);
+		for (const server of config.sealKeyServers) {
+			expect(server.aggregatorUrl).toBeUndefined();
 		}
 	});
 
