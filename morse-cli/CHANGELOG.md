@@ -4,6 +4,24 @@ All notable changes to `@arcadiasystems/morse-cli` are documented here. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-09-09
+
+### Added
+
+- **`--upload-relay <url|auto>`** routes Walrus uploads through a relay instead of the direct fanout, with `MORSE_WALRUS_UPLOAD_RELAY` and a per-profile `uploadRelay` following the usual `flags > env > config > defaults` precedence. `auto` resolves to the canonical Mysten relay for the selected network, and is refused on localnet, which has none.
+
+  A direct upload pushes slivers to every storage node in the committee at once, 95 on mainnet. Networks that cannot sustain that burst fail with `NotEnoughBlobConfirmationsError` even when the nodes are healthy and far above write quorum, and until now the CLI had no way around it while the SDK did: `DefaultWalrusWriteAdapter.fromConfig` already accepted `uploadRelay`, the CLI just never offered a way to set it.
+
+  Opt-in rather than default: the direct path is free and trustless, the relay costs a tip and sees your bytes.
+- **`--max-tip <mist>`** and `MORSE_WALRUS_MAX_TIP` cap the relay's per-upload tip, defaulting to 10000000 MIST (0.01 SUI). Mainnet prices the tip linearly in encoded blob size, so an uncapped relay upload has no upper bound on what it charges; over the cap `@mysten/walrus` refuses before spending. A non-integer or negative cap is rejected outright rather than falling back to the default, so a typo cannot silently authorise an unbounded tip.
+- `config add` takes `--upload-relay` to persist the choice on a profile. The value is validated at add time the way `--network` already is, so `auto` on a network with no canonical relay is refused immediately rather than producing a profile that only fails the first time someone uploads. `config list` shows it in both the human and `--json` renderings.
+
+### Notes
+
+- The relay setting and its tip cap are carried raw through `resolveSettings` and only resolved on the Walrus write path. `resolveSettings` runs for every command, so parsing them eagerly would let a typo'd `MORSE_WALRUS_MAX_TIP` in a shell profile or CI environment break reads that never upload anything. A malformed cap fails the upload, not `publication get`.
+
+  Verified live: uploads through the relay succeed on both networks and round-trip byte for byte, a too-low `--max-tip` refuses before spending, and a malformed one is rejected at parse time.
+
 ## [0.6.1] - 2026-09-09
 
 Picks up `@arcadiasystems/morse-sdk@0.6.0` and fixes a download regression it exposed. Upgrade if you use mainnet at all.

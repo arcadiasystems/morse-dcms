@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-
 import { runStatus, runUse } from "../src/commands/use.ts";
 import type { ResolvedSettings } from "../src/config/profile.ts";
 import { loadConfig } from "../src/config/store.ts";

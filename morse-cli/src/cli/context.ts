@@ -17,13 +17,19 @@ import {
 	RpcPublicationReader,
 	RpcRecipientFilesReader,
 	type SuiAddress,
+	type WalrusAdapterConfig,
 	type WalrusReadAdapter,
 } from "@arcadiasystems/morse-sdk";
 import { SuiGrpcClient } from "@mysten/sui/grpc";
 import { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import type { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import type { Command } from "commander";
-import { type ResolvedSettings, resolveSettings } from "../config/profile.ts";
+import {
+	parseMaxTip,
+	type ResolvedSettings,
+	resolveSettings,
+	resolveUploadRelay,
+} from "../config/profile.ts";
 import { loadConfig } from "../config/store.ts";
 import { accountAddress, resolveSigner } from "../keystore/source.ts";
 import { CliError } from "./errors.ts";
@@ -137,7 +143,7 @@ export async function buildContentContext(
 	}
 	const adapter = new KeypairAdapter(keypair, base.client);
 	const walrus = DefaultWalrusWriteAdapter.fromConfig(
-		{ network, suiClient: base.client },
+		walrusWriteConfig(base, network),
 		keypair,
 	);
 	return {
@@ -166,6 +172,31 @@ function assertSealAvailable(config: NetworkConfig): void {
 		`Encrypted commands are not available on ${config.network}. Seal key servers there are operated commercially and the CLI cannot yet be pointed at one. Use --network testnet, or drive @arcadiasystems/morse-sdk directly with your own seal.serverConfigs.`,
 		ExitCode.Usage,
 	);
+}
+
+/**
+ * Walrus write config, opting into an upload relay when one is configured.
+ *
+ * A direct write pushes slivers to every storage node in the committee at once
+ * (95 on mainnet). Networks that cannot sustain that burst fail with
+ * `NotEnoughBlobConfirmationsError` even when the nodes are healthy and well
+ * above write quorum; the relay does the fanout server-side, so one connection
+ * replaces ~95. Opt-in rather than default: the relay charges a tip per upload
+ * and sees your bytes, while the direct path is free and trustless.
+ */
+function walrusWriteConfig(
+	base: ReadContext,
+	network: "mainnet" | "testnet",
+): WalrusAdapterConfig {
+	const host = resolveUploadRelay(base.settings.uploadRelay, network);
+	if (host === undefined) {
+		return { network, suiClient: base.client };
+	}
+	return {
+		network,
+		suiClient: base.client,
+		uploadRelay: { host, sendTip: { max: parseMaxTip(base.settings.maxTip) } },
+	};
 }
 
 export interface EncryptContext extends ContentContext {

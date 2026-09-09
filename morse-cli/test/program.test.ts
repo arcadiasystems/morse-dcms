@@ -315,6 +315,73 @@ describe("content/encrypt contexts build offline and guard", () => {
 	});
 });
 
+describe("upload relay reaches the content context", () => {
+	test("--upload-relay auto resolves onto the built context", async () => {
+		const ctx = await buildContentContext(
+			await probe(["--network", "mainnet", "--upload-relay", "auto"]),
+		);
+		expect(ctx.settings.uploadRelay).toBe("auto");
+		expect(ctx.walrus).toBeDefined();
+	});
+
+	test("an explicit relay and tip cap reach the context", async () => {
+		const ctx = await buildContentContext(
+			await probe([
+				"--network",
+				"testnet",
+				"--upload-relay",
+				"https://relay.example",
+				"--max-tip",
+				"42",
+			]),
+		);
+		expect(ctx.settings.uploadRelay).toBe("https://relay.example");
+		expect(ctx.settings.maxTip).toBe("42");
+	});
+
+	test("no relay configured leaves the direct fanout in place", async () => {
+		const ctx = await buildContentContext(
+			await probe(["--network", "testnet"]),
+		);
+		expect(ctx.settings.uploadRelay).toBeUndefined();
+	});
+});
+
+describe("relay settings do not leak into read commands", () => {
+	// The relay and its tip cap only mean something to a Walrus upload, but
+	// resolveSettings runs for every command. Validating them there would let a
+	// typo'd MORSE_WALRUS_MAX_TIP in a CI env break every read.
+	test("a malformed --max-tip does not break a read context", async () => {
+		const ctx = await buildReadContext(
+			await probe(["--network", "mainnet", "--max-tip", "abc"]),
+		);
+		expect(ctx.settings.maxTip).toBe("abc");
+		expect(ctx.reader).toBeDefined();
+	});
+
+	test("but an upload refuses it, before doing any work", async () => {
+		await expect(
+			buildContentContext(
+				await probe([
+					"--network",
+					"mainnet",
+					"--upload-relay",
+					"auto",
+					"--max-tip",
+					"abc",
+				]),
+			),
+		).rejects.toThrow(/non-negative integer/);
+	});
+
+	test("a bad relay value is likewise inert for reads", async () => {
+		const ctx = await buildReadContext(
+			await probe(["--network", "mainnet", "--upload-relay", "auto"]),
+		);
+		expect(ctx.settings.uploadRelay).toBe("auto");
+	});
+});
+
 describe("mainnet guards on Seal-backed contexts", () => {
 	// Mainnet pins no Seal key servers (SDK 0.6.0) and the CLI exposes no way to
 	// supply them, so encrypted commands cannot work there. Driven through the

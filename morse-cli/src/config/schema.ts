@@ -15,6 +15,8 @@ export const CONFIG_VERSION = 1;
 export interface Profile {
 	readonly network: Network;
 	readonly rpc?: string;
+	/** Walrus upload relay base URL, or "auto" for the network's canonical one. */
+	readonly uploadRelay?: string;
 	readonly account?: string;
 	readonly publication?: string;
 	readonly collection?: string;
@@ -82,6 +84,7 @@ function parseProfile(name: string, value: unknown, source: string): Profile {
 	const profile: {
 		network: Network;
 		rpc?: string;
+		uploadRelay?: string;
 		account?: string;
 		publication?: string;
 		collection?: string;
@@ -90,6 +93,9 @@ function parseProfile(name: string, value: unknown, source: string): Profile {
 	};
 	if (typeof value.rpc === "string") {
 		profile.rpc = value.rpc;
+	}
+	if (typeof value.uploadRelay === "string") {
+		profile.uploadRelay = value.uploadRelay;
 	}
 	if (typeof value.account === "string") {
 		profile.account = value.account;

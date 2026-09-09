@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
-
-import { resolveSettings } from "../src/config/profile.ts";
+import { DEFAULT_MAX_TIP_MIST } from "../src/cli/program.ts";
+import {
+	parseMaxTip,
+	resolveSettings,
+	resolveUploadRelay,
+} from "../src/config/profile.ts";
 import {
 	type Config,
 	coerceNetwork,
@@ -53,6 +57,117 @@ describe("coerceNetwork", () => {
 
 	test("rejects an unknown network", () => {
 		expect(() => coerceNetwork("devnet")).toThrow();
+	});
+});
+
+describe("resolveUploadRelay", () => {
+	test("absent stays absent", () => {
+		expect(resolveUploadRelay(undefined, "mainnet")).toBeUndefined();
+		expect(resolveUploadRelay("", "mainnet")).toBeUndefined();
+	});
+
+	test("auto resolves to the canonical relay for the network", () => {
+		expect(resolveUploadRelay("auto", "mainnet")).toBe(
+			"https://upload-relay.mainnet.walrus.space",
+		);
+		expect(resolveUploadRelay("auto", "testnet")).toBe(
+			"https://upload-relay.testnet.walrus.space",
+		);
+	});
+
+	test("auto is refused on localnet, which has no canonical relay", () => {
+		expect(() => resolveUploadRelay("auto", "localnet")).toThrow(
+			/no canonical relay/,
+		);
+	});
+
+	test("an explicit URL passes through untouched", () => {
+		expect(resolveUploadRelay("https://relay.example", "mainnet")).toBe(
+			"https://relay.example",
+		);
+	});
+});
+
+describe("upload relay setting", () => {
+	const empty = { version: 1, defaultProfile: "d", profiles: {} };
+
+	test("absent by default", () => {
+		expect(resolveSettings({}, empty, {}).uploadRelay).toBeUndefined();
+	});
+
+	test("is carried raw, so reads never resolve or validate it", () => {
+		// resolveSettings runs for every command. Resolving "auto" here would let
+		// a stray MORSE_WALRUS_UPLOAD_RELAY break read commands on localnet.
+		expect(
+			resolveSettings({ uploadRelay: "auto", network: "localnet" }, empty, {})
+				.uploadRelay,
+		).toBe("auto");
+	});
+
+	test("flag beats env beats profile", () => {
+		const cfg = {
+			version: 1,
+			defaultProfile: "d",
+			profiles: {
+				d: { network: "testnet" as const, uploadRelay: "https://from-profile" },
+			},
+		};
+		expect(resolveSettings({}, cfg, {}).uploadRelay).toBe(
+			"https://from-profile",
+		);
+		expect(
+			resolveSettings({}, cfg, {
+				MORSE_WALRUS_UPLOAD_RELAY: "https://from-env",
+			}).uploadRelay,
+		).toBe("https://from-env");
+		expect(
+			resolveSettings({ uploadRelay: "https://from-flag" }, cfg, {
+				MORSE_WALRUS_UPLOAD_RELAY: "https://from-env",
+			}).uploadRelay,
+		).toBe("https://from-flag");
+	});
+});
+
+describe("parseMaxTip", () => {
+	test("defaults when unset", () => {
+		expect(parseMaxTip(undefined)).toBe(DEFAULT_MAX_TIP_MIST);
+		expect(parseMaxTip("")).toBe(DEFAULT_MAX_TIP_MIST);
+	});
+
+	test("accepts a plain integer", () => {
+		expect(parseMaxTip("5")).toBe(5);
+		expect(parseMaxTip("0")).toBe(0);
+	});
+
+	test("rejects anything that is not plain digits", () => {
+		// A bad cap must not silently fall back to the default: that would let a
+		// typo authorise an unbounded tip. Exponential and hex spellings are
+		// rejected too, since nobody writes a MIST amount that way.
+		for (const bad of ["abc", "-1", "1.5", "1e7", "0x10", " 5"]) {
+			expect(() => parseMaxTip(bad)).toThrow(/non-negative integer/);
+		}
+	});
+});
+
+describe("max tip setting", () => {
+	const empty = { version: 1, defaultProfile: "d", profiles: {} };
+
+	test("is carried raw, so a bad value cannot break read commands", () => {
+		// The cap only means anything to a Walrus upload. Parsing it in
+		// resolveSettings would make a typo'd MORSE_WALRUS_MAX_TIP in a CI env
+		// fail every command, including ones that never upload.
+		expect(resolveSettings({ maxTip: "abc" }, empty, {}).maxTip).toBe("abc");
+	});
+
+	test("flag beats env", () => {
+		expect(resolveSettings({ maxTip: "5" }, empty, {}).maxTip).toBe("5");
+		expect(
+			resolveSettings({}, empty, { MORSE_WALRUS_MAX_TIP: "7" }).maxTip,
+		).toBe("7");
+		expect(
+			resolveSettings({ maxTip: "5" }, empty, { MORSE_WALRUS_MAX_TIP: "7" })
+				.maxTip,
+		).toBe("5");
 	});
 });
 

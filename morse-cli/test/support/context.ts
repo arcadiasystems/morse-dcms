@@ -39,7 +39,11 @@ export type MockReader = Partial<RpcPublicationReader>;
 const inert = <T>(): T => ({}) as unknown as T;
 
 function baseSettings(over: Partial<ResolvedSettings> = {}): ResolvedSettings {
-	return { profileName: "default", network: "testnet", ...over };
+	return {
+		profileName: "default",
+		network: "testnet",
+		...over,
+	};
 }
 
 export interface ReadFixtureOptions {

@@ -6,6 +6,7 @@ import { UsageError } from "../cli/errors.ts";
 import type { Output } from "../cli/output.ts";
 import { outputFor } from "../cli/runtime.ts";
 import { configFilePath } from "../config/paths.ts";
+import { resolveUploadRelay } from "../config/profile.ts";
 import { type Config, coerceNetwork } from "../config/schema.ts";
 import { loadConfig, saveConfig } from "../config/store.ts";
 
@@ -25,15 +26,21 @@ export async function runConfigList(output: Output): Promise<void> {
 export async function runConfigAdd(
 	output: Output,
 	name: string,
-	options: { network: string; rpc?: string },
+	options: { network: string; rpc?: string; uploadRelay?: string },
 ): Promise<void> {
 	const network = coerceNetwork(options.network);
+	// Resolve eagerly to reject "auto" on a network with no canonical relay.
+	// The stored value stays as typed; this is validation, not normalisation.
+	resolveUploadRelay(options.uploadRelay, network);
 	const cfg = await loadConfig();
 	const profiles = {
 		...cfg.profiles,
 		[name]: {
 			network,
 			...(options.rpc === undefined ? {} : { rpc: options.rpc }),
+			...(options.uploadRelay === undefined
+				? {}
+				: { uploadRelay: options.uploadRelay }),
 		},
 	};
 	// First profile on a fresh config becomes the default automatically.
@@ -44,6 +51,7 @@ export async function runConfigAdd(
 		profile: name,
 		network,
 		rpc: options.rpc,
+		uploadRelay: options.uploadRelay,
 		default: defaultProfile === name,
 	});
 }
@@ -104,10 +112,14 @@ export function registerConfigCommands(program: Command): void {
 			"Sui network: mainnet, testnet, or localnet",
 		)
 		.option("--rpc <url>", "RPC URL override for this profile")
+		.option(
+			"--upload-relay <url|auto>",
+			"Walrus upload relay for this profile; 'auto' picks the canonical relay for the network",
+		)
 		.action(
 			async (
 				name: string,
-				options: { network: string; rpc?: string },
+				options: { network: string; rpc?: string; uploadRelay?: string },
 				command: Command,
 			) => {
 				await runConfigAdd(outputFor(command), name, options);
@@ -152,6 +164,9 @@ function renderProfiles(config: Config): string {
 			const parts: string[] = [profile.network];
 			if (profile.rpc !== undefined) {
 				parts.push(profile.rpc);
+			}
+			if (profile.uploadRelay !== undefined) {
+				parts.push(`relay=${profile.uploadRelay}`);
 			}
 			if (profile.account !== undefined) {
 				parts.push(profile.account);

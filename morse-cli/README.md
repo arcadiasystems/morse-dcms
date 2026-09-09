@@ -6,7 +6,7 @@ content entries from your terminal, signing with a locally encrypted key.
 Content is stored on [Walrus](https://walrus.xyz); private entries are encrypted
 with [Seal](https://github.com/MystenLabs/seal).
 
-> Status: v0.6.1. Mainnet and testnet are both supported for public content;
+> Status: v0.7.0. Mainnet and testnet are both supported for public content;
 > the command surface is stable.
 >
 > **Encrypted commands are testnet-only.** `entry add-encrypted`, `entry
@@ -112,6 +112,8 @@ Environment variables (override the config file, overridden by flags):
 | --- | --- | --- |
 | `MORSE_PROFILE` | `--profile` | Profile to use. |
 | `MORSE_NETWORK` | `--network` | `mainnet`, `testnet`, or `localnet`. |
+| `MORSE_WALRUS_UPLOAD_RELAY` | `--upload-relay` | Upload through a Walrus relay instead of the direct fanout. `auto` picks the canonical relay for the network. |
+| `MORSE_WALRUS_MAX_TIP` | `--max-tip` | Cap the relay's per-upload tip, in MIST. Defaults to 10000000 (0.01 SUI). |
 | `MORSE_RPC_URL` | `--rpc` | Sui RPC URL override. |
 | `MORSE_ADDRESS` | (no flag) | Active account address, selecting which keystore to use. |
 | `MORSE_PUBLICATION` | `-P, --publication` | Active publication id. |
@@ -146,6 +148,8 @@ Global options apply to every command and must appear before the subcommand
 | `--network <mainnet\|testnet\|localnet>` | Network to target (default: testnet). `localnet` needs a custom deployment. |
 | `-p, --profile <name>` | Config profile to use. |
 | `--rpc <url>` | Override the Sui RPC URL. |
+| `--upload-relay <url\|auto>` | Upload Walrus blobs through a relay instead of the direct fanout. `auto` picks the canonical relay for the network. Costs a tip per upload. |
+| `--max-tip <mist>` | Cap the relay's per-upload tip, in MIST (default: 10000000). |
 | `--json` | Machine-readable JSON on stdout. |
 | `-q, --quiet` | Suppress progress and informational output. |
 | `-y, --yes` | Assume yes for confirmation prompts. |
@@ -168,7 +172,7 @@ and `-C, --collection <name>`, both defaulting to the active context.
 
 | Command | Purpose |
 | --- | --- |
-| `config add <name> --network <net> [--rpc <url>]` | Create or update a profile. |
+| `config add <name> --network <net> [--rpc <url>] [--upload-relay <url\|auto>]` | Create or update a profile. |
 | `config list` | List profiles; `*` marks the default. |
 | `config use <name>` | Set the default profile. |
 | `config remove <name>` | Delete a profile. |
@@ -347,6 +351,40 @@ to fetch the full record per file (one read each) when you need them.
 - `file list` walks a JSON-RPC event query that public Sui fullnodes have
   retired, so it needs `--indexer-url` pointing at a source that serves the same
   query. This affects testnet as well as mainnet.
+
+## When uploads fail: the upload relay
+
+A Walrus upload pushes slivers to every storage node in the committee at once,
+95 of them on mainnet. Networks that cannot sustain that burst fail with
+`NotEnoughBlobConfirmationsError` or "Unable to connect", **even when the nodes
+are healthy and far above write quorum**. If uploads fail while reads work, this
+is almost certainly why, and it is not a fault in your config.
+
+Route the upload through a relay and one connection replaces ~95:
+
+```sh
+morse --upload-relay auto file upload ./photo.jpg --public -n photo
+```
+
+`auto` resolves to Mysten's canonical relay for the selected network. Pass a URL
+instead to use a different operator, or persist it on a profile:
+
+```sh
+morse config add mainnet --network mainnet --upload-relay auto
+```
+
+Three things to know before reaching for it:
+
+- **It costs a tip per upload**, on top of WAL and gas. Mainnet prices it
+  linearly in encoded blob size; a small blob runs about 0.0026 SUI.
+- **The tip is capped** at `--max-tip` (default 10000000 MIST, 0.01 SUI). Over
+  the cap the upload is refused before anything is spent, rather than quietly
+  charging more than you expected.
+- **The relay sees your bytes.** Same trade as any hosted service; encrypt first
+  if that matters.
+
+It is opt-in on purpose. The direct path is free and trustless, and most
+networks handle it fine.
 
 ## Publishing
 

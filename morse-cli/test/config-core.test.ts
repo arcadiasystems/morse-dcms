@@ -58,6 +58,49 @@ describe("runConfigAdd", () => {
 	});
 });
 
+describe("runConfigAdd upload relay", () => {
+	test("persists uploadRelay and shows it in both output modes", async () => {
+		// The human and JSON renderings of `config list` must agree; --json used
+		// to surface uploadRelay while the human list silently omitted it, making
+		// the flag look inert.
+		const captured = captureOutput();
+		await runConfigAdd(captured.output, "r", {
+			network: "mainnet",
+			uploadRelay: "auto",
+		});
+		const cfg = await loadConfig();
+		expect(cfg.profiles.r?.uploadRelay).toBe("auto");
+
+		const human = captureOutput();
+		await runConfigList(human.output);
+		expect(human.stdout()).toContain("relay=auto");
+
+		const json = captureOutput({ json: true });
+		await runConfigList(json.output);
+		expect(JSON.stringify(json.json())).toContain("auto");
+	});
+
+	test("refuses auto on a network with no canonical relay", async () => {
+		// Validated at add time, like network is, rather than storing a profile
+		// that only fails the first time someone uploads.
+		await expect(
+			runConfigAdd(captureOutput().output, "bad", {
+				network: "localnet",
+				uploadRelay: "auto",
+			}),
+		).rejects.toThrow(/no canonical relay/);
+	});
+
+	test("an explicit relay URL is accepted on any network", async () => {
+		await runConfigAdd(captureOutput().output, "x", {
+			network: "localnet",
+			uploadRelay: "https://relay.example",
+		});
+		const cfg = await loadConfig();
+		expect(cfg.profiles.x?.uploadRelay).toBe("https://relay.example");
+	});
+});
+
 describe("runConfigUse / runConfigRemove", () => {
 	test("use rejects a missing profile", async () => {
 		const captured = captureOutput();
