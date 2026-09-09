@@ -2,6 +2,18 @@
 
 All notable changes to `morse-sdk` will be documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-09-09
+
+### Added
+
+- **`RecipientFilesReader.getRecipientFileSealPrefix(id, signal?)`**, returning the file's Seal id prefix or `null`. Presence of the prefix is the only reliable "this file is encrypted" signal.
+
+  There was previously no way to tell an encrypted `RecipientFile` from a public one. Consumers reached for `RecipientFile.members`, which cannot work: the Move contract auto-includes the owner on creation, so `members` is non-empty for every file. A public file and an encrypted file both report exactly one member. morse-cli was using that check and refused to download any public file as a result.
+
+  The prefix lives in a `SealPrefixKey` dynamic field, attached only by `createEncryptedRecipientFile` and `uploadEncryptedRecipientFileFromBytes`. It is deliberately a separate call rather than a field on `RecipientFile`: detecting it costs one extra round trip and reading its bytes a second, and callers that only render metadata should not pay for either. The marker is matched by type suffix, not full type string, because the package id in that type moves on any upgrade that redefines the module; pinning it would silently make every encrypted file read as public after an upgrade.
+
+  Verified against live objects on both networks: a mainnet public file reports `members: 1, sealPrefix: null`, a testnet encrypted file reports `members: 1, sealPrefix: 32 bytes`.
+
 ## [0.6.0] - 2026-09-09
 
 Fixes a mainnet Seal default shipped in 0.5.0 that could produce permanently unreadable ciphertext. Upgrade if you use `morseConfig({ network: "mainnet" })` with any encrypted path.

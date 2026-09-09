@@ -7,6 +7,7 @@
  * published-at), not `originalPackageId` (publication-modules genesis).
  */
 
+import { bcs } from "@mysten/sui/bcs";
 import type { SuiClientTypes } from "@mysten/sui/client";
 
 import type { ObjectReader } from "../clients.js";
@@ -26,18 +27,35 @@ import type {
 	WalrusBlobId,
 } from "../types.js";
 
+/**
+ * Dynamic-field name type that marks a `RecipientFile` as encrypted. Matched
+ * by suffix rather than by full type string: the package id in the type is
+ * wherever `SealPrefixKey` was defined (the v4 upgrade on testnet, the genesis
+ * publish on mainnet) and moves again on any upgrade that redefines it.
+ */
+const SEAL_PREFIX_KEY_SUFFIX = "::recipient_file::SealPrefixKey";
+
 /** Interface for reading `RecipientFile` objects. */
 export interface RecipientFilesReader {
 	getRecipientFile(
 		id: RecipientFileId,
 		signal?: AbortSignal,
 	): Promise<RecipientFile>;
+	getRecipientFileSealPrefix(
+		id: RecipientFileId,
+		signal?: AbortSignal,
+	): Promise<Uint8Array | null>;
 }
 
 /** Configuration accepted by `RpcRecipientFilesReader.fromConfig`. */
 export interface RpcRecipientFilesReaderConfig {
 	readonly packageId: PackageId;
 }
+
+/** The seal prefix dynamic field's value is a bare `vector<u8>`. */
+const SealPrefixBcs = bcs.vector(bcs.u8()).transform({
+	output: (value: number[]) => new Uint8Array(value),
+});
 
 /** RPC-backed implementation. */
 export class RpcRecipientFilesReader implements RecipientFilesReader {
@@ -86,6 +104,45 @@ export class RpcRecipientFilesReader implements RecipientFilesReader {
 			throw new NotFoundError("recipient-file", validated);
 		}
 		return parseRecipientFile(object, this.packageId);
+	}
+
+	/**
+	 * Read the file's Seal id prefix, or `null` when it has none. Presence of
+	 * the prefix is the only reliable "this file is encrypted" signal.
+	 *
+	 * Do NOT infer encryption from `RecipientFile.members`. The Move contract
+	 * auto-includes the owner on creation, so `members` is non-empty for every
+	 * file, public ones included.
+	 *
+	 * Kept off `getRecipientFile` because the prefix lives in a dynamic field:
+	 * detecting it costs one extra round trip, and reading its bytes costs a
+	 * second. Callers that only render metadata should not pay for either.
+	 */
+	async getRecipientFileSealPrefix(
+		id: RecipientFileId,
+		signal?: AbortSignal,
+	): Promise<Uint8Array | null> {
+		const validated = toRecipientFileId(id);
+		const listed = await callClient("listDynamicFields", () =>
+			this.client.listDynamicFields({
+				parentId: validated,
+				...(signal === undefined ? {} : { signal }),
+			}),
+		);
+		const field = listed.dynamicFields.find((entry) =>
+			entry.name?.type?.endsWith(SEAL_PREFIX_KEY_SUFFIX),
+		);
+		if (!field?.name) {
+			return null;
+		}
+		const response = await callClient("getDynamicField", () =>
+			this.client.getDynamicField({
+				parentId: validated,
+				name: { type: field.name.type, bcs: field.name.bcs },
+				...(signal === undefined ? {} : { signal }),
+			}),
+		);
+		return SealPrefixBcs.parse(response.dynamicField.value.bcs);
 	}
 }
 

@@ -66,6 +66,102 @@ function makeReader(
 	} as unknown as ObjectReader;
 }
 
+/** Reader with stubbable dynamic-field calls, for the seal-prefix tests. */
+function makeDynamicFieldReader(
+	dynamicFields: unknown[],
+	value?: Uint8Array,
+): ObjectReader {
+	return {
+		getObject: mock(async () => fileResponse()),
+		listOwnedObjects: mock(async () => ({
+			objects: [],
+			hasNextPage: false,
+			cursor: null,
+		})),
+		listDynamicFields: mock(async () => ({
+			dynamicFields,
+			hasNextPage: false,
+			cursor: null,
+		})),
+		getDynamicField: mock(async () => ({
+			dynamicField: {
+				value: {
+					// BCS vector<u8>: ULEB128 length then the bytes.
+					bcs: new Uint8Array([value?.length ?? 0, ...(value ?? [])]),
+				},
+			},
+		})),
+	} as unknown as ObjectReader;
+}
+
+function sealPrefixField(packageId: string) {
+	return {
+		name: {
+			type: `${packageId}::recipient_file::SealPrefixKey`,
+			bcs: new Uint8Array([0]),
+		},
+		valueType: "vector<u8>",
+	};
+}
+
+describe("RpcRecipientFilesReader.getRecipientFileSealPrefix", () => {
+	test("returns null when the file has no dynamic fields", async () => {
+		const reader = RpcRecipientFilesReader.fromConfig(
+			makeDynamicFieldReader([]),
+			{ packageId: PACKAGE_ID },
+		);
+		expect(await reader.getRecipientFileSealPrefix(FILE_ID)).toBeNull();
+	});
+
+	test("returns the prefix bytes when the seal marker is present", async () => {
+		const prefix = new Uint8Array([1, 2, 3, 4]);
+		const reader = RpcRecipientFilesReader.fromConfig(
+			makeDynamicFieldReader([sealPrefixField(PACKAGE_ID)], prefix),
+			{ packageId: PACKAGE_ID },
+		);
+		expect(await reader.getRecipientFileSealPrefix(FILE_ID)).toEqual(prefix);
+	});
+
+	test("matches the marker by type suffix, not by package id", async () => {
+		// SealPrefixKey lives at whichever package defined it, which moves on any
+		// upgrade that redefines the module. Pinning the full type would make
+		// every encrypted file read as public after such an upgrade.
+		const other =
+			"0x0000000000000000000000000000000000000000000000000000000000009999";
+		const prefix = new Uint8Array([9]);
+		const reader = RpcRecipientFilesReader.fromConfig(
+			makeDynamicFieldReader([sealPrefixField(other)], prefix),
+			{ packageId: PACKAGE_ID },
+		);
+		expect(await reader.getRecipientFileSealPrefix(FILE_ID)).toEqual(prefix);
+	});
+
+	test("ignores unrelated dynamic fields", async () => {
+		const reader = RpcRecipientFilesReader.fromConfig(
+			makeDynamicFieldReader([
+				{
+					name: { type: `${PACKAGE_ID}::other::Key`, bcs: new Uint8Array([0]) },
+					valueType: "u64",
+				},
+			]),
+			{ packageId: PACKAGE_ID },
+		);
+		expect(await reader.getRecipientFileSealPrefix(FILE_ID)).toBeNull();
+	});
+
+	test("members is not a usable encryption signal", async () => {
+		// The contract auto-includes the owner, so members is never empty. This
+		// pins the reason getRecipientFileSealPrefix exists at all.
+		const reader = RpcRecipientFilesReader.fromConfig(
+			makeDynamicFieldReader([]),
+			{ packageId: PACKAGE_ID },
+		);
+		const file = await reader.getRecipientFile(FILE_ID);
+		expect(file.members.length).toBeGreaterThan(0);
+		expect(await reader.getRecipientFileSealPrefix(FILE_ID)).toBeNull();
+	});
+});
+
 describe("RpcRecipientFilesReader.getRecipientFile", () => {
 	test("parses a happy-path RecipientFile", async () => {
 		const reader = RpcRecipientFilesReader.fromConfig(
