@@ -321,7 +321,7 @@ export async function runFileUpload(
 		ctx.config,
 		{
 			walrus: ctx.walrus,
-			seal: ctx.seal,
+			seal: ctx.seal(),
 			plaintext: bytes,
 			recipients,
 			name: options.name,
@@ -431,7 +431,7 @@ async function decryptRecipientFile(
 		signer: keypair,
 		suiClient: ctx.client,
 	});
-	return ctx.seal.decryptUnderRecipientFile(ciphertext, {
+	return ctx.seal().decryptUnderRecipientFile(ciphertext, {
 		sessionKey,
 		sealId,
 		fileId,
@@ -456,13 +456,19 @@ export async function runFileDownload(
 	}
 	const fileId = toRecipientFileId(target.fileId);
 	const file = await ctx.filesReader.getRecipientFile(fileId, ctx.signal);
-	// A public file has no recipients; any with a recipient list was encrypted.
+	// Encryption is signalled by the Seal id prefix, not by `members`: the Move
+	// contract auto-includes the owner, so every file has at least one member
+	// and the old members-based check refused public files too.
+	const encrypted =
+		target.decrypt !== undefined ||
+		(await ctx.filesReader.getRecipientFileSealPrefix(fileId, ctx.signal)) !==
+			null;
 	// Without a share string (or prefix/nonce) we can only return ciphertext, so
 	// refuse by default and require --raw to opt into the unusable bytes.
-	if (target.decrypt === undefined && file.members.length > 0) {
+	if (target.decrypt === undefined && encrypted) {
 		if (!options.raw) {
 			throw new UsageError(
-				"This file has a recipient list, so its bytes are encrypted. Pass --share (or --prefix and --nonce) to decrypt, or --raw to write the raw ciphertext anyway.",
+				"This file is encrypted. Pass --share (or --prefix and --nonce) to decrypt, or --raw to write the raw ciphertext anyway.",
 			);
 		}
 		ctx.output.warn(

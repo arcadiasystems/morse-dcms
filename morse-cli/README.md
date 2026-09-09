@@ -6,8 +6,20 @@ content entries from your terminal, signing with a locally encrypted key.
 Content is stored on [Walrus](https://walrus.xyz); private entries are encrypted
 with [Seal](https://github.com/MystenLabs/seal).
 
-> Status: v0.6.0. Mainnet and testnet are both supported; the command surface is
-> stable.
+> Status: v0.6.1. Mainnet and testnet are both supported for public content;
+> the command surface is stable.
+>
+> **Encrypted commands are testnet-only.** `entry add-encrypted`, `entry
+> decrypt`, `file upload --encrypt` (and `--recipient`, which implies it), and
+> decrypting a downloaded file all need Seal key servers. Testnet has an open
+> set; mainnet does not, because every mainnet Seal operator is commercial, and
+> the CLI has no flag or env var for supplying one. These commands exit 2 on
+> mainnet with an explanation.
+>
+> Everything that does not encrypt works on both networks, including
+> `file upload --public`, `file download` of a public file, and the whole
+> publication, collection and entry surface. All of that is verified against
+> live mainnet, including a public upload and download round trip.
 >
 > **The Move contracts are unaudited.** On mainnet, gas and Walrus storage cost
 > real SUI and WAL, there is no faucet, and deletions are irreversible. Nothing
@@ -327,6 +339,9 @@ to fetch the full record per file (one read each) when you need them.
   created but not yet populated through the CLI; `entry add` refuses them.
 - There is no command to query Walrus blob storage expiry; `--epochs` sets the
   lease at upload time, but remaining lease time is not exposed by the SDK.
+- Encrypted commands do not work on mainnet, per the status note above. There
+  is no way to supply Seal key servers to the CLI; if you have credentials from
+  an operator, use the SDK directly for now.
 - `localnet` is accepted as a network but has no canonical deployment, so it
   fails at startup unless you point the SDK at your own package and registry.
 - `file list` walks a JSON-RPC event query that public Sui fullnodes have

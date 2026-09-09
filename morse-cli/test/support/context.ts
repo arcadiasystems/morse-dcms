@@ -161,7 +161,9 @@ export function fileDownloadContext(opts: DownloadFixtureOptions = {}): {
 			...ctx,
 			walrusRead: (opts.walrusRead ??
 				{}) as unknown as FileDownloadContext["walrusRead"],
-			seal: (opts.seal ?? {}) as unknown as FileDownloadContext["seal"],
+			// `seal` is a factory on the real context so a public download never
+			// constructs the adapter; the fixture mirrors that shape.
+			seal: (() => opts.seal ?? {}) as unknown as FileDownloadContext["seal"],
 			// Encrypted-decrypt tests live in the live e2e; hermetic guard tests
 			// never reach the signer, so fail loudly if one does.
 			unlockSigner: () =>
@@ -206,7 +208,9 @@ export function encryptContext(opts: EncryptFixtureOptions = {}): {
 	return {
 		ctx: {
 			...ctx,
-			seal: (opts.seal ?? {}) as unknown as EncryptContext["seal"],
+			// A factory on the real context so `file upload --public` never builds
+			// the adapter; the fixture mirrors that shape.
+			seal: (() => opts.seal ?? {}) as unknown as EncryptContext["seal"],
 		},
 		captured,
 	};

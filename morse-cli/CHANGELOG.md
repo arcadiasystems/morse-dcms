@@ -4,6 +4,27 @@ All notable changes to `@arcadiasystems/morse-cli` are documented here. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-09-09
+
+Picks up `@arcadiasystems/morse-sdk@0.6.0` and fixes a download regression it exposed. Upgrade if you use mainnet at all.
+
+### Fixed
+
+- **`file download` worked on no mainnet file, public or not.** `buildFileDownloadContext` constructed the Seal adapter eagerly, so once SDK 0.6.0 stopped pinning mainnet key servers, every download failed at context build with a Seal error before the file was even looked up. Downloading a public file never touches Seal, so the adapter is now built on first use and memoized, matching the lazy-signer pattern the same context already used. Regression covered in `test/program.test.ts` against the real context builder.
+- **Encrypted commands now explain themselves on mainnet.** They previously surfaced the SDK's `ConfigurationError`, whose advice ("pass seal.serverConfigs", "start from MAINNET_SEAL_COMMITTEE") names an API the CLI does not expose: there is no flag or env var for key servers, so on mainnet these commands cannot work at all. `entry add-encrypted`, `entry decrypt`, `file upload --encrypt` / `--recipient`, and file decryption now exit 2 with a message that says that and points at testnet or the SDK.
+- **`file upload --public` is not caught by that guard.** It shares the encrypt context but never encrypts, so `EncryptContext.seal` became a lazy factory too. Building the adapter eagerly there would have blocked public mainnet uploads the same way the eager build blocked public downloads. Both the refusal and the exemption are covered in `test/program.test.ts`.
+- **`file download` refused every public file, on every network.** The check asked whether the file had recipients, on the assumption that "a public file has no recipients". The Move contract auto-includes the owner on creation, so `members` is non-empty for every file that exists, public or not: a public file and an encrypted one both report exactly one member. The result was that `file upload --public` produced a file the CLI would not download, telling the user their plaintext was "unusable ciphertext" and pointing at `--raw`, which then wrote the correct bytes anyway.
+
+  Encryption is now determined by the Seal id prefix via the new `getRecipientFileSealPrefix` in SDK 0.7.0, which is the only reliable signal. This bug predates the mainnet work and shipped in 0.6.0 and earlier.
+
+  It escaped the tests because the download fixture defaulted to `members: []`, modelling an object the contract cannot produce. The fixture now carries a realistic owner-member, and a regression test covers a public file that has members.
+- Dependency moves to `@arcadiasystems/morse-sdk@^0.7.0`. The published 0.6.0 declared `^0.5.0`, which resolves to the SDK release whose mainnet Seal default could produce permanently unreadable ciphertext.
+
+### Known gaps
+
+- `file list` still needs `--indexer-url` on every network; public Sui fullnodes have retired the JSON-RPC event query it walks.
+- Encrypted mainnet stays blocked until Seal operator credentials are available and the CLI grows a way to pass them.
+
 ## [0.6.0] - 2026-09-09
 
 Mainnet support, consuming `@arcadiasystems/morse-sdk@0.5.0`. The Move contracts

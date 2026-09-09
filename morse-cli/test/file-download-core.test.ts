@@ -19,9 +19,24 @@ function fileRecord(over: Record<string, unknown> = {}) {
 		name: "doc.txt",
 		contentType: "text/plain",
 		size: 6,
-		members: [],
+		// The Move contract auto-includes the owner, so a real file always has
+		// at least one member, public or not. Modelling this as [] is what let
+		// the old members-based encryption check pass here while refusing every
+		// public file on chain.
+		members: [`0x${"a".repeat(64)}`],
 		createdAtMs: 0,
 		...over,
+	};
+}
+
+/** filesReader stub: `sealPrefix` null means public, bytes mean encrypted. */
+function reader(
+	sealPrefix: Uint8Array | null,
+	over: Record<string, unknown> = {},
+) {
+	return {
+		getRecipientFile: () => Promise.resolve(fileRecord(over)),
+		getRecipientFileSealPrefix: () => Promise.resolve(sealPrefix),
 	};
 }
 
@@ -48,7 +63,7 @@ describe("runFileDownload", () => {
 	test("public file: writes the fetched bytes to --out without a signer", async () => {
 		const out = files.path("download.txt");
 		const { ctx, captured } = fileDownloadContext({
-			filesReader: { getRecipientFile: () => Promise.resolve(fileRecord()) },
+			filesReader: reader(null),
 			walrusRead: {
 				readBlob: () => Promise.resolve(new TextEncoder().encode("public")),
 			},
@@ -60,10 +75,7 @@ describe("runFileDownload", () => {
 
 	test("refuses to write ciphertext for an encrypted file without a decrypt option", async () => {
 		const { ctx } = fileDownloadContext({
-			filesReader: {
-				getRecipientFile: () =>
-					Promise.resolve(fileRecord({ members: [`0x${"7".repeat(64)}`] })),
-			},
+			filesReader: reader(new Uint8Array([1, 2, 3])),
 			walrusRead: {
 				readBlob: () => Promise.resolve(new TextEncoder().encode("cipher")),
 			},
@@ -73,13 +85,27 @@ describe("runFileDownload", () => {
 		).rejects.toThrow(/--share|--raw/);
 	});
 
+	test("a public file with members downloads without --raw", async () => {
+		// The exact shipped bug: every real file has members, so the old check
+		// refused public downloads and told the user their plaintext was
+		// unusable ciphertext.
+		const out = files.path("public-with-members.txt");
+		const { ctx } = fileDownloadContext({
+			filesReader: reader(null, {
+				members: [`0x${"a".repeat(64)}`, `0x${"7".repeat(64)}`],
+			}),
+			walrusRead: {
+				readBlob: () => Promise.resolve(new TextEncoder().encode("public")),
+			},
+		});
+		await runFileDownload(ctx, FILE, { out });
+		expect(await readFile(out, "utf8")).toBe("public");
+	});
+
 	test("--raw writes the ciphertext with a warning", async () => {
 		const out = files.path("ciphertext.bin");
 		const { ctx, captured } = fileDownloadContext({
-			filesReader: {
-				getRecipientFile: () =>
-					Promise.resolve(fileRecord({ members: [`0x${"7".repeat(64)}`] })),
-			},
+			filesReader: reader(new Uint8Array([1, 2, 3])),
 			walrusRead: {
 				readBlob: () => Promise.resolve(new TextEncoder().encode("cipher")),
 			},

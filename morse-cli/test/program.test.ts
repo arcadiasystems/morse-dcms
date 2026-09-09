@@ -11,13 +11,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
-
 import type { Command } from "commander";
-
 import {
 	buildContentContext,
+	buildDecryptContext,
+	buildEncryptContext,
+	buildFileDownloadContext,
 	buildReadContext,
 	buildWriteContext,
 } from "../src/cli/context.ts";
@@ -174,22 +174,22 @@ describe("write contexts build offline and guard", () => {
 // handler-core fixtures in test/support/context.ts mirror the network stamping
 // by hand, so without this the two `withNetwork` calls in cli/context.ts are
 // only proven by their own copy in the fixture.
-describe("context builders stamp the network on gas-spending paths", () => {
-	/** Route argv through a probe command to capture its commander Command. */
-	async function probe(args: string[]): Promise<Command> {
-		const program = buildProgram();
-		registerCommands(program);
-		let captured: Command | undefined;
-		program.command("probe").action(function action(this: Command) {
-			captured = this;
-		});
-		await program.parseAsync([...args, "probe"], { from: "user" });
-		if (captured === undefined) {
-			throw new Error("probe action did not run");
-		}
-		return captured;
+/** Route argv through a probe command to capture its commander Command. */
+async function probe(args: string[]): Promise<Command> {
+	const program = buildProgram();
+	registerCommands(program);
+	let captured: Command | undefined;
+	program.command("probe").action(function action(this: Command) {
+		captured = this;
+	});
+	await program.parseAsync([...args, "probe"], { from: "user" });
+	if (captured === undefined) {
+		throw new Error("probe action did not run");
 	}
+	return captured;
+}
 
+describe("context builders stamp the network on gas-spending paths", () => {
 	/** Capture what an Output writes to stdout for one result call. */
 	function rendered(output: {
 		result: (h: string, d: unknown) => void;
@@ -224,6 +224,29 @@ describe("context builders stamp the network on gas-spending paths", () => {
 	test("the stamp follows --network rather than a hardcoded value", async () => {
 		const ctx = await buildWriteContext(await probe(["--network", "testnet"]));
 		expect(rendered(ctx.output)).toContain("network:      testnet");
+	});
+
+	test("file download builds on mainnet even though Seal has no key servers", async () => {
+		// Regression: seal was constructed eagerly here, so once mainnet stopped
+		// pinning key servers every download failed at context build, including
+		// downloads of public files that never touch Seal.
+		const ctx = await buildFileDownloadContext(
+			await probe(["--network", "mainnet"]),
+		);
+		expect(typeof ctx.seal).toBe("function");
+		// Still unusable for decryption on mainnet, but only when asked for.
+		// A CLI-shaped message, not the SDK's "pass seal.serverConfigs" advice,
+		// which names an API the CLI does not expose.
+		expect(() => ctx.seal()).toThrow(/not available on mainnet/);
+	});
+
+	test("file download seal factory resolves on testnet and memoizes", async () => {
+		const ctx = await buildFileDownloadContext(
+			await probe(["--network", "testnet"]),
+		);
+		const first = ctx.seal();
+		expect(first).toBeDefined();
+		expect(ctx.seal()).toBe(first);
 	});
 
 	test("buildReadContext leaves results unstamped", async () => {
@@ -289,6 +312,39 @@ describe("content/encrypt contexts build offline and guard", () => {
 				"--via-aggregator",
 			]),
 		).rejects.toThrow(/--out/);
+	});
+});
+
+describe("mainnet guards on Seal-backed contexts", () => {
+	// Mainnet pins no Seal key servers (SDK 0.6.0) and the CLI exposes no way to
+	// supply them, so encrypted commands cannot work there. Driven through the
+	// real context builders rather than dispatch: the encrypted commands read
+	// content before touching Seal, and this file must stay hermetic.
+	test("buildEncryptContext defers the refusal until Seal is actually needed", async () => {
+		const ctx = await buildEncryptContext(
+			await probe(["--network", "mainnet"]),
+		);
+		// Building must succeed: `file upload --public` shares this context and
+		// never encrypts. Eagerly refusing here is the bug this guards against.
+		expect(ctx.walrus).toBeDefined();
+		expect(() => ctx.seal()).toThrow(/not available on mainnet/);
+	});
+
+	test("buildDecryptContext refuses on mainnet", async () => {
+		await expect(
+			buildDecryptContext(await probe(["--network", "mainnet"])),
+		).rejects.toThrow(/not available on mainnet/);
+	});
+
+	test("both build normally on testnet", async () => {
+		const enc = await buildEncryptContext(
+			await probe(["--network", "testnet"]),
+		);
+		expect(enc.seal()).toBeDefined();
+		const dec = await buildDecryptContext(
+			await probe(["--network", "testnet"]),
+		);
+		expect(dec.seal).toBeDefined();
 	});
 });
 

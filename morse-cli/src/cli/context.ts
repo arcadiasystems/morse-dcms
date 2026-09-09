@@ -149,16 +149,40 @@ export async function buildContentContext(
 	};
 }
 
+/**
+ * Refuse Seal-backed commands on a network with no canonical key servers.
+ *
+ * The SDK raises its own `ConfigurationError` here, but its advice ("pass
+ * seal.serverConfigs", "start from MAINNET_SEAL_COMMITTEE") names an API the
+ * CLI does not expose: there is no flag or env var for key servers, so on
+ * mainnet these commands cannot work at all. Say that instead of forwarding
+ * guidance the reader cannot act on.
+ */
+function assertSealAvailable(config: NetworkConfig): void {
+	if (config.sealKeyServers.length > 0) {
+		return;
+	}
+	throw new CliError(
+		`Encrypted commands are not available on ${config.network}. Seal key servers there are operated commercially and the CLI cannot yet be pointed at one. Use --network testnet, or drive @arcadiasystems/morse-sdk directly with your own seal.serverConfigs.`,
+		ExitCode.Usage,
+	);
+}
+
 export interface EncryptContext extends ContentContext {
-	readonly seal: DefaultSealAdapter;
+	/**
+	 * Built on first use, like `FileDownloadContext.seal`. `file upload
+	 * --public` shares this context but never encrypts, so constructing the
+	 * adapter eagerly would block public uploads on networks with no canonical
+	 * key servers. Memoized across calls.
+	 */
+	readonly seal: () => DefaultSealAdapter;
 }
 
 export async function buildEncryptContext(
 	command: Command,
 ): Promise<EncryptContext> {
 	const ctx = await buildContentContext(command);
-	const seal = DefaultSealAdapter.fromMorseConfig(ctx.config, {}, ctx.client);
-	return { ...ctx, seal };
+	return { ...ctx, seal: lazySeal(ctx) };
 }
 
 /** Options shared by the content-read context builders. */
@@ -228,6 +252,7 @@ export async function buildDecryptContext(
 			ExitCode.Usage,
 		);
 	}
+	assertSealAvailable(base.config);
 	const seal = DefaultSealAdapter.fromMorseConfig(base.config, {}, base.client);
 	return {
 		...base,
@@ -243,7 +268,13 @@ export async function buildDecryptContext(
 // requires a SessionKey for decryption.
 export interface FileDownloadContext extends FilesReadContext {
 	readonly walrusRead: WalrusReadAdapter;
-	readonly seal: DefaultSealAdapter;
+	/**
+	 * Built on first use, not at context construction. Downloading a public
+	 * file must not require Seal at all, and on mainnet constructing the
+	 * adapter throws (no canonical key servers), which would otherwise fail
+	 * every download including public ones. Memoized across calls.
+	 */
+	readonly seal: () => DefaultSealAdapter;
 	readonly unlockSigner: () => Promise<{
 		keypair: Ed25519Keypair;
 		address: SuiAddress;
@@ -268,9 +299,23 @@ export async function buildFileDownloadContext(
 			packageId: base.config.packageId,
 		}),
 		walrusRead: walrusReadAdapter(base, network, Boolean(opts.viaAggregator)),
-		seal: DefaultSealAdapter.fromMorseConfig(base.config, {}, base.client),
+		seal: lazySeal(base),
 		unlockSigner: () =>
 			resolveSigner(base.settings.account, process.env, base.signal),
+	};
+}
+
+/** Memoized Seal adapter factory; see `FileDownloadContext.seal`. */
+function lazySeal(base: ReadContext): () => DefaultSealAdapter {
+	let adapter: DefaultSealAdapter | undefined;
+	return () => {
+		assertSealAvailable(base.config);
+		adapter ??= DefaultSealAdapter.fromMorseConfig(
+			base.config,
+			{},
+			base.client,
+		);
+		return adapter;
 	};
 }
 

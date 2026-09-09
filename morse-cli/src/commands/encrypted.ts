@@ -71,7 +71,7 @@ export async function runEntryAddEncrypted(
 	ctx.output.info(`Encrypting and uploading ${plaintext.length} bytes...`);
 	const result = await addEncryptedEntryFromBytes(ctx.adapter, ctx.config, {
 		walrus: ctx.walrus,
-		seal: ctx.seal,
+		seal: ctx.seal(),
 		publicationId: id,
 		publisherCapId,
 		collectionName: collection,
