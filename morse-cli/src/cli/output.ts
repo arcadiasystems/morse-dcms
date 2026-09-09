@@ -4,6 +4,8 @@
  * NO_COLOR / FORCE_COLOR contract.
  */
 
+import type { Network } from "@arcadiasystems/morse-sdk";
+
 import { toJson } from "../format/json.ts";
 
 const RESET = "\x1b[0m";
@@ -18,6 +20,11 @@ export interface OutputOptions {
 	// output without monkeypatching globals.
 	readonly writeOut?: (text: string) => void;
 	readonly writeErr?: (text: string) => void;
+	/**
+	 * Network to stamp onto results. Set only on the gas-spending write
+	 * contexts, so read and list output is unchanged. See `Output.result`.
+	 */
+	readonly network?: Network;
 }
 
 export class Output {
@@ -28,15 +35,59 @@ export class Output {
 	}
 
 	/**
+	 * Derive an Output that stamps `network` onto every result. Applied to the
+	 * write contexts in `cli/context.ts` so a command that spends real SUI and
+	 * WAL always says which chain it spent it on, in both human and JSON modes.
+	 */
+	withNetwork(network: Network): Output {
+		return new Output({ ...this.options, network });
+	}
+
+	/**
 	 * Primary command result. In JSON mode emits the structured value on stdout
 	 * and nothing else; otherwise the human-readable string.
 	 */
 	result(human: string, data: unknown): void {
 		if (this.options.json) {
-			this.out(`${toJson(data)}\n`);
+			this.out(`${toJson(this.stampJson(data))}\n`);
 			return;
 		}
-		this.out(`${human}\n`);
+		this.out(`${this.stampHuman(human)}\n`);
+	}
+
+	/**
+	 * Add the network to a JSON result. Non-destructive: an existing `network`
+	 * key wins, and non-object payloads (arrays, primitives) pass through
+	 * untouched rather than being wrapped into a different shape.
+	 */
+	private stampJson(data: unknown): unknown {
+		const network = this.options.network;
+		if (network === undefined || !isPlainObject(data) || "network" in data) {
+			return data;
+		}
+		return { network, ...data };
+	}
+
+	/**
+	 * Insert the network as the first detail line, directly under the result's
+	 * headline. Write results are pre-formatted blocks of `  label: value`
+	 * lines under a summary line, so appending would strand it after trailing
+	 * prose like "Selected as the active publication.". The padding is a fixed
+	 * width chosen to line up with the widest label in today's write results
+	 * (`publisherCap:`); narrower blocks sit a space or two off, which is
+	 * cosmetic only.
+	 */
+	private stampHuman(human: string): string {
+		const network = this.options.network;
+		if (network === undefined) {
+			return human;
+		}
+		const line = `  network:      ${network}`;
+		const breakAt = human.indexOf("\n");
+		if (breakAt === -1) {
+			return `${human}\n${line}`;
+		}
+		return `${human.slice(0, breakAt)}\n${line}${human.slice(breakAt)}`;
 	}
 
 	/** Progress or informational messaging. Goes to stderr; silenced by --quiet and in JSON mode. */
@@ -93,6 +144,10 @@ export function resolveColor(json: boolean): boolean {
 		return true;
 	}
 	return Boolean(process.stderr.isTTY);
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 export function createOutput(opts: {

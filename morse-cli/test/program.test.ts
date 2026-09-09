@@ -14,6 +14,13 @@ import { join } from "node:path";
 
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 
+import type { Command } from "commander";
+
+import {
+	buildContentContext,
+	buildReadContext,
+	buildWriteContext,
+} from "../src/cli/context.ts";
 import { buildProgram } from "../src/cli/program.ts";
 import { registerCommands } from "../src/commands/index.ts";
 import { useTempConfigHome } from "./support/config-home.ts";
@@ -160,6 +167,68 @@ describe("write contexts build offline and guard", () => {
 		await expect(dispatch(["cap", "transfer", CAP, RECIPIENT])).rejects.toThrow(
 			/--yes/,
 		);
+	});
+});
+
+// The real context builders, run to completion rather than to a guard. The
+// handler-core fixtures in test/support/context.ts mirror the network stamping
+// by hand, so without this the two `withNetwork` calls in cli/context.ts are
+// only proven by their own copy in the fixture.
+describe("context builders stamp the network on gas-spending paths", () => {
+	/** Route argv through a probe command to capture its commander Command. */
+	async function probe(args: string[]): Promise<Command> {
+		const program = buildProgram();
+		registerCommands(program);
+		let captured: Command | undefined;
+		program.command("probe").action(function action(this: Command) {
+			captured = this;
+		});
+		await program.parseAsync([...args, "probe"], { from: "user" });
+		if (captured === undefined) {
+			throw new Error("probe action did not run");
+		}
+		return captured;
+	}
+
+	/** Capture what an Output writes to stdout for one result call. */
+	function rendered(output: {
+		result: (h: string, d: unknown) => void;
+	}): string {
+		const real = process.stdout.write.bind(process.stdout);
+		let text = "";
+		(process.stdout as { write: unknown }).write = (chunk: string) => {
+			text += chunk;
+			return true;
+		};
+		try {
+			output.result("Headline", { id: "0xabc" });
+		} finally {
+			(process.stdout as { write: unknown }).write = real;
+		}
+		return text;
+	}
+
+	test("buildWriteContext stamps the resolved network", async () => {
+		const ctx = await buildWriteContext(await probe(["--network", "mainnet"]));
+		expect(ctx.settings.network).toBe("mainnet");
+		expect(rendered(ctx.output)).toContain("network:      mainnet");
+	});
+
+	test("buildContentContext stamps the resolved network", async () => {
+		const ctx = await buildContentContext(
+			await probe(["--network", "mainnet"]),
+		);
+		expect(rendered(ctx.output)).toContain("network:      mainnet");
+	});
+
+	test("the stamp follows --network rather than a hardcoded value", async () => {
+		const ctx = await buildWriteContext(await probe(["--network", "testnet"]));
+		expect(rendered(ctx.output)).toContain("network:      testnet");
+	});
+
+	test("buildReadContext leaves results unstamped", async () => {
+		const ctx = await buildReadContext(await probe(["--network", "mainnet"]));
+		expect(rendered(ctx.output)).toBe("Headline\n");
 	});
 });
 

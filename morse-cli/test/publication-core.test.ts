@@ -8,7 +8,11 @@ import {
 } from "../src/commands/publication.ts";
 import { loadConfig } from "../src/config/store.ts";
 import { useTempConfigHome } from "./support/config-home.ts";
-import { readContext, writeContext } from "./support/context.ts";
+import {
+	type MockReader,
+	readContext,
+	writeContext,
+} from "./support/context.ts";
 import { ops, resetSdkMock } from "./support/sdk-mock.ts";
 
 useTempConfigHome();
@@ -122,6 +126,43 @@ describe("runPublicationCreate", () => {
 		expect(captured.stdout()).toContain('Created "My Pub"');
 		const cfg = await loadConfig();
 		expect(cfg.profiles.default?.publication).toBe(NEW_ID);
+	});
+
+	test("names the network it spent on, in both output modes", async () => {
+		// The write contexts stamp the network so a mainnet spend is never
+		// silent. Asserted on one representative write rather than all 22.
+		const human = writeContext({ settings: { network: "mainnet" } });
+		await runPublicationCreate(
+			human.ctx,
+			{ name: "My Pub", slug: "my-pub" },
+			{},
+		);
+		expect(human.captured.stdout()).toContain("  network:      mainnet");
+
+		const json = writeContext({ json: true, settings: { network: "mainnet" } });
+		await runPublicationCreate(
+			json.ctx,
+			{ name: "My Pub", slug: "my-pub" },
+			{},
+		);
+		expect((json.captured.json() as { network: string }).network).toBe(
+			"mainnet",
+		);
+	});
+
+	test("read commands are not stamped", async () => {
+		// Reads cost nothing, so their output shape must be unchanged.
+		const { ctx, captured } = readContext({
+			reader: {
+				listPublicationsOwnedBy: async () => ({
+					results: [],
+					nextCursor: null,
+				}),
+			} as unknown as MockReader,
+			settings: { network: "mainnet" },
+		});
+		await runPublicationList(ctx, undefined, {});
+		expect(captured.stdout()).not.toContain("network:");
 	});
 });
 

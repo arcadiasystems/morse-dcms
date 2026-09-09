@@ -25,7 +25,7 @@ export function buildProgram(): Command {
 		.version(pkg.version, "-V, --version", "Print the version and exit")
 		.option(
 			"--network <network>",
-			"Sui network: testnet or localnet [env: MORSE_NETWORK]",
+			"Sui network: mainnet, testnet, or localnet [env: MORSE_NETWORK]",
 		)
 		.option(
 			"-p, --profile <name>",

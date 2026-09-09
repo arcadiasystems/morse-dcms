@@ -1,17 +1,32 @@
 # Integrating `allowlist` + `file` modules
 
+> **Legacy surface.** `@arcadiasystems/morse-sdk` stopped wrapping these two
+> modules in 0.4.0, which replaced them with `recipient_file` (recipients are
+> embedded in the file object, so there is no separate allowlist to administer).
+> The modules are still compiled into the published package on both networks,
+> but nothing in the SDK or CLI calls them and they receive no smoke coverage.
+> This document is kept for anyone integrating against them directly. For
+> current work, integrate `recipient_file` instead. The deployment addresses
+> below are shared by every module in the package and are the live ones.
+
 Reference for consumers building TypeScript / React adapters against the
-`allowlist` and `file` Move modules in this package. The SDK
-(`@arcadiasystems/morse-sdk`) wraps everything described here; this doc is
-the source of truth if you need to bypass the SDK or write your own
-adapter (e.g., for a different language).
+`allowlist` and `file` Move modules in this package. Use it if you need to
+bypass the SDK or write your own adapter (for example in another language).
 
 ## Deployment
 
-- **Testnet** (2026-06-04):
-  - `published-at`: `0xd1b847666a0b47b553444944c3e64e8db129994c85481cabbe9089a1fa218698`
+Addresses come from [`Published.toml`](./Published.toml), which is the source
+of truth; the values below are a convenience copy.
+
+- **Mainnet** (2026-09-09, v1, tx `HmiywHYifmrNLMvY2oT8cP5W9hpQc2wFTJAaaQoM8mLY`):
+  - `published-at`: `0x4fc7af5d1e19f96e5fab4e677948214eec35e238b252a106c7d5036dcebdcae2`
+  - `original-id`: same (unupgraded publish, so the two coincide until the
+    first upgrade)
+  - `PublicationRegistry`: `0x8d8b23c7acd7c1b260c793f2c648c5be8eb06db7c107b9f06ca3f39b700868ea`
+- **Testnet** (v4):
+  - `published-at`: `0x468727724e86b7d305e961aee73ef9d868b4b68478952fc23748ef4ccfcaf4b2`
   - `original-id`: `0x191946c5dc1ea1b978e664d85455e81ef9bdd1d3dbb221fd48cf9008d46a00f0`
-- **Mainnet**: not yet deployed.
+  - `PublicationRegistry`: `0xb25e4849d720ad5058c1945a819aa1dc01ff899006e3f0fe7cb9c62668d307e2`
 
 Use `published-at` as the `target` of Move calls. Use `original-id` for
 type-filtered queries (e.g., `listOwnedObjects({ type: "<original-id>::file::EncryptedFile" })`);
@@ -213,6 +228,9 @@ discover `allowlist::seal_approve` via dry-run automatically.
 
 ## See also
 
-- `morse-sdk/scripts/phase-8-allowlist.ts` — minimal allowlist smoke
-- `morse-sdk/scripts/phase-9-encrypted-file.ts` — full upload + decrypt smoke
-- `morse-sdk/scripts/example-files-alice-bob.ts` — narrative example with two keypairs
+The allowlist and encrypted-file smoke scripts this section used to list were
+removed with the 0.4.0 SDK rewrite. The closest current equivalents cover
+`recipient_file`, not the modules documented here:
+
+- `morse-sdk/scripts/phase-8-recipient-file.ts` - recipient-file lifecycle smoke
+- `morse-sdk/scripts/example-recipient-file-alice-bob.ts` - narrative example with two keypairs

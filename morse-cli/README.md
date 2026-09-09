@@ -6,16 +6,24 @@ content entries from your terminal, signing with a locally encrypted key.
 Content is stored on [Walrus](https://walrus.xyz); private entries are encrypted
 with [Seal](https://github.com/MystenLabs/seal).
 
-> Status: v0.3.0, targeting Sui testnet. The command surface is stable; mainnet
-> support lands when the contracts are frozen.
+> Status: v0.6.0. Mainnet and testnet are both supported; the command surface is
+> stable.
+>
+> **The Move contracts are unaudited.** On mainnet, gas and Walrus storage cost
+> real SUI and WAL, there is no faucet, and deletions are irreversible. Nothing
+> selects mainnet for you: with no `--network`, `MORSE_NETWORK`, or profile
+> setting, the CLI targets testnet. Every command that spends gas prints the
+> network it used, and `--json` output carries a `network` field.
 
 ## Requirements
 
 - [Node.js](https://nodejs.org) >= 18, or [Bun](https://bun.sh) >= 1.2. The
   published CLI runs under either.
-- A funded Sui testnet address for gas, and testnet WAL for Walrus storage when
-  adding content. Get SUI from the [Sui faucet](https://faucet.sui.io/) and WAL
-  by swapping SUI for WAL at [stake-wal.wal.app](https://stake-wal.wal.app/?network=testnet).
+- A funded Sui address for gas, and WAL for Walrus storage when adding content.
+  On testnet, get SUI from the [Sui faucet](https://faucet.sui.io/) and swap some
+  for WAL at [stake-wal.wal.app](https://stake-wal.wal.app/?network=testnet). On
+  mainnet there is no faucet: both have to be acquired, and every write spends
+  real value.
 
 ## Install
 
@@ -91,7 +99,7 @@ Environment variables (override the config file, overridden by flags):
 | Variable | Overrides | Notes |
 | --- | --- | --- |
 | `MORSE_PROFILE` | `--profile` | Profile to use. |
-| `MORSE_NETWORK` | `--network` | `testnet` or `localnet`. |
+| `MORSE_NETWORK` | `--network` | `mainnet`, `testnet`, or `localnet`. |
 | `MORSE_RPC_URL` | `--rpc` | Sui RPC URL override. |
 | `MORSE_ADDRESS` | (no flag) | Active account address, selecting which keystore to use. |
 | `MORSE_PUBLICATION` | `-P, --publication` | Active publication id. |
@@ -123,7 +131,7 @@ Global options apply to every command and must appear before the subcommand
 
 | Global option | Purpose |
 | --- | --- |
-| `--network <testnet\|localnet>` | Network to target (default: testnet). |
+| `--network <mainnet\|testnet\|localnet>` | Network to target (default: testnet). `localnet` needs a custom deployment. |
 | `-p, --profile <name>` | Config profile to use. |
 | `--rpc <url>` | Override the Sui RPC URL. |
 | `--json` | Machine-readable JSON on stdout. |
@@ -290,13 +298,13 @@ to fetch the full record per file (one read each) when you need them.
 ## Examples
 
 - [docs/QUICKSTART.md](./docs/QUICKSTART.md): a full, copy-pasteable walkthrough.
-- Runnable shell recipes in [examples/](./examples/):
-  - [`lifecycle.sh`](./examples/lifecycle.sh): create, add an entry, read, revise, tear down.
-  - [`content.sh`](./examples/content.sh): upload an image and a post, publish a revision, fetch content back, get a link, remove a collection.
-  - [`encrypt-decrypt.sh`](./examples/encrypt-decrypt.sh): encrypt with Seal and decrypt back.
-  - [`delegation.sh`](./examples/delegation.sh): issue a PublisherCap to a delegate, then revoke it.
-  - [`ci-noninteractive.sh`](./examples/ci-noninteractive.sh): env-var auth, `--yes`, and `--json` parsing.
-  - [`files.sh`](./examples/files.sh): RecipientFile round-trip (upload an encrypted file, download/decrypt via its share string, manage recipients, plus a public file).
+- Runnable shell recipes in [examples/](https://github.com/arcadiasystems/morse-dcms/tree/main/morse-cli/examples):
+  - [`lifecycle.sh`](https://github.com/arcadiasystems/morse-dcms/blob/main/morse-cli/examples/lifecycle.sh): create, add an entry, read, revise, tear down.
+  - [`content.sh`](https://github.com/arcadiasystems/morse-dcms/blob/main/morse-cli/examples/content.sh): upload an image and a post, publish a revision, fetch content back, get a link, remove a collection.
+  - [`encrypt-decrypt.sh`](https://github.com/arcadiasystems/morse-dcms/blob/main/morse-cli/examples/encrypt-decrypt.sh): encrypt with Seal and decrypt back.
+  - [`delegation.sh`](https://github.com/arcadiasystems/morse-dcms/blob/main/morse-cli/examples/delegation.sh): issue a PublisherCap to a delegate, then revoke it.
+  - [`ci-noninteractive.sh`](https://github.com/arcadiasystems/morse-dcms/blob/main/morse-cli/examples/ci-noninteractive.sh): env-var auth, `--yes`, and `--json` parsing.
+  - [`files.sh`](https://github.com/arcadiasystems/morse-dcms/blob/main/morse-cli/examples/files.sh): RecipientFile round-trip (upload an encrypted file, download/decrypt via its share string, manage recipients, plus a public file).
 
 ## Limitations
 
@@ -319,7 +327,11 @@ to fetch the full record per file (one read each) when you need them.
   created but not yet populated through the CLI; `entry add` refuses them.
 - There is no command to query Walrus blob storage expiry; `--epochs` sets the
   lease at upload time, but remaining lease time is not exposed by the SDK.
-- Mainnet is not yet deployed; use `testnet`.
+- `localnet` is accepted as a network but has no canonical deployment, so it
+  fails at startup unless you point the SDK at your own package and registry.
+- `file list` walks a JSON-RPC event query that public Sui fullnodes have
+  retired, so it needs `--indexer-url` pointing at a source that serves the same
+  query. This affects testnet as well as mainnet.
 
 ## Publishing
 

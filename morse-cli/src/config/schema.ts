@@ -36,18 +36,17 @@ export function isNetwork(value: unknown): value is Network {
 	return typeof value === "string" && NETWORKS.has(value);
 }
 
-/** Validate a network string from a flag or env var. Mainnet is not yet deployed. */
+/**
+ * Validate a network string from a flag or env var. All three networks the SDK
+ * knows are accepted; localnet still requires a custom deployment, which
+ * `morseConfig` rejects with its own `ConfigurationError` at context build.
+ */
 export function coerceNetwork(value: string): Network {
-	if (value === Network.Mainnet) {
-		throw new UsageError(
-			"Morse is not yet deployed on mainnet. Use testnet or localnet.",
-		);
-	}
 	if (isNetwork(value)) {
 		return value;
 	}
 	throw new UsageError(
-		`Unknown network "${value}". Use one of: testnet, localnet.`,
+		`Unknown network "${value}". Use one of: mainnet, testnet, localnet.`,
 	);
 }
 

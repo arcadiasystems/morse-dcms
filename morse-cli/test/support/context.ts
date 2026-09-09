@@ -94,6 +94,11 @@ export function writeContext(opts: ReadFixtureOptions = {}): WriteFixture {
 	return {
 		ctx: {
 			...ctx,
+			// Mirrors buildWriteContext / buildContentContext, which stamp the
+			// network onto results on the gas-spending paths. The captured sinks
+			// are shared, so `captured` still sees everything the derived Output
+			// writes.
+			output: ctx.output.withNetwork(ctx.settings.network),
 			adapter: inert<WriteContext["adapter"]>(),
 			address: ADDRESS,
 		},

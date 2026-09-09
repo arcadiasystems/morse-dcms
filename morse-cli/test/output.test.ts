@@ -137,6 +137,107 @@ describe("Output", () => {
 	});
 });
 
+describe("Output.withNetwork", () => {
+	test("inserts the network under the headline, above the detail lines", () => {
+		const s = sinks();
+		const base = new Output({
+			json: false,
+			quiet: false,
+			color: false,
+			writeOut: s.writeOut,
+			writeErr: s.writeErr,
+		});
+		base
+			.withNetwork("mainnet")
+			.result(
+				['Created "My Pub" (0xabc)', "  ownerCap:     0xdef", "Selected."].join(
+					"\n",
+				),
+				{},
+			);
+		expect(s.out()).toBe(
+			[
+				'Created "My Pub" (0xabc)',
+				"  network:      mainnet",
+				"  ownerCap:     0xdef",
+				"Selected.",
+				"",
+			].join("\n"),
+		);
+	});
+
+	test("appends the network when the result is a single line", () => {
+		const s = sinks();
+		const out = new Output({
+			json: false,
+			quiet: false,
+			color: false,
+			writeOut: s.writeOut,
+			writeErr: s.writeErr,
+		}).withNetwork("testnet");
+		out.result("Deleted 0xabc", {});
+		expect(s.out()).toBe("Deleted 0xabc\n  network:      testnet\n");
+	});
+
+	test("adds a network key to a JSON object result", () => {
+		const s = sinks();
+		const out = new Output({
+			json: true,
+			quiet: false,
+			color: false,
+			writeOut: s.writeOut,
+			writeErr: s.writeErr,
+		}).withNetwork("mainnet");
+		out.result("human", { publicationId: "0xabc" });
+		expect(JSON.parse(s.out())).toEqual({
+			network: "mainnet",
+			publicationId: "0xabc",
+		});
+	});
+
+	test("does not overwrite a network key the command already set", () => {
+		const s = sinks();
+		const out = new Output({
+			json: true,
+			quiet: false,
+			color: false,
+			writeOut: s.writeOut,
+			writeErr: s.writeErr,
+		}).withNetwork("mainnet");
+		out.result("human", { network: "testnet" });
+		expect(JSON.parse(s.out())).toEqual({ network: "testnet" });
+	});
+
+	test("leaves non-object JSON payloads untouched", () => {
+		// Arrays and primitives would change shape if the network were merged in,
+		// breaking any consumer that indexes the result.
+		const s = sinks();
+		const out = new Output({
+			json: true,
+			quiet: false,
+			color: false,
+			writeOut: s.writeOut,
+			writeErr: s.writeErr,
+		}).withNetwork("mainnet");
+		out.result("human", [1, 2]);
+		expect(JSON.parse(s.out())).toEqual([1, 2]);
+	});
+
+	test("an Output without a network is unchanged", () => {
+		// Read and list commands must render exactly as before.
+		const s = sinks();
+		const out = new Output({
+			json: false,
+			quiet: false,
+			color: false,
+			writeOut: s.writeOut,
+			writeErr: s.writeErr,
+		});
+		out.result("line one\nline two", {});
+		expect(s.out()).toBe("line one\nline two\n");
+	});
+});
+
 describe("toJson", () => {
 	test("encodes bigint as a decimal string", () => {
 		expect(toJson({ gasUsedMist: 1234n })).toBe(

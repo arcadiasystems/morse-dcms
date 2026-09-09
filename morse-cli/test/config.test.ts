@@ -42,6 +42,15 @@ describe("coerceNetwork", () => {
 		expect(coerceNetwork("testnet")).toBe("testnet");
 	});
 
+	test("accepts mainnet", () => {
+		// Was rejected outright until the contracts shipped on mainnet.
+		expect(coerceNetwork("mainnet")).toBe("mainnet");
+	});
+
+	test("accepts localnet, which morseConfig rejects later without overrides", () => {
+		expect(coerceNetwork("localnet")).toBe("localnet");
+	});
+
 	test("rejects an unknown network", () => {
 		expect(() => coerceNetwork("devnet")).toThrow();
 	});

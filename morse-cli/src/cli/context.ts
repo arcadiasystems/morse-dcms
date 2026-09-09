@@ -94,6 +94,9 @@ export async function buildWriteContext(
 	const { base, keypair, address } = await buildSignedBase(command);
 	return {
 		...base,
+		// Stamp the network onto results here rather than in buildReadContext:
+		// reads are free, so only the paths that spend gas need to say where.
+		output: base.output.withNetwork(base.settings.network),
 		adapter: new KeypairAdapter(keypair, base.client),
 		address,
 	};
@@ -137,7 +140,13 @@ export async function buildContentContext(
 		{ network, suiClient: base.client },
 		keypair,
 	);
-	return { ...base, adapter, address, walrus };
+	return {
+		...base,
+		output: base.output.withNetwork(network),
+		adapter,
+		address,
+		walrus,
+	};
 }
 
 export interface EncryptContext extends ContentContext {

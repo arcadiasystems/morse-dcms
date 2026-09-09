@@ -5,14 +5,21 @@ Sui testnet, then tears it down. Every command is copy-pasteable; expected
 output is shown beneath each step. Replace IDs in later steps with the ones your
 own runs print.
 
+The walkthrough uses testnet on purpose: it creates a publication, uploads
+content to Walrus, and deletes it all again. On mainnet that sequence costs real
+SUI and WAL. Once it works for you, the only change needed is the network on the
+profile in step 1 (`--network mainnet`); every later command reads the network
+from the profile and prints which one it spent on.
+
 ## 0. Prerequisites
 
 - Install [Bun](https://bun.sh) >= 1.2.
 - Have a Sui testnet keypair. If you use the Sui CLI, export one with
   `sui keytool export --key-identity <alias>` to get a `suiprivkey1...` string.
 - Fund the address with testnet SUI ([faucet](https://faucet.sui.io/)) for gas,
-  and with WAL ([Walrus faucet](https://docs.walrus.site/usage/web-tool.html))
-  for content uploads.
+  and with WAL by swapping some SUI at
+  [stake-wal.wal.app](https://stake-wal.wal.app/?network=testnet) for content
+  uploads.
 
 Install the CLI:
 
@@ -24,6 +31,8 @@ morse --version
 ## 1. Create a profile
 
 A profile pins the network. The first profile you add becomes the default.
+`--network` takes `mainnet`, `testnet`, or `localnet`; with no profile, flag, or
+`MORSE_NETWORK`, the CLI targets testnet.
 
 ```sh
 morse config add testnet --network testnet

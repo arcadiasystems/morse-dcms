@@ -4,7 +4,11 @@
 
 **Docs: [docs.morsecms.xyz](https://docs.morsecms.xyz)** · Website: [morsecms.xyz](https://www.morsecms.xyz) · X: [@arcadiasysweb3](https://x.com/arcadiasysweb3)
 
-> **Testnet status** — Morse is live on **Sui testnet only**. The contracts are **unaudited**. Sui testnet and Walrus testnet reset periodically (Walrus wipes every few months): stored content and object IDs will be lost on reset, and testnet SUI/WAL have no monetary value. Don't store anything you can't afford to lose.
+> **Status** - Morse is live on **Sui mainnet and testnet**. Deployment addresses for both are in [`morse-contracts/Published.toml`](./morse-contracts/Published.toml) and ship baked into the SDK and CLI.
+>
+> The contracts are **unaudited**. On mainnet, gas and Walrus storage cost real SUI and WAL, there is no faucet, and deletions are irreversible. The end-to-end smoke suite has only been run against testnet; mainnet is verified at the config and read layers. Size your first deployment accordingly.
+>
+> On testnet, Sui and Walrus reset periodically (Walrus wipes every few months): stored content and object IDs will be lost on reset, and testnet SUI/WAL have no monetary value. Don't store anything you can't afford to lose.
 
 ## Quick start
 
@@ -27,7 +31,7 @@ Using an AI coding agent? Point it at [docs.morsecms.xyz/llms.txt](https://docs.
 
 | Component | Status | Where |
 |-----------|--------|-------|
-| Move contracts | ✅ Active — deployed on Sui testnet (v4) | [`morse-contracts/`](./morse-contracts/) |
+| Move contracts | ✅ Active - deployed on Sui mainnet (v1) and testnet (v4) | [`morse-contracts/`](./morse-contracts/) |
 | TypeScript SDK | ✅ Active — [`@arcadiasystems/morse-sdk`](https://www.npmjs.com/package/@arcadiasystems/morse-sdk) on npm | [`morse-sdk/`](./morse-sdk/) |
 | CLI | ✅ Active — [`@arcadiasystems/morse-cli`](https://www.npmjs.com/package/@arcadiasystems/morse-cli) on npm | [`morse-cli/`](./morse-cli/) |
 | Indexer | 📋 Planned — event indexer for read-optimized queries | [`morse-indexer/`](./morse-indexer/) (stub) |
@@ -74,7 +78,7 @@ cd morse-sdk           # or morse-cli
 bun run lint && bun run typecheck && bun run test && bun run build
 ```
 
-Contracts (from `morse-contracts/`): `task build`, `task test`, `task publish` (testnet deploy, needs a funded wallet). A localnet workflow (`task localnet` / `task publish:local`) exists for ephemeral local iteration — see the taskfile for the full sequence.
+Contracts (from `morse-contracts/`): `task build`, `task test`, `task publish`. Note that `task publish` runs `sui client publish` against whichever Sui environment is currently active and needs a funded wallet there, so check `sui client active-env` first: on mainnet it spends real SUI and writes a new `[published.mainnet]` block. A localnet workflow (`task localnet` / `task publish:local`) exists for ephemeral local iteration; see the taskfile for the full sequence.
 
 ## Feedback
 

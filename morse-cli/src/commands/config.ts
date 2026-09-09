@@ -99,7 +99,10 @@ export function registerConfigCommands(program: Command): void {
 	config
 		.command("add <name>")
 		.description("Create or update a profile")
-		.requiredOption("--network <network>", "Sui network: testnet or localnet")
+		.requiredOption(
+			"--network <network>",
+			"Sui network: mainnet, testnet, or localnet",
+		)
 		.option("--rpc <url>", "RPC URL override for this profile")
 		.action(
 			async (

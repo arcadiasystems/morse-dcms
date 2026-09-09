@@ -4,6 +4,51 @@ All notable changes to `@arcadiasystems/morse-cli` are documented here. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-09-09
+
+Mainnet support, consuming `@arcadiasystems/morse-sdk@0.5.0`. The Move contracts
+went live on Sui mainnet on 2026-09-09; the CLI rejected `mainnet` outright until
+now.
+
+### Added
+
+- **`--network mainnet` works**, as do `MORSE_NETWORK=mainnet` and
+  `morse config add <name> --network mainnet`. `coerceNetwork` no longer
+  special-cases mainnet, and `localnet` is accepted too (it still fails at
+  startup unless you point the SDK at your own package and registry, which is
+  `morseConfig`'s error to raise, not the flag parser's).
+- **Commands that spend gas now name the network they spent on.** The resolved
+  network appears as the first detail line under the result headline, and as a
+  `network` field in `--json` output. Applied on the write contexts only, so read
+  and list output is byte-for-byte unchanged. Nothing selects mainnet implicitly
+  (with no flag, env var, or profile the CLI targets testnet), so this is there
+  to make a mainnet spend visible after the fact rather than to gate it.
+
+### Fixed
+
+- Status banner claimed v0.3.0, two releases stale, and said mainnet support was
+  pending.
+- `--network` help text listed only testnet and localnet, in both the global
+  flag (`morse --help`) and `config add --network`, as did the `MORSE_NETWORK`
+  row of the README env table.
+- Seven README links pointed into `examples/`, which is not in the package
+  `files` array, so they 404'd on the npm page. Now absolute GitHub URLs;
+  `docs/QUICKSTART.md` stays relative because `docs` does ship.
+- Dead Walrus faucet link in `docs/QUICKSTART.md`. `docs.walrus.site` no longer
+  resolves; WAL acquisition now points at the working stake-wal.wal.app swap,
+  matching the README and morse-sdk.
+- Known limitations now record that `file list` requires `--indexer-url`, since
+  public Sui fullnodes have retired the JSON-RPC event query it walks. This
+  affects testnet as well as mainnet and predates this release.
+
+### Known gaps
+
+- `file list` is unusable without `--indexer-url` on every network, per above.
+  Porting the event source off `suix_queryEvents` is tracked separately.
+- No mainnet run of the opt-in `bun run test:e2e` lifecycle; it stays pointed at
+  testnet, where it costs nothing real.
+- The Move contracts remain unaudited.
+
 ## [0.5.0] - 2026-06-09
 
 Hardening pass from CLI testing: fail fast before paying for Walrus storage,
