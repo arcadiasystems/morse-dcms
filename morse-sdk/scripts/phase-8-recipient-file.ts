@@ -40,13 +40,13 @@ async function main(): Promise<void> {
 	step(1, 8, `Connected; address ${ctx.adapter.address}`);
 	done(`rpc=${ctx.config.rpcUrl}`);
 
-	step(2, 8, "Building Walrus and Seal adapters (testnet)...");
+	step(2, 8, "Building Walrus and Seal adapters...");
 	const walrus = DefaultWalrusWriteAdapter.fromConfig(
-		{ network: "testnet", suiClient: ctx.client },
+		{ network: ctx.network, suiClient: ctx.client },
 		ctx.keypair,
 	);
 	const walrusRead = DefaultWalrusReadAdapter.fromConfig({
-		network: "testnet",
+		network: ctx.network,
 		suiClient: ctx.client,
 	});
 	const seal = DefaultSealAdapter.fromMorseConfig(ctx.config, {}, ctx.client);

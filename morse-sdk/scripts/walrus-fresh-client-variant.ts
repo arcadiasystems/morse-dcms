@@ -47,7 +47,7 @@ async function main(): Promise<void> {
 	for (let trial = 1; trial <= TRIALS; trial++) {
 		step(trial + 1, TRIALS + 1, `Trial ${trial}/${TRIALS}`);
 		const walrus = DefaultWalrusWriteAdapter.fromConfig(
-			{ network: "testnet", suiClient: ctx.client },
+			{ network: ctx.network, suiClient: ctx.client },
 			ctx.keypair,
 		);
 		const bytes = new TextEncoder().encode(

@@ -41,6 +41,7 @@
 	},
 	"scripts": {
 		"prebuild": "rm -rf dist",
+		"prepublishOnly": "bun run lint && bun run typecheck && bun test && bun run build",
 		"build": "tsc -p tsconfig.build.json",
 		"typecheck": "tsc --noEmit",
 		"lint": "biome check .",

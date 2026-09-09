@@ -25,22 +25,21 @@ import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import {
 	DefaultWalrusWriteAdapter,
 	decodeQuiltPatchId,
-	morseConfig,
 	QUILT_PATCH_ID_LENGTH,
 	quiltPatchIdToString,
 } from "../src/index.js";
-import { done, readEnv, step } from "./_shared.js";
+import { done, readEnv, smokeConfig, smokeNetwork, step } from "./_shared.js";
 
 async function main(): Promise<void> {
+	// Resolve the network before touching secrets: a bad MORSE_NETWORK should
+	// fail without the caller having to supply a key first.
+	const network = smokeNetwork();
 	const privateKey = readEnv("PRIVATE_KEY");
-	const config = morseConfig({
-		network: "testnet",
-		...(process.env.SUI_RPC_URL ? { rpcUrl: process.env.SUI_RPC_URL } : {}),
-	});
+	const config = smokeConfig(network);
 
 	step(1, 5, `Connecting Sui client to ${config.rpcUrl}...`);
 	const suiClient = new SuiGrpcClient({
-		network: "testnet",
+		network,
 		baseUrl: config.rpcUrl,
 	});
 	done("connected");
@@ -53,9 +52,9 @@ async function main(): Promise<void> {
 	const keypair = Ed25519Keypair.fromSecretKey(secretKey);
 	done(`address ${keypair.toSuiAddress()}`);
 
-	step(3, 5, "Building Walrus write adapter (testnet)...");
+	step(3, 5, "Building Walrus write adapter...");
 	const adapter = DefaultWalrusWriteAdapter.fromConfig(
-		{ network: "testnet", suiClient },
+		{ network, suiClient },
 		keypair,
 	);
 	done("adapter ready");

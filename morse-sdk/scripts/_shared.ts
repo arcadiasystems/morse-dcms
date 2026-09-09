@@ -1,8 +1,9 @@
 /**
- * Shared helpers for the testnet smoke scripts. Bundles wallet/reader setup
- * with the contract-required cleanup ordering: `deleteEntry × N` then
- * `deleteCollection × M` then `deletePublication`. Skipping any layer leaves
- * chain state that a later run cannot remove without a separate repair script.
+ * Shared helpers for the smoke scripts. Bundles network resolution and
+ * wallet/reader setup with the contract-required cleanup ordering:
+ * `deleteEntry × N` then `deleteCollection × M` then `deletePublication`.
+ * Skipping any layer leaves chain state that a later run cannot remove
+ * without a separate repair script.
  */
 
 import { decodeSuiPrivateKey } from "@mysten/sui/cryptography";
@@ -19,6 +20,51 @@ import {
 	type NetworkConfig,
 	RpcPublicationReader,
 } from "../src/index.js";
+
+// Network selection
+
+/** Networks the smokes can target. Walrus has no localnet deployment. */
+export type SmokeNetwork = "mainnet" | "testnet";
+
+/**
+ * Resolve the target network from `MORSE_NETWORK`, defaulting to testnet.
+ *
+ * Mainnet additionally requires `MORSE_ALLOW_MAINNET=1`. These scripts spend
+ * real SUI and WAL on mainnet and delete what they create, so the second
+ * variable exists to make an exported-shell-variable accident impossible:
+ * choosing mainnet has to be deliberate twice.
+ */
+export function smokeNetwork(): SmokeNetwork {
+	const requested = process.env.MORSE_NETWORK ?? "testnet";
+	if (requested === "testnet") {
+		return "testnet";
+	}
+	if (requested === "mainnet") {
+		if (process.env.MORSE_ALLOW_MAINNET !== "1") {
+			console.error(
+				"MORSE_NETWORK=mainnet requires MORSE_ALLOW_MAINNET=1. These smokes spend real SUI and WAL.",
+			);
+			process.exit(1);
+		}
+		return "mainnet";
+	}
+	console.error(
+		`Unsupported MORSE_NETWORK "${requested}". Use mainnet or testnet (Walrus has no localnet).`,
+	);
+	process.exit(1);
+}
+
+/**
+ * Build the `NetworkConfig` for the resolved network, honouring an optional
+ * `SUI_RPC_URL` override. Pair with `smokeNetwork()` when a script also needs
+ * the bare network name for a Walrus or Sui client.
+ */
+export function smokeConfig(network: SmokeNetwork): NetworkConfig {
+	return morseConfig({
+		network,
+		...(process.env.SUI_RPC_URL ? { rpcUrl: process.env.SUI_RPC_URL } : {}),
+	});
+}
 
 // IO helpers
 
@@ -56,6 +102,7 @@ export function done(message: string): void {
 // Smoke setup + cleanup
 
 export interface SmokeContext {
+	readonly network: SmokeNetwork;
 	readonly client: SuiGrpcClient;
 	readonly adapter: KeypairAdapter;
 	readonly keypair: Ed25519Keypair;
@@ -65,13 +112,13 @@ export interface SmokeContext {
 
 /** Build the Sui client, wallet adapter, and reader from the standard env. */
 export function buildSmokeContext(): SmokeContext {
+	// Resolve the network before touching secrets: a bad MORSE_NETWORK should
+	// fail without the caller having to supply a key first.
+	const network = smokeNetwork();
 	const privateKey = readEnv("PRIVATE_KEY");
-	const config = morseConfig({
-		network: "testnet",
-		...(process.env.SUI_RPC_URL ? { rpcUrl: process.env.SUI_RPC_URL } : {}),
-	});
+	const config = smokeConfig(network);
 	const client = new SuiGrpcClient({
-		network: "testnet",
+		network,
 		baseUrl: config.rpcUrl,
 	});
 	const { scheme, secretKey } = decodeSuiPrivateKey(privateKey);
@@ -81,7 +128,7 @@ export function buildSmokeContext(): SmokeContext {
 	const keypair = Ed25519Keypair.fromSecretKey(secretKey);
 	const adapter = new KeypairAdapter(keypair, client);
 	const reader = RpcPublicationReader.fromMorseConfig(config, client);
-	return { client, adapter, keypair, reader, config };
+	return { network, client, adapter, keypair, reader, config };
 }
 
 export interface CleanupTarget {

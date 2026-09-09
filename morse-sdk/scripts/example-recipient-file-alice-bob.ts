@@ -27,13 +27,19 @@ import {
 	DefaultWalrusWriteAdapter,
 	deleteRecipientFile,
 	KeypairAdapter,
-	morseConfig,
 	RpcRecipientFilesReader,
 	type SuiAddress,
 	toSuiAddress,
 	uploadEncryptedRecipientFileFromBytes,
 } from "../src/index.js";
-import { done, formatMist, readEnv, step } from "./_shared.js";
+import {
+	done,
+	formatMist,
+	readEnv,
+	smokeConfig,
+	smokeNetwork,
+	step,
+} from "./_shared.js";
 
 function loadKeypair(envName: string): Ed25519Keypair {
 	const privateKey = readEnv(envName);
@@ -45,12 +51,10 @@ function loadKeypair(envName: string): Ed25519Keypair {
 }
 
 async function main(): Promise<void> {
-	const config = morseConfig({
-		network: "testnet",
-		...(process.env.SUI_RPC_URL ? { rpcUrl: process.env.SUI_RPC_URL } : {}),
-	});
+	const network = smokeNetwork();
+	const config = smokeConfig(network);
 	const client = new SuiGrpcClient({
-		network: "testnet",
+		network,
 		baseUrl: config.rpcUrl,
 	});
 
@@ -65,7 +69,7 @@ async function main(): Promise<void> {
 
 	step(2, 6, "Building Alice's Walrus and Seal adapters...");
 	const aliceWalrus = DefaultWalrusWriteAdapter.fromConfig(
-		{ network: "testnet", suiClient: client },
+		{ network, suiClient: client },
 		aliceKp,
 	);
 	const aliceSeal = DefaultSealAdapter.fromMorseConfig(config, {}, client);
@@ -95,7 +99,7 @@ async function main(): Promise<void> {
 
 	step(4, 6, "Bob fetches the file metadata...");
 	const bobWalrusRead = DefaultWalrusReadAdapter.fromConfig({
-		network: "testnet",
+		network,
 		suiClient: client,
 	});
 	const filesReader = RpcRecipientFilesReader.fromConfig(client, {

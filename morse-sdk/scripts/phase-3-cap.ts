@@ -21,26 +21,32 @@ import {
 	destroyPublisherCap,
 	issuePublisherCap,
 	KeypairAdapter,
-	morseConfig,
 	NotFoundError,
 	type PublisherCap,
 	type PublisherCapId,
 	RpcPublicationReader,
 	revokePublisherCap,
 } from "../src/index.js";
-import { done, formatMist, readEnv, step } from "./_shared.js";
+import {
+	done,
+	formatMist,
+	readEnv,
+	smokeConfig,
+	smokeNetwork,
+	step,
+} from "./_shared.js";
 
 async function main(): Promise<void> {
+	// Resolve the network before touching secrets: a bad MORSE_NETWORK should
+	// fail without the caller having to supply a key first.
+	const network = smokeNetwork();
 	const privateKey = readEnv("PRIVATE_KEY");
-	const config = morseConfig({
-		network: "testnet",
-		...(process.env.SUI_RPC_URL ? { rpcUrl: process.env.SUI_RPC_URL } : {}),
-	});
+	const config = smokeConfig(network);
 	const slug = `morse-cap-smoke-${Date.now()}`;
 
 	step(1, 7, `Connecting to ${config.rpcUrl}...`);
 	const client = new SuiGrpcClient({
-		network: "testnet",
+		network,
 		baseUrl: config.rpcUrl,
 	});
 	done("connected");

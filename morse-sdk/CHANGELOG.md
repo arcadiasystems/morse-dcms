@@ -19,6 +19,12 @@ Mainnet support. `morseConfig({ network: "mainnet" })` previously threw `Configu
 - `ConfigurationError` message from `HttpAggregatorReadAdapter.fromMorseConfig` no longer claims testnet is the only network with a pinned aggregator.
 - Doc comments that described mainnet as unpinned or "pre-freeze" now describe the committee-mode constraint instead, in `config.ts`, `seal/default-adapter.ts`, and `walrus/http-aggregator-read-adapter.ts`.
 
+### Release + tooling
+
+- **`prepublishOnly` now gates `npm publish`** on lint, typecheck, tests and a fresh build. `dist/` is gitignored and there was no build step wired into publish, so publishing from a clean checkout without a manual `bun run build` would have shipped a package whose `main` pointed at a file that was not in the tarball.
+- **Smoke scripts take `MORSE_NETWORK`** (`mainnet` or `testnet`, default `testnet`); mainnet additionally requires `MORSE_ALLOW_MAINNET=1` so an inherited shell variable cannot spend real SUI and WAL. Every script now derives its Walrus adapter network from the same resolved value as its Sui client, which removes the possibility of pairing a mainnet Sui client with a testnet Walrus client. `scripts/_shared.ts` gained `smokeNetwork()` / `smokeConfig()` and `SmokeContext.network`.
+- **README links now resolve on npmjs.com.** The `examples/` and `CONTRIBUTING.md` links were relative, and neither directory ships in the tarball, so all 13 were dead on the registry page for every published version to date. They are absolute GitHub URLs now; `./LICENSE` stays relative because it does ship.
+
 ### Known gaps
 
 - **`TESTED_SUBSTRATE.suiNetwork` still reads `"testnet"`, deliberately.** It records where the paid `scripts/phase-N-*.ts` smoke suite has actually run end to end, and that is testnet only. Mainnet is verified at the config layer (unit tests) and the read layer (a live gRPC `listPublicationsOwnedBy` against the deployed package), not by a full paid write cycle. The constant and the README compatibility table get updated when a mainnet smoke actually runs.

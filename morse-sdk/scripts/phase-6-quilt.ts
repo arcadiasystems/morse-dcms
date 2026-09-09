@@ -39,9 +39,9 @@ async function main(): Promise<void> {
 	step(1, 7, `Connected; address ${ctx.adapter.address}`);
 	done(`rpc=${ctx.config.rpcUrl}`);
 
-	step(2, 7, "Building Walrus write adapter (testnet)...");
+	step(2, 7, "Building Walrus write adapter...");
 	const walrus = DefaultWalrusWriteAdapter.fromConfig(
-		{ network: "testnet", suiClient: ctx.client },
+		{ network: ctx.network, suiClient: ctx.client },
 		ctx.keypair,
 	);
 	done("adapter ready");

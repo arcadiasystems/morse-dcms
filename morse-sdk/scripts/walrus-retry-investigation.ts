@@ -72,7 +72,7 @@ async function main(): Promise<void> {
 	const ATTEMPTS = Number(process.env.ATTEMPTS ?? "3");
 	const ctx = buildSmokeContext();
 	const walrus = DefaultWalrusWriteAdapter.fromConfig(
-		{ network: "testnet", suiClient: ctx.client },
+		{ network: ctx.network, suiClient: ctx.client },
 		ctx.keypair,
 	);
 

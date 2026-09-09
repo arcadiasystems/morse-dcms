@@ -1,6 +1,6 @@
 # morse-sdk
 
-TypeScript SDK for [Morse](../morse-contracts), a decentralized content management system on the Sui blockchain. Wraps the Move contract surface, Walrus storage, and Seal threshold encryption behind a typed adapter pattern.
+TypeScript SDK for [Morse](https://github.com/arcadiasystems/morse-dcms/tree/main/morse-contracts), a decentralized content management system on the Sui blockchain. Wraps the Move contract surface, Walrus storage, and Seal threshold encryption behind a typed adapter pattern.
 
 ## Status
 
@@ -44,7 +44,7 @@ morse-sdk is built and tested against specific minor versions of its Mysten subs
 
 Mysten ships breaking changes inside major version boundaries. Newer minors (e.g. `@mysten/walrus@1.2.x`, `@mysten/sui@2.17+`) are outside the verified ranges and may produce runtime errors; morse-sdk needs a coordinated bump and re-verification before a new Mysten minor is supported. Pin via `bun add @arcadiasystems/morse-sdk@~0.4.0` if you want patch updates without surprise minors.
 
-The verification protocol is documented in [`CONTRIBUTING.md`](./CONTRIBUTING.md): every Mysten dep bump runs the full `scripts/phase-N-*.ts` smoke suite against testnet before the bump lands. The `Sui network` column records where that paid smoke suite actually ran, which is why it still reads `testnet` for 0.5.x even though mainnet addresses ship. `TESTED_SUBSTRATE.suiNetwork` reports the same thing programmatically.
+The verification protocol is documented in [`CONTRIBUTING.md`](https://github.com/arcadiasystems/morse-dcms/blob/main/morse-sdk/CONTRIBUTING.md): every Mysten dep bump runs the full `scripts/phase-N-*.ts` smoke suite against testnet before the bump lands. The `Sui network` column records where that paid smoke suite actually ran, which is why it still reads `testnet` for 0.5.x even though mainnet addresses ship. `TESTED_SUBSTRATE.suiNetwork` reports the same thing programmatically.
 
 ### Runtime requirements
 
@@ -127,7 +127,7 @@ const fetched = await reader.getEntry(created.publicationId, "blog", entry.entry
 
 `addEntryFromBytes` runs in **2 wallet popups** (one for `register_blob`, one for the combined `certify_blob + add_entry_to_collection` PTB) instead of the 3 popups a separate `uploadBlob` + `addEntry` would emit. See "Choosing the right entry path" below for when to prefer the lower-level split form.
 
-The compile-checked end-to-end version is in [`examples/quickstart.ts`](./examples/quickstart.ts).
+The compile-checked end-to-end version is in [`examples/quickstart.ts`](https://github.com/arcadiasystems/morse-dcms/blob/main/morse-sdk/examples/quickstart.ts).
 
 ## Walrus access patterns
 
@@ -184,17 +184,17 @@ Per-concern, compile-checked illustrative code. Each file is short, focused, and
 
 | Concern                               | File                                                                | Covers                                                                                |
 | ------------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| Setup                                 | [`examples/setup.ts`](./examples/setup.ts)                          | morseConfig, gRPC client, KeypairAdapter, reader                                      |
-| Quick start                           | [`examples/quickstart.ts`](./examples/quickstart.ts)                | End-to-end happy path                                                                 |
-| Publication lifecycle                 | [`examples/publication-lifecycle.ts`](./examples/publication-lifecycle.ts) | createPublication, transferOwnership, deletePublication                          |
-| Publisher cap roles                   | [`examples/publisher-caps.ts`](./examples/publisher-caps.ts)        | issuePublisherCap, transferPublisherCap, revokePublisherCap, destroyPublisherCap      |
-| Collections                           | [`examples/collections.ts`](./examples/collections.ts)              | createCollection (Blob and Quilt modes), deleteCollection                             |
-| Entries (revisions, draft → publish)  | [`examples/entries.ts`](./examples/entries.ts)                      | addEntry, appendDraftRevision, publishFromDraft, publishDirect, deleteEntry           |
-| Encrypted entries                     | [`examples/encrypted-entries.ts`](./examples/encrypted-entries.ts)  | buildPublisherSealId, encrypt, addEncryptedEntry, appendEncryptedDraftRevision, decrypt |
-| Reading                               | [`examples/reading.ts`](./examples/reading.ts)                      | getPublication, getEntry, getRevision, listEntries, scanEntries                       |
-| Browser wallet integration            | [`examples/wallet-standard.ts`](./examples/wallet-standard.ts)      | WalletAdapter impl against `@mysten/dapp-kit` hooks (or any wallet-standard signer)   |
-| React + dapp-kit + Suiet              | [`examples/wallet-standard-react.md`](./examples/wallet-standard-react.md) | Worked walkthrough: providers, connect button, hook, adapter wiring, Seal SessionKey  |
-| Walrus HTTP adapters                  | [`examples/walrus-http-adapters.ts`](./examples/walrus-http-adapters.ts) | HttpAggregatorReadAdapter + HttpPublisherWriteAdapter (browser-friendly, operator-paid storage) |
+| Setup                                 | [`examples/setup.ts`](https://github.com/arcadiasystems/morse-dcms/blob/main/morse-sdk/examples/setup.ts)                          | morseConfig, gRPC client, KeypairAdapter, reader                                      |
+| Quick start                           | [`examples/quickstart.ts`](https://github.com/arcadiasystems/morse-dcms/blob/main/morse-sdk/examples/quickstart.ts)                | End-to-end happy path                                                                 |
+| Publication lifecycle                 | [`examples/publication-lifecycle.ts`](https://github.com/arcadiasystems/morse-dcms/blob/main/morse-sdk/examples/publication-lifecycle.ts) | createPublication, transferOwnership, deletePublication                          |
+| Publisher cap roles                   | [`examples/publisher-caps.ts`](https://github.com/arcadiasystems/morse-dcms/blob/main/morse-sdk/examples/publisher-caps.ts)        | issuePublisherCap, transferPublisherCap, revokePublisherCap, destroyPublisherCap      |
+| Collections                           | [`examples/collections.ts`](https://github.com/arcadiasystems/morse-dcms/blob/main/morse-sdk/examples/collections.ts)              | createCollection (Blob and Quilt modes), deleteCollection                             |
+| Entries (revisions, draft → publish)  | [`examples/entries.ts`](https://github.com/arcadiasystems/morse-dcms/blob/main/morse-sdk/examples/entries.ts)                      | addEntry, appendDraftRevision, publishFromDraft, publishDirect, deleteEntry           |
+| Encrypted entries                     | [`examples/encrypted-entries.ts`](https://github.com/arcadiasystems/morse-dcms/blob/main/morse-sdk/examples/encrypted-entries.ts)  | buildPublisherSealId, encrypt, addEncryptedEntry, appendEncryptedDraftRevision, decrypt |
+| Reading                               | [`examples/reading.ts`](https://github.com/arcadiasystems/morse-dcms/blob/main/morse-sdk/examples/reading.ts)                      | getPublication, getEntry, getRevision, listEntries, scanEntries                       |
+| Browser wallet integration            | [`examples/wallet-standard.ts`](https://github.com/arcadiasystems/morse-dcms/blob/main/morse-sdk/examples/wallet-standard.ts)      | WalletAdapter impl against `@mysten/dapp-kit` hooks (or any wallet-standard signer)   |
+| React + dapp-kit + Suiet              | [`examples/wallet-standard-react.md`](https://github.com/arcadiasystems/morse-dcms/blob/main/morse-sdk/examples/wallet-standard-react.md) | Worked walkthrough: providers, connect button, hook, adapter wiring, Seal SessionKey  |
+| Walrus HTTP adapters                  | [`examples/walrus-http-adapters.ts`](https://github.com/arcadiasystems/morse-dcms/blob/main/morse-sdk/examples/walrus-http-adapters.ts) | HttpAggregatorReadAdapter + HttpPublisherWriteAdapter (browser-friendly, operator-paid storage) |
 
 ## API reference
 
@@ -487,7 +487,15 @@ The `scripts/` directory has end-to-end smokes that cost real WAL and SUI. They'
 | `phase-6-blob-http.ts`    | HTTP publisher upload + aggregator read; skips when `WALRUS_PUBLISHER_URL` unset |
 | `phase-7-encrypted-http.ts` | HTTP variant of phase-7; skips when `WALRUS_PUBLISHER_URL` unset |
 
-Each requires `PRIVATE_KEY` (Bech32 `suiprivkey1...`) on an address with testnet SUI; phase-5 onward also needs WAL on the same address. Phase-7 picks up Seal key servers from `morseConfig.sealKeyServers` (the canonical testnet allowlist) by default - pass `SEAL_KEY_SERVERS` only if you want to override with a custom set.
+Each requires `PRIVATE_KEY` (Bech32 `suiprivkey1...`) on a funded address; phase-5 onward also needs WAL on the same address. Phase-7 picks up Seal key servers from `morseConfig.sealKeyServers` by default - pass `SEAL_KEY_SERVERS` only if you want to override with a custom set.
+
+`MORSE_NETWORK` selects the target network and defaults to `testnet`. Only `mainnet` and `testnet` are accepted, since Walrus has no localnet. Running against mainnet additionally requires `MORSE_ALLOW_MAINNET=1`:
+
+```sh
+MORSE_NETWORK=mainnet MORSE_ALLOW_MAINNET=1 bun run scripts/phase-2-publication.ts
+```
+
+The second variable is not redundant. These scripts create and delete real publications, collections, entries and Walrus blobs, which on mainnet costs real SUI and WAL. Requiring two variables means an inherited `MORSE_NETWORK` from another shell cannot quietly spend money. Every script derives its Walrus and Sui clients from the same resolved network, so a mainnet Sui client can never pair with a testnet Walrus client.
 
 ## Development
 
