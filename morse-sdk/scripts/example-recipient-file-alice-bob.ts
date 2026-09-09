@@ -39,6 +39,7 @@ import {
 	smokeConfig,
 	smokeNetwork,
 	step,
+	walrusWriteConfig,
 } from "./_shared.js";
 
 function loadKeypair(envName: string): Ed25519Keypair {
@@ -69,7 +70,7 @@ async function main(): Promise<void> {
 
 	step(2, 6, "Building Alice's Walrus and Seal adapters...");
 	const aliceWalrus = DefaultWalrusWriteAdapter.fromConfig(
-		{ network, suiClient: client },
+		walrusWriteConfig(network, client),
 		aliceKp,
 	);
 	const aliceSeal = DefaultSealAdapter.fromMorseConfig(config, {}, client);
@@ -152,7 +153,7 @@ async function main(): Promise<void> {
 	});
 	done(`gas=${formatMist(deleted.gasUsedMist)}`);
 
-	console.log("\n[ok] alice-bob recipient-file example");
+	console.log("\nALICE-BOB RECIPIENT-FILE EXAMPLE: PASS");
 }
 
 main().catch((error) => {

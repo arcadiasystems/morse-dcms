@@ -31,6 +31,7 @@ import {
 	done,
 	formatMist,
 	step,
+	walrusWriteConfig,
 } from "./_shared.js";
 
 async function main(): Promise<void> {
@@ -42,7 +43,7 @@ async function main(): Promise<void> {
 
 	step(2, 8, "Building Walrus write adapter...");
 	const walrus = DefaultWalrusWriteAdapter.fromConfig(
-		{ network: ctx.network, suiClient: ctx.client },
+		walrusWriteConfig(ctx.network, ctx.client),
 		ctx.keypair,
 	);
 	done("adapter ready");

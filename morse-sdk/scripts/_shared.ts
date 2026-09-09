@@ -19,6 +19,7 @@ import {
 	morseConfig,
 	type NetworkConfig,
 	RpcPublicationReader,
+	type WalrusAdapterConfig,
 } from "../src/index.js";
 
 // Network selection
@@ -52,6 +53,41 @@ export function smokeNetwork(): SmokeNetwork {
 		`Unsupported MORSE_NETWORK "${requested}". Use mainnet or testnet (Walrus has no localnet).`,
 	);
 	process.exit(1);
+}
+
+/**
+ * Walrus write config for the resolved network, opting into Mysten's upload
+ * relay when `WALRUS_UPLOAD_RELAY` is set (`1` for the canonical host for the
+ * network, or an explicit base URL).
+ *
+ * Why this exists: the default direct-protocol write fans out to every storage
+ * node in the committee (95 on mainnet, ~100 on testnet) at once. Networks that
+ * cannot sustain that burst fail with `NotEnoughBlobConfirmationsError` even
+ * when the nodes are healthy and well above write quorum. The relay does the
+ * fanout server-side, so one connection replaces ~95.
+ *
+ * It is not free: the relay charges a tip per upload (mainnet is linear in
+ * encoded size, testnet a small constant), so `sendTip.max` has to be high
+ * enough or `@mysten/walrus` throws "Tip amount exceeds the maximum allowed
+ * tip". It also sees your bytes, the same trust trade as the HTTP aggregator.
+ */
+export function walrusWriteConfig(
+	network: SmokeNetwork,
+	suiClient: SuiGrpcClient,
+): WalrusAdapterConfig {
+	const requested = process.env.WALRUS_UPLOAD_RELAY;
+	if (!requested) {
+		return { network, suiClient };
+	}
+	const host =
+		requested === "1"
+			? `https://upload-relay.${network}.walrus.space`
+			: requested;
+	return {
+		network,
+		suiClient,
+		uploadRelay: { host, sendTip: { max: 10_000_000 } },
+	};
 }
 
 /**

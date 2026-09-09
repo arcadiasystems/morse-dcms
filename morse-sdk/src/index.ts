@@ -23,6 +23,7 @@ export {
 export { TESTED_SUBSTRATE } from "./compatibility.js";
 export {
 	DEFAULT_RPC_URLS,
+	MAINNET_SEAL_COMMITTEE,
 	type MorseConfigOptions,
 	type MorsePackageConfig,
 	type MorseRecipientFileConfig,

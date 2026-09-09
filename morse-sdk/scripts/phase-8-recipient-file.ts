@@ -32,7 +32,13 @@ import {
 	uploadEncryptedRecipientFileFromBytes,
 	uploadRecipientFileFromBytes,
 } from "../src/index.js";
-import { buildSmokeContext, done, formatMist, step } from "./_shared.js";
+import {
+	buildSmokeContext,
+	done,
+	formatMist,
+	step,
+	walrusWriteConfig,
+} from "./_shared.js";
 
 async function main(): Promise<void> {
 	const ctx = buildSmokeContext();
@@ -42,7 +48,7 @@ async function main(): Promise<void> {
 
 	step(2, 8, "Building Walrus and Seal adapters...");
 	const walrus = DefaultWalrusWriteAdapter.fromConfig(
-		{ network: ctx.network, suiClient: ctx.client },
+		walrusWriteConfig(ctx.network, ctx.client),
 		ctx.keypair,
 	);
 	const walrusRead = DefaultWalrusReadAdapter.fromConfig({
@@ -151,10 +157,11 @@ async function main(): Promise<void> {
 	});
 	done(`gas=${formatMist(encryptedDelete.gasUsedMist)}`);
 
-	console.log("\n[ok] phase-8 recipient-file smoke");
+	console.log("\nPHASE 8 RECIPIENT-FILE SMOKE: PASS");
 }
 
 main().catch((error) => {
+	console.error("\nPHASE 8 RECIPIENT-FILE SMOKE: FAIL");
 	console.error(error);
 	process.exit(1);
 });

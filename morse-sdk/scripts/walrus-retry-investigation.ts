@@ -21,7 +21,7 @@
 
 import { NotEnoughBlobConfirmationsError } from "@mysten/walrus";
 import { DefaultWalrusWriteAdapter } from "../src/index.js";
-import { buildSmokeContext, done, step } from "./_shared.js";
+import { buildSmokeContext, done, step, walrusWriteConfig } from "./_shared.js";
 
 interface TrialResult {
 	readonly trial: number;
@@ -72,7 +72,7 @@ async function main(): Promise<void> {
 	const ATTEMPTS = Number(process.env.ATTEMPTS ?? "3");
 	const ctx = buildSmokeContext();
 	const walrus = DefaultWalrusWriteAdapter.fromConfig(
-		{ network: ctx.network, suiClient: ctx.client },
+		walrusWriteConfig(ctx.network, ctx.client),
 		ctx.keypair,
 	);
 

@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
 import { toPackageId, toRegistryId } from "./codecs.js";
-import { DEFAULT_RPC_URLS, morseConfig, Network } from "./config.js";
+import {
+	DEFAULT_RPC_URLS,
+	MAINNET_SEAL_COMMITTEE,
+	morseConfig,
+	Network,
+} from "./config.js";
 import { ConfigurationError } from "./errors.js";
 
 describe("Network", () => {
@@ -152,13 +157,22 @@ describe("morseConfig", () => {
 		}
 	});
 
-	test("mainnet Seal allowlist is one committee server carrying aggregatorUrl", () => {
-		// @mysten/seal throws InvalidClientOptionsError at client construction
-		// for a committee-mode server with no aggregatorUrl. That is a runtime
-		// failure on the first encrypt/decrypt, so it is pinned here.
+	test("mainnet ships no Seal key servers", () => {
+		// Every mainnet operator is commercial. 0.5.0 defaulted this to Mysten's
+		// committee, whose aggregator 401s without an API key; because Seal reads
+		// public keys from chain but shares from the aggregator, encryption
+		// succeeded and only decryption failed, so a consumer could produce
+		// ciphertext they could never read. Empty makes it fail at construction.
 		const config = morseConfig({ network: "mainnet" });
-		expect(config.sealKeyServers).toHaveLength(1);
-		const committee = config.sealKeyServers[0];
+		expect(config.sealKeyServers).toEqual([]);
+	});
+
+	test("MAINNET_SEAL_COMMITTEE is committee-shaped and carries no credentials", () => {
+		// Opt-in value, not a default. aggregatorUrl is mandatory for a
+		// committee-mode server (Seal throws InvalidClientOptionsError without
+		// it); the API key is the consumer's to add.
+		expect(MAINNET_SEAL_COMMITTEE).toHaveLength(1);
+		const committee = MAINNET_SEAL_COMMITTEE[0];
 		expect(committee?.objectId).toBe(
 			"0x686098f1439237fff9f36b99c7329683c22979d2005c2465cb891acb012a7595",
 		);
@@ -166,6 +180,16 @@ describe("morseConfig", () => {
 		expect(committee?.aggregatorUrl).toBe(
 			"https://seal-aggregator-mainnet.mystenlabs.com",
 		);
+		expect(committee?.apiKey).toBeUndefined();
+		expect(committee?.apiKeyName).toBeUndefined();
+	});
+
+	test("MAINNET_SEAL_COMMITTEE can be passed straight back in as an override", () => {
+		const config = morseConfig({
+			network: "mainnet",
+			sealKeyServers: MAINNET_SEAL_COMMITTEE,
+		});
+		expect(config.sealKeyServers).toBe(MAINNET_SEAL_COMMITTEE);
 	});
 
 	test("testnet Seal allowlist carries no aggregatorUrl", () => {

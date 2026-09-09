@@ -37,6 +37,7 @@ import {
 	cleanupSmokePublication,
 	done,
 	step,
+	walrusWriteConfig,
 } from "./_shared.js";
 
 async function main(): Promise<void> {
@@ -59,7 +60,7 @@ async function main(): Promise<void> {
 
 	step(2, 9, "Building Walrus and Seal adapters...");
 	const walrus = DefaultWalrusWriteAdapter.fromConfig(
-		{ network: ctx.network, suiClient: ctx.client },
+		walrusWriteConfig(ctx.network, ctx.client),
 		ctx.keypair,
 	);
 	const seal = DefaultSealAdapter.fromMorseConfig(

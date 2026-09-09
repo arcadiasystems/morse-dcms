@@ -122,8 +122,8 @@ export class DefaultSealAdapter implements SealAdapter {
 	 * want a custom set (paid plans, alternate trust assumptions, region
 	 * pinning), or `threshold` when you want a non-default TSS shape.
 	 *
-	 * On the default threshold: mainnet's canonical allowlist is a single
-	 * committee-mode server, so `min(2, 1)` resolves to 1. That is correct and
+	 * On the default threshold with a committee-mode server (one entry, as in
+	 * `MAINNET_SEAL_COMMITTEE`): `min(2, 1)` resolves to 1. That is correct and
 	 * not a weakened policy - a committee server is one endpoint fronting 8
 	 * operators with its own internal quorum, which Seal enforces behind the
 	 * aggregator and this SDK cannot express as a share count. Do not "fix"
@@ -131,8 +131,9 @@ export class DefaultSealAdapter implements SealAdapter {
 	 * threshold must be <= `serverConfigs.length`.
 	 *
 	 * @throws {ConfigurationError} If neither `seal.serverConfigs` nor
-	 *   `morseConfig.sealKeyServers` provide any servers (localnet, or a
-	 *   custom deployment with no allowlist supplied).
+	 *   `morseConfig.sealKeyServers` provide any servers. This is the mainnet
+	 *   default: no mainnet operator is free, so nothing is pinned and the
+	 *   consumer must supply servers. Also localnet and custom deployments.
 	 */
 	static fromMorseConfig(
 		morseConfig: {
@@ -147,7 +148,7 @@ export class DefaultSealAdapter implements SealAdapter {
 			seal.serverConfigs ?? morseConfig.sealKeyServers ?? [];
 		if (serverConfigs.length === 0) {
 			throw new ConfigurationError(
-				"morseConfig has no canonical Seal key servers for this network and no override was supplied. Pass seal.serverConfigs explicitly, or use a network where the allowlist is pinned.",
+				"morseConfig has no canonical Seal key servers for this network and no override was supplied. Testnet pins an open allowlist; mainnet does not, because every mainnet Seal operator is commercial. Pass seal.serverConfigs explicitly, or start from the exported MAINNET_SEAL_COMMITTEE and add the apiKeyName and apiKey your operator issues.",
 			);
 		}
 		const threshold = seal.threshold ?? Math.min(2, serverConfigs.length);

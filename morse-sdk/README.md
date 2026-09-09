@@ -6,7 +6,9 @@ TypeScript SDK for [Morse](https://github.com/arcadiasystems/morse-dcms/tree/mai
 
 Pre-release. Mainnet and testnet are both wired: the Move contract addresses are baked in, so `morseConfig({ network: "mainnet" })` and `morseConfig({ network: "testnet" })` both return a complete config with no addresses to supply.
 
-**The contracts are unaudited.** On mainnet, SUI and WAL cost real money, there is no faucet, and a mistake is not recoverable. The end-to-end smoke suite has been run against testnet only (see [Compatibility](#compatibility)); mainnet is verified at the config and read layer, not by a full paid write cycle. Treat mainnet as usable but young, and size your first deployment accordingly.
+**Encrypted content needs your own Seal key servers on mainnet.** Public publications, collections, entries and files work out of the box on both networks. Encryption does not, on mainnet: every mainnet Seal operator is commercial, including Mysten's committee aggregator, which rejects unauthenticated requests. `DefaultSealAdapter.fromMorseConfig` therefore throws `ConfigurationError` on mainnet until you supply `serverConfigs`. See [Network configuration](#network-configuration).
+
+**The contracts are unaudited.** On mainnet, SUI and WAL cost real money, there is no faucet, and a mistake is not recoverable. The publication lifecycle has been verified end to end on mainnet; the Walrus and Seal paths have not (see [Compatibility](#compatibility)). Treat mainnet as usable but young, and size your first deployment accordingly.
 
 ## Install
 
@@ -135,12 +137,40 @@ morse-sdk ships two pairs of Walrus adapters. They implement the same interfaces
 
 | Pair                                                              | Trust model      | Browser CORS    | Popup count for upload + addEntry | Storage cost paid by |
 | ----------------------------------------------------------------- | ---------------- | --------------- | --------------------------------- | -------------------- |
-| `DefaultWalrusReadAdapter` + `DefaultWalrusWriteAdapter`          | Trustless (direct fanout to ~30 storage nodes) | Spotty on testnet; unmeasured on mainnet | 2 (with `addEntryFromBytes`) or 3 (split) | Consumer wallet (WAL + gas) |
+| `DefaultWalrusReadAdapter` + `DefaultWalrusWriteAdapter`          | Trustless (direct fanout to every storage node) | Spotty; depends on your network | 2 (with `addEntryFromBytes`) or 3 (split) | Consumer wallet (WAL + gas) |
 | `HttpAggregatorReadAdapter` + `HttpPublisherWriteAdapter`         | Operator-trusted | Reliable        | 1 (`uploadBlob` is a publisher HTTP call, only `addEntry` signs) | Publisher operator (WAL); consumer (Sui gas only) |
 
 **When to pick which:**
 - **Default direct-protocol pair**: trustless reads, full control. Best for CLI smokes, server-side dapps, or browser dapps that don't hit CORS gaps. The flow-aware optimization (`addEntryFromBytes`) cuts popups from 3 to 2.
 - **HTTP pair**: reliable browser reads (one CORS-friendly endpoint instead of ~30), and a "publisher pays storage" UX where the user signs only the on-chain `addEntry`. Trade trustless reads for operator trust; use `verifyBlobIntegrity` on the read adapter for a trust-but-verify path.
+
+### When direct writes fail: the upload relay
+
+A direct write pushes slivers to every node in the committee at once (95 on mainnet, ~100 on testnet). Networks that cannot sustain that burst fail with `NotEnoughBlobConfirmationsError` or "Unable to connect", **even when the nodes are healthy and far above write quorum**. If uploads fail for you while reads work, this is almost certainly why, and it is not a fault in your config.
+
+`WalrusAdapterConfig` is `@mysten/walrus`'s `WalrusClientConfig`, so you can hand the client an upload relay and let it do the fanout server-side. One connection replaces ~95:
+
+```ts
+const writer = DefaultWalrusWriteAdapter.fromConfig(
+  {
+    network: "mainnet",
+    suiClient,
+    uploadRelay: {
+      host: "https://upload-relay.mainnet.walrus.space",
+      sendTip: { max: 10_000_000 },
+    },
+  },
+  signer,
+);
+```
+
+Three things to know before reaching for it:
+
+- **It costs a tip per upload**, on top of WAL and gas. Mainnet is linear in encoded size (40 MIST/KiB at the time of writing), testnet is a small constant. Query the live figure at `GET /v1/tip-config`.
+- **`sendTip.max` must cover it.** Too low and `@mysten/walrus` throws `Tip amount (N) exceeds the maximum allowed tip (M)` before uploading anything.
+- **The relay sees your bytes.** Same trust trade as the HTTP aggregator, so encrypt first if that matters.
+
+The smoke scripts take `WALRUS_UPLOAD_RELAY=1` to route through the canonical relay for the selected network, which is the quickest way to tell a network problem apart from a real one.
 
 The HTTP adapters are NOT compatible with `addEntryFromBytes` / `addEncryptedEntryFromBytes`. Those functions require `WalrusFlowCapable` for the 2-popup combined PTB; the publisher-paid path is naturally 1-popup through standard `uploadBlob` + `addEntry`.
 
@@ -255,7 +285,8 @@ The full public surface, grouped by concern. Every export carries a JSDoc on its
 | `DefaultWalrusReadAdapter.fromConfig(config)` | Walrus reads (`readBlob`, `readBlobByObjectId`, `readQuiltPatch`, `readBlobRef`). |
 | `HttpPublisherWriteAdapter.fromConfig({ publisherUrl, ownerAddress })` | Walrus uploads via a publisher HTTP service (operator pays storage; 1 popup for upload + addEntry). |
 | `HttpAggregatorReadAdapter.fromMorseConfig(config, suiClient)` / `.fromConfig({ aggregatorUrl, suiClient })` | Walrus reads via a single CORS-friendly aggregator endpoint instead of fanout to ~30 storage nodes. |
-| `DefaultSealAdapter.fromMorseConfig(config, options, suiClient)` | Threshold encryption / decryption. Defaults the canonical key servers for the network (two independent servers on testnet, Mysten's committee on mainnet). |
+| `DefaultSealAdapter.fromMorseConfig(config, options, suiClient)` | Threshold encryption / decryption. Defaults to the network's canonical key servers: two independent servers on testnet, none on mainnet (throws `ConfigurationError`; pass `serverConfigs`). |
+| `MAINNET_SEAL_COMMITTEE` | Mysten's mainnet Seal committee as a ready-made `sealKeyServers` value. Requires the `apiKeyName` / `apiKey` Mysten issues you; not a default. |
 | `WalletAdapter` / `WalrusWriteAdapter` / `WalrusReadAdapter` / `SealAdapter` | Interfaces for substituting custom implementations. |
 | `WalrusFlowCapable` / `isWalrusFlowCapable` | Optional capability for the 2-popup `addEntryFromBytes` path. |
 
@@ -445,7 +476,20 @@ const config = morseConfig({ network: "mainnet" }); // or "testnet"
 The two networks differ in their Seal allowlist, and the difference is not cosmetic:
 
 - **testnet** pins two independent Mysten key servers, so the default threshold is 2 of 2.
-- **mainnet** pins Mysten's decentralized committee: one endpoint that fans out to 8 operators and needs 5 to agree. Seal models it as a single server, so the default threshold is 1 - the real quorum is enforced inside the aggregator, not by this SDK. Mainnet has no free open independent servers; the independent operators are commercial and issue per-consumer API keys. Pass `seal.serverConfigs` to `DefaultSealAdapter.fromMorseConfig` if you would rather not route through one Mysten-run URL.
+- **mainnet** pins nothing, and `DefaultSealAdapter.fromMorseConfig` throws `ConfigurationError` until you supply servers. There is no free open operator on mainnet: the independent ones are commercial and issue per-consumer API keys, and Mysten's committee aggregator answers `401 No API key found in request` to unauthenticated callers.
+
+  This is a hard failure on purpose. Seal reads key-server public keys from chain but fetches key shares from the operator, so an unusable operator still lets `encrypt` succeed and fails only at `decrypt`. Defaulting to one would let you encrypt, pay to store the ciphertext on Walrus, and discover later that it cannot be read. Once you have credentials, `MAINNET_SEAL_COMMITTEE` is the committee in the right shape:
+
+  ```ts
+  const config = morseConfig({
+    network: "mainnet",
+    sealKeyServers: MAINNET_SEAL_COMMITTEE.map((s) => ({
+      ...s,
+      apiKeyName: "x-api-key",
+      apiKey: process.env.SEAL_API_KEY,
+    })),
+  });
+  ```
 
 Override individual fields for forks or local nodes:
 
@@ -488,6 +532,8 @@ The `scripts/` directory has end-to-end smokes that cost real WAL and SUI. They'
 | `phase-7-encrypted-http.ts` | HTTP variant of phase-7; skips when `WALRUS_PUBLISHER_URL` unset |
 
 Each requires `PRIVATE_KEY` (Bech32 `suiprivkey1...`) on a funded address; phase-5 onward also needs WAL on the same address. Phase-7 picks up Seal key servers from `morseConfig.sealKeyServers` by default - pass `SEAL_KEY_SERVERS` only if you want to override with a custom set.
+
+`WALRUS_UPLOAD_RELAY=1` routes the Walrus uploads through the canonical relay for the selected network instead of the direct fanout (see [When direct writes fail](#when-direct-writes-fail-the-upload-relay)). Set it to an explicit base URL to use a different relay. Phases 5 onward fail on networks that cannot open ~95 simultaneous connections; this is the switch that tells that apart from a real defect.
 
 `MORSE_NETWORK` selects the target network and defaults to `testnet`. Only `mainnet` and `testnet` are accepted, since Walrus has no localnet. Running against mainnet additionally requires `MORSE_ALLOW_MAINNET=1`:
 

@@ -15,7 +15,7 @@
  */
 
 import { DefaultWalrusWriteAdapter } from "../src/index.js";
-import { buildSmokeContext, done, step } from "./_shared.js";
+import { buildSmokeContext, done, step, walrusWriteConfig } from "./_shared.js";
 
 function describeError(err: unknown): string {
 	const lines: string[] = [];
@@ -47,7 +47,7 @@ async function main(): Promise<void> {
 	for (let trial = 1; trial <= TRIALS; trial++) {
 		step(trial + 1, TRIALS + 1, `Trial ${trial}/${TRIALS}`);
 		const walrus = DefaultWalrusWriteAdapter.fromConfig(
-			{ network: ctx.network, suiClient: ctx.client },
+			walrusWriteConfig(ctx.network, ctx.client),
 			ctx.keypair,
 		);
 		const bytes = new TextEncoder().encode(

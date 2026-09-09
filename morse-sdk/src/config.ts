@@ -81,6 +81,10 @@ export interface NetworkConfig {
 	 * custom deployments), which makes the encrypted paths throw
 	 * `ConfigurationError` until the consumer supplies `serverConfigs`.
 	 *
+	 * Empty on mainnet by design: every mainnet operator is commercial, so
+	 * there is nothing to default to. Supply `serverConfigs` yourself, or start
+	 * from `MAINNET_SEAL_COMMITTEE` and add the credentials it documents.
+	 *
 	 * Entries are `@mysten/seal` `KeyServerConfig` objects and are passed
 	 * through untouched. Seal distinguishes two server types and enforces the
 	 * distinction at client construction: a committee-mode server REQUIRES
@@ -124,6 +128,38 @@ export type MorseRecipientFileConfig = MorsePackageConfig &
 // morseConfig factory
 
 /**
+ * Mysten's decentralized Seal committee on mainnet, as a ready-made
+ * `sealKeyServers` value. NOT a default: the aggregator is a credentialed
+ * service that answers 401 to unauthenticated requests, so this only works
+ * once you add the `apiKeyName` and `apiKey` Mysten issues you.
+ *
+ * Committee mode is one logical server fronting 8 operators with an internal
+ * 5-of-8 quorum, which is why `aggregatorUrl` is required (Seal throws
+ * `InvalidClientOptionsError` without it) and why a single entry of weight 1
+ * is the correct shape. `DefaultSealAdapter.fromMorseConfig` then resolves
+ * threshold to 1; the real quorum lives behind the aggregator and is not
+ * something this SDK can express as a share count.
+ *
+ * @example
+ * const config = morseConfig({
+ *   network: "mainnet",
+ *   sealKeyServers: MAINNET_SEAL_COMMITTEE.map((s) => ({
+ *     ...s,
+ *     apiKeyName: "x-api-key",
+ *     apiKey: process.env.SEAL_API_KEY,
+ *   })),
+ * });
+ */
+export const MAINNET_SEAL_COMMITTEE: readonly KeyServerConfig[] = [
+	{
+		objectId:
+			"0x686098f1439237fff9f36b99c7329683c22979d2005c2465cb891acb012a7595",
+		weight: 1,
+		aggregatorUrl: "https://seal-aggregator-mainnet.mystenlabs.com",
+	},
+];
+
+/**
  * Canonical Morse deployment addresses per network. Mirrors
  * `morse-contracts/Published.toml`; update on every contract publish or
  * upgrade. Networks absent from this map require explicit `packageId` and
@@ -162,27 +198,17 @@ const KNOWN_DEPLOYMENTS: Partial<
 		registryId: toRegistryId(
 			"0x8d8b23c7acd7c1b260c793f2c648c5be8eb06db7c107b9f06ca3f39b700868ea",
 		),
-		// Mysten's decentralized Seal committee. Unlike testnet (two independent
-		// servers), mainnet has no free open allowlist: the independent mainnet
-		// operators are commercial and issue API keys per consumer. The committee
-		// is the one no-signup option.
+		// Deliberately empty: mainnet has no key servers this SDK can default to.
+		// Every operator is commercial, including Mysten's committee aggregator,
+		// which answers 401 "No API key found in request" on every endpoint.
 		//
-		// Committee mode is a single logical server that fans out to 8 operators
-		// and needs 5 to agree, so `aggregatorUrl` is MANDATORY here (Seal throws
-		// InvalidClientOptionsError without it) and one entry with weight 1 is
-		// the correct shape. `DefaultSealAdapter.fromMorseConfig` derives
-		// threshold = min(2, 1) = 1, which is right: the real quorum is internal
-		// to the aggregator, not something this SDK can or should express.
-		// Consumers who would rather not route through one Mysten-run URL pass
-		// their own `seal.serverConfigs`.
-		sealKeyServers: [
-			{
-				objectId:
-					"0x686098f1439237fff9f36b99c7329683c22979d2005c2465cb891acb012a7595",
-				weight: 1,
-				aggregatorUrl: "https://seal-aggregator-mainnet.mystenlabs.com",
-			},
-		],
+		// 0.5.0 shipped the committee here and it was actively harmful. Seal
+		// reads key-server public keys from chain but fetches key SHARES from the
+		// aggregator, so encryption succeeded and only decryption 401'd: a
+		// consumer could encrypt, pay to store the ciphertext on Walrus, and then
+		// find it permanently unreadable. Failing at construction instead is the
+		// whole point. See `MAINNET_SEAL_COMMITTEE` to opt in with credentials.
+		sealKeyServers: [],
 		// Canonical Mysten-run Walrus mainnet aggregator. Publisher is left
 		// undefined for the same reason as testnet: no single canonical operator.
 		walrusEndpoints: {

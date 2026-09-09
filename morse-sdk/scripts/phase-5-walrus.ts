@@ -28,7 +28,14 @@ import {
 	QUILT_PATCH_ID_LENGTH,
 	quiltPatchIdToString,
 } from "../src/index.js";
-import { done, readEnv, smokeConfig, smokeNetwork, step } from "./_shared.js";
+import {
+	done,
+	readEnv,
+	smokeConfig,
+	smokeNetwork,
+	step,
+	walrusWriteConfig,
+} from "./_shared.js";
 
 async function main(): Promise<void> {
 	// Resolve the network before touching secrets: a bad MORSE_NETWORK should
@@ -54,7 +61,7 @@ async function main(): Promise<void> {
 
 	step(3, 5, "Building Walrus write adapter...");
 	const adapter = DefaultWalrusWriteAdapter.fromConfig(
-		{ network, suiClient },
+		walrusWriteConfig(network, suiClient),
 		keypair,
 	);
 	done("adapter ready");

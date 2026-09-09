@@ -2,6 +2,40 @@
 
 All notable changes to `morse-sdk` will be documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-09-09
+
+Fixes a mainnet Seal default shipped in 0.5.0 that could produce permanently unreadable ciphertext. Upgrade if you use `morseConfig({ network: "mainnet" })` with any encrypted path.
+
+### Fixed
+
+- **Mainnet no longer defaults `sealKeyServers` to Mysten's committee.** 0.5.0 pinned the committee aggregator as a zero-config default on the understanding that it was the one no-signup mainnet option. It is not: it answers `401 No API key found in request` on every endpoint, including `/v1/service` and `/v1/fetch_key`. Every mainnet Seal operator is commercial.
+
+  The failure mode was worse than an outage. Seal reads key-server public keys from chain but fetches key shares from the operator, so `encrypt` succeeded and only `decrypt` returned 401. A mainnet consumer could encrypt content, pay to store the ciphertext on Walrus, and only then discover it could never be read. `morseConfig({ network: "mainnet" }).sealKeyServers` is now `[]`, so `DefaultSealAdapter.fromMorseConfig` throws `ConfigurationError` at construction instead, before anything is encrypted or paid for.
+
+  Public paths are unaffected: publications, collections, entries and non-encrypted files never touch Seal. The mainnet publication lifecycle is verified end to end on chain (create, read, list, delete).
+- `ConfigurationError` from `DefaultSealAdapter.fromMorseConfig` now explains that mainnet operators are commercial and names `MAINNET_SEAL_COMMITTEE`, rather than only suggesting "use a network where the allowlist is pinned".
+- README no longer claims encrypted mainnet flows work without setup.
+
+### Added
+
+- **`MAINNET_SEAL_COMMITTEE`**: Mysten's mainnet committee as a ready-made `readonly KeyServerConfig[]`, for consumers who have credentials. Deliberately not a default and deliberately without an API key; spread it and add the `apiKeyName` / `apiKey` your operator issues. Committee mode is one logical server fronting 8 operators with an internal 5-of-8 quorum, which is why it carries `aggregatorUrl` (Seal throws `InvalidClientOptionsError` without it) and why the derived threshold is 1.
+
+### Added: upload relay support in the smokes
+
+- **`WALRUS_UPLOAD_RELAY`** routes smoke uploads through a Walrus upload relay (`1` for the canonical host for the network, or an explicit URL) instead of the direct fanout, via a new `walrusWriteConfig()` helper in `scripts/_shared.ts`. `WalrusAdapterConfig` already forwarded `uploadRelay` to `@mysten/walrus`; nothing in the SDK surface changed, it was simply undocumented.
+
+  This turned out to matter. Direct writes fan out to every node in the committee at once (95 on mainnet, ~100 on testnet) and failed from the development machine on both networks, while individual nodes were healthy: 86/95 mainnet nodes answered, carrying 874 of 1000 shards under strict TLS, far above write quorum. The same script, key and network succeeds first try through the relay. The failure is the connection burst, not node health, the chain, or this SDK. README now documents the relay, its per-upload tip, the `sendTip.max` trap, and the trust trade.
+- Smoke success markers are consistent. `phase-8-recipient-file` and `example-recipient-file-alice-bob` printed `[ok] ...` while every other script printed `PHASE N ...: PASS`, so a grep-based runner scored successful runs as failures. Both now match, and phase 8 gained the `FAIL` marker it was missing.
+
+### Verified on chain
+
+Run against both networks with the relay. Mainnet: publications, publisher caps, collections (blob and quilt), Walrus blob and quilt uploads, and entry lifecycle in both collection modes. Testnet: all of the above plus the encrypted entry round trip and recipient files, public and encrypted.
+
+### Known gaps
+
+- Seal on mainnet is unexercised end to end, and will stay that way until a credentialed operator is available. Phases 7 and 8 fail there at adapter construction, which is the intended new behaviour.
+- `TESTED_SUBSTRATE.suiNetwork` still reads `"testnet"`, unchanged: the full suite passes there, whereas mainnet is missing the two Seal-dependent phases.
+
 ## [0.5.0] - 2026-09-09
 
 Mainnet support. `morseConfig({ network: "mainnet" })` previously threw `ConfigurationError`; it now returns a complete `NetworkConfig` against the mainnet deployment (`published-at`: `0x4fc7af5d1e19f96e5fab4e677948214eec35e238b252a106c7d5036dcebdcae2`, published 2026-09-09 in tx `HmiywHYifmrNLMvY2oT8cP5W9hpQc2wFTJAaaQoM8mLY`). No API shape changed and no consumer code needs editing beyond the network literal.

@@ -6,6 +6,7 @@ import {
 } from "@mysten/seal";
 
 import { toPackageId, toPublicationId } from "../codecs.js";
+import { MAINNET_SEAL_COMMITTEE, morseConfig } from "../config.js";
 import { ConfigurationError, SealError, TransportError } from "../errors.js";
 import { DefaultSealAdapter } from "./default-adapter.js";
 import { buildPublisherSealId } from "./identity.js";
@@ -192,6 +193,33 @@ describe("DefaultSealAdapter.fromMorseConfig", () => {
 			fakeSuiClient(),
 		);
 		// Threshold follows the override's length, not the allowlist's.
+		expect(internals(adapter).threshold).toBe(1);
+	});
+
+	test("a real mainnet morseConfig throws instead of yielding a usable adapter", () => {
+		// The regression that shipped in 0.5.0: mainnet defaulted to Mysten's
+		// committee, so this call succeeded and only decrypt failed later with a
+		// 401, letting a consumer create ciphertext they could never read.
+		// Failing here is the fix, and it must fail through the real config.
+		expect(() =>
+			DefaultSealAdapter.fromMorseConfig(
+				morseConfig({ network: "mainnet" }),
+				{},
+				fakeSuiClient(),
+			),
+		).toThrow(ConfigurationError);
+	});
+
+	test("mainnet works once MAINNET_SEAL_COMMITTEE is supplied", () => {
+		const adapter = DefaultSealAdapter.fromMorseConfig(
+			morseConfig({
+				network: "mainnet",
+				sealKeyServers: MAINNET_SEAL_COMMITTEE,
+			}),
+			{},
+			fakeSuiClient(),
+		);
+		// One committee entry, so the derived threshold is 1.
 		expect(internals(adapter).threshold).toBe(1);
 	});
 
