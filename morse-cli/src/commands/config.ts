@@ -135,6 +135,7 @@ export function registerConfigCommands(program: Command): void {
 
 	config
 		.command("remove <name>")
+		.alias("delete")
 		.description("Delete a profile")
 		.action(async (name: string, _options, command: Command) => {
 			await runConfigRemove(outputFor(command), name);

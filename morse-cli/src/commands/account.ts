@@ -3,6 +3,7 @@
 import type { Command } from "commander";
 
 import { cancelled, UsageError } from "../cli/errors.ts";
+import { readStdin } from "../cli/io.ts";
 import type { Output } from "../cli/output.ts";
 import type { GlobalOptions } from "../cli/program.ts";
 import {
@@ -152,6 +153,7 @@ export function registerAccountCommands(program: Command): void {
 
 	account
 		.command("show")
+		.alias("get")
 		.description("Print the active account address")
 		.action(async (_options, command: Command) => {
 			await runAccountShow(outputFor(command), globalOptions(command));
@@ -186,9 +188,20 @@ async function readSecretToImport(
 	if (raw !== undefined && raw.length > 0) {
 		return raw;
 	}
+	// Piped stdin is the natural scripted form and the first thing anyone tries.
+	// Still never a flag: argv is visible in ps and shell history.
+	if (!process.stdin.isTTY) {
+		const piped = new TextDecoder().decode(await readStdin()).trim();
+		if (piped.length > 0) {
+			return piped;
+		}
+		throw new UsageError(
+			"Cannot read a private key: pipe it on stdin, set MORSE_PRIVATE_KEY, or run in an interactive terminal.",
+		);
+	}
 	if (!isInteractive()) {
 		throw new UsageError(
-			"Cannot read a private key: set MORSE_PRIVATE_KEY or run in an interactive terminal.",
+			"Cannot read a private key: pipe it on stdin, set MORSE_PRIVATE_KEY, or run in an interactive terminal.",
 		);
 	}
 	process.stderr.write(

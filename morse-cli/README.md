@@ -6,7 +6,7 @@ content entries from your terminal, signing with a locally encrypted key.
 Content is stored on [Walrus](https://walrus.xyz); private entries are encrypted
 with [Seal](https://github.com/MystenLabs/seal).
 
-> Status: v0.7.0. Mainnet and testnet are both supported for public content;
+> Status: v0.8.0. Mainnet and testnet are both supported for public content;
 > the command surface is stable.
 >
 > **Encrypted commands are testnet-only.** `entry add-encrypted`, `entry
@@ -173,9 +173,9 @@ and `-C, --collection <name>`, both defaulting to the active context.
 | Command | Purpose |
 | --- | --- |
 | `config add <name> --network <net> [--rpc <url>] [--upload-relay <url\|auto>]` | Create or update a profile. |
+| `config remove <name>` | Delete a profile. Also `config delete`. |
 | `config list` | List profiles; `*` marks the default. |
 | `config use <name>` | Set the default profile. |
-| `config remove <name>` | Delete a profile. |
 | `config path` | Print the config file path. |
 
 ### account
@@ -351,6 +351,25 @@ to fetch the full record per file (one read each) when you need them.
 - `file list` walks a JSON-RPC event query that public Sui fullnodes have
   retired, so it needs `--indexer-url` pointing at a source that serves the same
   query. This affects testnet as well as mainnet.
+
+## Command spellings
+
+Several commands accept two verbs for the same action, so whichever you reach
+for works. These are aliases, not separate commands:
+
+| Canonical | Also accepts |
+| --- | --- |
+| `account show` | `account get` |
+| `publication get` | `publication show` |
+| `entry get` | `entry show` |
+| `file get` | `file show` |
+| `config remove` | `config delete` |
+| `cap transfer` | `cap transfer-ownership` |
+| `entry read` | `entry download` |
+| `file download` | `file read` |
+| `entry scan` | `entry list --all` |
+
+`publication` also answers to `pub`.
 
 ## When uploads fail: the upload relay
 

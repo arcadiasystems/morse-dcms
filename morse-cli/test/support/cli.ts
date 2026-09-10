@@ -29,6 +29,8 @@ export interface RunOptions {
 	readonly configDir?: string;
 	/** Override the spawn timeout; live e2e needs longer for Walrus uploads. */
 	readonly timeoutMs?: number;
+	/** Text piped to the process's stdin; omitted leaves stdin closed. */
+	readonly stdin?: string;
 }
 
 async function spawn(
@@ -52,6 +54,10 @@ async function spawn(
 		...opts.env,
 	};
 	const proc = Bun.spawn([...cmd], {
+		stdin:
+			opts.stdin === undefined
+				? "ignore"
+				: new TextEncoder().encode(opts.stdin),
 		stdout: "pipe",
 		stderr: "pipe",
 		env,

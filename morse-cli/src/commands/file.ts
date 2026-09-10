@@ -636,6 +636,7 @@ export function registerFileCommands(program: Command): void {
 
 	const download = file
 		.command("download [file]")
+		.alias("read")
 		.description("Download a file's content; decrypts in place when encrypted")
 		.option("--out <path>", "Write content to a file instead of stdout")
 		.option(
@@ -666,6 +667,7 @@ export function registerFileCommands(program: Command): void {
 
 	file
 		.command("get <file>")
+		.alias("show")
 		.description("Fetch a file's on-chain metadata")
 		.action(async (target: string, _options, command: Command) => {
 			await runFileGet(await buildFilesReadContext(command), target);

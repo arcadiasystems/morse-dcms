@@ -43,6 +43,18 @@ Saved profile "testnet" (testnet).
 
 ## 2. Import your key
 
+Three ways to give the CLI a key. It is never accepted as a flag, because argv
+is visible in `ps` and shell history.
+
+- **Interactive**: run `morse account import` and paste at the hidden prompt.
+- **Piped**: `echo "$KEY" | morse account import`
+- **No keystore at all**: export `MORSE_PRIVATE_KEY` and skip the import; every
+  command picks it up.
+
+The first two store the key encrypted and need `MORSE_KEYSTORE_PASSWORD` (or an
+interactive password prompt).
+
+
 `account import` prompts for the secret key and a keystore password, both hidden.
 The key is encrypted at rest (scrypt + AES-256-GCM) and never stored in plaintext.
 

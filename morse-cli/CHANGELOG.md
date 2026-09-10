@@ -4,6 +4,18 @@ All notable changes to `@arcadiasystems/morse-cli` are documented here. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-09-10
+
+Usability pass. Nothing is renamed or removed; every existing spelling keeps working.
+
+### Added
+
+- **Verb aliases, so the word you guess is the word that works.** The command surface had grown four inconsistencies where one concept had two names depending on the noun: fetching one thing was `get` on publication, entry and file but `show` on account; deleting was `delete` everywhere except `config remove`; transferring was `transfer-ownership` on publication and file but `transfer` on cap; and reading content was `entry read` but `file download`, despite both taking `--out` and `--via-aggregator`.
+
+  Each now accepts both spellings: `account show|get`, `publication get|show`, `entry get|show`, `file get|show`, `config remove|delete`, `cap transfer|transfer-ownership`, `entry read|download`, `file download|read`. Aliases, not renames, so nothing published breaks.
+- **`entry list --all`** does what `entry scan` does. `scan` is accurate but undiscoverable; people look for `--all` and conclude pagination is unsupported. `scan` stays. Combining `--all` with `--limit` or `--cursor` is refused rather than silently ignoring one.
+- **`account import` reads a key piped on stdin.** Previously it required an interactive terminal or `MORSE_PRIVATE_KEY`, so the obvious scripted form failed outright. Still never a flag: argv is visible in `ps` and shell history. The error when no key can be found now names all three routes.
+
 ## [0.7.0] - 2026-09-09
 
 ### Added

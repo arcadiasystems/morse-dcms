@@ -49,6 +49,7 @@ type ListOptions = TargetOptions & {
 	limit?: string;
 	cursor?: string;
 	draftsOnly?: boolean;
+	all?: boolean;
 };
 type ScanOptions = TargetOptions & { draftsOnly?: boolean };
 type DeleteOptions = TargetOptions & { publisherCap?: string };
@@ -99,6 +100,16 @@ export async function runEntryList(
 	ctx: ReadContext,
 	options: ListOptions,
 ): Promise<void> {
+	// `scan` is the auto-paginated form, but nobody guesses that name; --all is
+	// where people look first. Same code path, two spellings.
+	if (options.all) {
+		if (options.limit !== undefined || options.cursor !== undefined) {
+			throw new UsageError(
+				"--all cannot be combined with --limit or --cursor.",
+			);
+		}
+		return runEntryScan(ctx, options);
+	}
 	const id = await resolvePublication(ctx, options.publication);
 	const collection = resolveCollection(ctx, options.collection);
 	const page = await ctx.reader.listEntries(id, collection, {
@@ -284,6 +295,7 @@ export function registerEntryCommands(program: Command): void {
 
 	const get = entry
 		.command("get <entryId>")
+		.alias("show")
 		.description("Fetch a single entry");
 	collectionOption(publicationOption(get)).action(
 		async (entryId: string, options: TargetOptions, command: Command) => {
@@ -296,6 +308,7 @@ export function registerEntryCommands(program: Command): void {
 		.description("List entries in a collection")
 		.option("--limit <n>", "Maximum results per page")
 		.option("--cursor <cursor>", "Continue from a previous page cursor")
+		.option("--all", "Fetch every page (same as `entry scan`)")
 		.option(
 			"--drafts-only",
 			"Show only entries with a pending (unpublished) draft",
@@ -346,6 +359,7 @@ export function registerEntryCommands(program: Command): void {
 
 	const read = entry
 		.command("read <entryId> [revisionIndex]")
+		.alias("download")
 		.description("Fetch a public entry's content to stdout or a file")
 		.option("--out <path>", "Write content to a file instead of stdout");
 	collectionOption(publicationOption(viaAggregatorOption(read))).action(

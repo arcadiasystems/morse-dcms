@@ -108,6 +108,18 @@ describe("morseConfig", () => {
 		expect(config.recipientFileEventOriginPackageId).toBe(config.packageId);
 	});
 
+	test("rejects an unrecognised network as a typo, not a custom deployment", () => {
+		// The missing-deployment error tells the caller to supply a packageId,
+		// which is wrong advice for a misspelling. Typed callers are protected by
+		// the Network union; JS callers and env-sourced values are not.
+		expect(() =>
+			morseConfig({ network: "mainet" as unknown as Network }),
+		).toThrow(/Unknown network "mainet"/);
+		expect(() => morseConfig({ network: "" as unknown as Network })).toThrow(
+			/Unknown network/,
+		);
+	});
+
 	test("throws ConfigurationError for localnet without overrides", () => {
 		expect(() => morseConfig({ network: "localnet" })).toThrow(
 			ConfigurationError,

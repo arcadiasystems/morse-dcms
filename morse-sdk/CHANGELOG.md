@@ -2,6 +2,14 @@
 
 All notable changes to `morse-sdk` will be documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 2026-09-10
+
+### Fixed
+
+- **A misspelled network now says so.** `morseConfig({ network: "mainet" })` fell through to the missing-deployment path and answered "Supply packageId, originalPackageId, and registryId for a custom deployment", which is wrong advice for a typo: it points the caller at configuring a fork when they meant `mainnet`. Unrecognised networks are now rejected up front with `Unknown network "mainet". Use one of: mainnet, testnet, localnet.`
+
+  Typed callers were already protected by the `Network` union, so this only ever bit JavaScript consumers and anyone passing a network read from an environment variable or config file, which is exactly where a typo is most likely and least visible.
+
 ## [0.7.0] - 2026-09-09
 
 ### Added

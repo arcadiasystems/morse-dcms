@@ -19,6 +19,9 @@ export const Network = {
 } as const;
 export type Network = (typeof Network)[keyof typeof Network];
 
+/** The networks `morseConfig` accepts; anything else is a caller mistake. */
+const KNOWN_NETWORKS: ReadonlySet<string> = new Set(Object.values(Network));
+
 // Default RPC endpoints
 
 /** Public Sui RPC endpoints per network. Override via `NetworkConfig.rpcUrl` if needed. */
@@ -286,6 +289,16 @@ export interface MorseConfigOptions {
  *   and `packageId` and `registryId` are not supplied as overrides.
  */
 export function morseConfig(options: MorseConfigOptions): NetworkConfig {
+	// Reject an unrecognised network before the deployment lookup. Without this
+	// a typo like "mainet" falls through to the missing-deployment error, which
+	// tells the caller to supply a custom packageId: actively wrong advice for
+	// what is really a spelling mistake. TypeScript catches it for typed
+	// callers, but not for JavaScript ones or a value read from env or config.
+	if (!KNOWN_NETWORKS.has(options.network)) {
+		throw new ConfigurationError(
+			`Unknown network "${options.network}". Use one of: ${[...KNOWN_NETWORKS].join(", ")}.`,
+		);
+	}
 	const deployment = KNOWN_DEPLOYMENTS[options.network];
 	const packageId = options.packageId ?? deployment?.packageId;
 	const originalPackageId =

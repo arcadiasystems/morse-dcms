@@ -62,3 +62,40 @@ describe("morse account", () => {
 		expect(res.code).toBe(2);
 	});
 });
+
+describe("morse account import from stdin", () => {
+	let dir: string;
+	beforeEach(async () => {
+		dir = await makeConfigDir("morse-stdin-");
+	});
+	afterEach(async () => {
+		await removeConfigDir(dir);
+	});
+
+	test("accepts a key piped on stdin", async () => {
+		// Piping is the natural scripted form and the first thing anyone tries;
+		// it used to fail outright. Still never a flag: argv leaks via ps.
+		const key = Ed25519Keypair.generate().getSecretKey();
+		await runCli(["config", "add", "t", "--network", "testnet"], {
+			configDir: dir,
+		});
+		const r = await runCli(["account", "import"], {
+			configDir: dir,
+			env: { MORSE_KEYSTORE_PASSWORD: "pw-123456" },
+			stdin: `${key}\n`,
+		});
+		expect(r.code).toBe(0);
+		expect(r.stdout).toContain("Imported account 0x");
+	});
+
+	test("empty stdin names all three ways to supply a key", async () => {
+		const r = await runCli(["account", "import"], {
+			configDir: dir,
+			env: { MORSE_KEYSTORE_PASSWORD: "pw-123456" },
+			stdin: "",
+		});
+		expect(r.code).not.toBe(0);
+		expect(r.stderr).toContain("pipe it on stdin");
+		expect(r.stderr).toContain("MORSE_PRIVATE_KEY");
+	});
+});

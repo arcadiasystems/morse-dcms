@@ -96,6 +96,38 @@ describe("runEntryList / runEntryScan", () => {
 		expect(captured.stdout()).toContain("#0 post (1 revisions)");
 	});
 
+	test("list --all takes the scan path, not a single page", async () => {
+		// `scan` is the auto-paginated form but nobody guesses the name, so --all
+		// is the discoverable spelling of the same behaviour.
+		const { ctx, captured } = readContext({
+			reader: {
+				scanEntries: async function* () {
+					yield entry([revision()]);
+					yield { ...entry([]), id: 1, name: "second" };
+				},
+			} as never,
+		});
+		await runEntryList(ctx, {
+			publication: ID,
+			collection: "posts",
+			all: true,
+		});
+		expect(captured.stdout()).toContain("#0 post");
+		expect(captured.stdout()).toContain("#1 second");
+	});
+
+	test("list --all refuses paging flags that contradict it", async () => {
+		const { ctx } = readContext();
+		await expect(
+			runEntryList(ctx, {
+				publication: ID,
+				collection: "posts",
+				all: true,
+				limit: "2",
+			}),
+		).rejects.toThrow(/--all cannot be combined/);
+	});
+
 	test("scan drains the async iterator", async () => {
 		const { ctx, captured } = readContext({
 			reader: {

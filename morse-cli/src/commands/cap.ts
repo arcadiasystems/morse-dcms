@@ -247,6 +247,7 @@ export function registerCapCommands(program: Command): void {
 
 	cap
 		.command("transfer <publisherCapId> <recipient>")
+		.alias("transfer-ownership")
 		.description("Transfer a PublisherCap object to another address")
 		.action(
 			async (

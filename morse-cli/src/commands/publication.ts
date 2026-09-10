@@ -201,6 +201,7 @@ export function registerPublicationCommands(program: Command): void {
 
 	publication
 		.command("get [publication]")
+		.alias("show")
 		.description(
 			"Fetch a publication (slug or id; default: the active publication)",
 		)
