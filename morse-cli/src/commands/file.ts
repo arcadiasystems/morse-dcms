@@ -102,6 +102,13 @@ export async function runFileRegister(
 		throw new UsageError("Pass --public or --encrypted, not both.");
 	}
 	const recipients = (options.recipient ?? []).map((r) => toSuiAddress(r));
+	// Same rule `file upload` enforces: a public file is readable by anyone, so
+	// a recipient list on one is a contradiction rather than a no-op.
+	if (options.public && recipients.length > 0) {
+		throw new UsageError(
+			"--recipient applies to encrypted files; a public file is readable by anyone.",
+		);
+	}
 	const blobId = toWalrusBlobId(options.blobId);
 	const size = parseByteSize(options.size, "--size");
 	const blobObjectId =

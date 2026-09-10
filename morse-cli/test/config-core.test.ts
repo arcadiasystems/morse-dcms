@@ -101,6 +101,22 @@ describe("runConfigAdd upload relay", () => {
 	});
 });
 
+describe("runConfigRemove confirmation", () => {
+	test("refuses without --yes in a non-interactive context", async () => {
+		// It deletes a profile plus its account, publication and collection
+		// links, and can silently reassign the default. Every other destructive
+		// command confirms; this one used to just do it.
+		await runConfigAdd(captureOutput().output, "doomed", {
+			network: "testnet",
+		});
+		await expect(
+			runConfigRemove(captureOutput().output, "doomed"),
+		).rejects.toThrow(/--yes|Cancelled/);
+		const cfg = await loadConfig();
+		expect(cfg.profiles.doomed).toBeDefined();
+	});
+});
+
 describe("runConfigUse / runConfigRemove", () => {
 	test("use rejects a missing profile", async () => {
 		const captured = captureOutput();
@@ -121,7 +137,7 @@ describe("runConfigUse / runConfigRemove", () => {
 	test("removing the default profile reassigns the default", async () => {
 		await runConfigAdd(captureOutput().output, "a", { network: "testnet" });
 		await runConfigAdd(captureOutput().output, "b", { network: "testnet" });
-		await runConfigRemove(captureOutput().output, "a"); // 'a' was the default
+		await runConfigRemove(captureOutput().output, "a", { yes: true }); // 'a' was the default
 		const cfg = await loadConfig();
 		expect(cfg.profiles.a).toBeUndefined();
 		expect(cfg.defaultProfile).toBe("b");
@@ -131,7 +147,7 @@ describe("runConfigUse / runConfigRemove", () => {
 		const add = captureOutput();
 		await runConfigAdd(add.output, "tnet", { network: "testnet" });
 		const captured = captureOutput();
-		await runConfigRemove(captured.output, "tnet");
+		await runConfigRemove(captured.output, "tnet", { yes: true });
 		expect(captured.stdout()).toContain('Removed profile "tnet"');
 		expect((await loadConfig()).profiles.tnet).toBeUndefined();
 	});

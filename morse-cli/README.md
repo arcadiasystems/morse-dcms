@@ -6,7 +6,7 @@ content entries from your terminal, signing with a locally encrypted key.
 Content is stored on [Walrus](https://walrus.xyz); private entries are encrypted
 with [Seal](https://github.com/MystenLabs/seal).
 
-> Status: v0.8.0. Mainnet and testnet are both supported for public content;
+> Status: v0.9.0. Mainnet and testnet are both supported for public content;
 > the command surface is stable.
 >
 > **Encrypted commands are testnet-only.** `entry add-encrypted`, `entry
@@ -281,13 +281,13 @@ also returns the raw `sealIdPrefix` and `sealNonce` as hex, usable as `--prefix`
 
 `file list` reconstructs the file set from contract events. `RecipientFile`
 objects have no on-chain owner index for the shared case, so listing is
-event-derived, not a direct query. By default the command reads events via
-`suix_queryEvents` on the configured Sui RPC. That endpoint is **deprecated**
-(Mysten is sunsetting it), so listing may degrade or stop working on the public
-RPC over time; point `--indexer-url <url>` at any source that speaks
-`suix_queryEvents` (a self-hosted indexer, a third-party endpoint) to stay in
-control. Results are best-effort and eventually consistent (subject to indexer
-lag and retention). Summary rows omit `blobId`/`blobObjectId`; add `--hydrate`
+event-derived, not a direct query. The command reads events from a Sui GraphQL
+endpoint, defaulting to the canonical Mysten one for the network. It used to use
+`suix_queryEvents` over JSON-RPC, which public fullnodes have since retired;
+`@mysten/sui`'s gRPC client exposes no event API, so GraphQL is the transport
+that remains. Point `--indexer-url <url>` at a different GraphQL endpoint (a
+self-hosted indexer, a third-party endpoint) to stay in control. Results are
+best-effort and eventually consistent (subject to indexer lag and retention). Summary rows omit `blobId`/`blobObjectId`; add `--hydrate`
 to fetch the full record per file (one read each) when you need them.
 
 ## Output and scripting
@@ -348,9 +348,10 @@ to fetch the full record per file (one read each) when you need them.
   an operator, use the SDK directly for now.
 - `localnet` is accepted as a network but has no canonical deployment, so it
   fails at startup unless you point the SDK at your own package and registry.
-- `file list` walks a JSON-RPC event query that public Sui fullnodes have
-  retired, so it needs `--indexer-url` pointing at a source that serves the same
-  query. This affects testnet as well as mainnet.
+- `file list` reads events from a Sui GraphQL endpoint, defaulting to the
+  canonical one for the network. `--indexer-url` points it at a different
+  GraphQL endpoint. There is no canonical endpoint for localnet, so listing
+  there requires the flag.
 
 ## Command spellings
 

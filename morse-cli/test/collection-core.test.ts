@@ -4,6 +4,7 @@ import {
 	runCollectionDelete,
 	runCollectionList,
 } from "../src/commands/collection.ts";
+import { updateActiveProfile } from "../src/config/active.ts";
 import { loadConfig } from "../src/config/store.ts";
 import { useTempConfigHome } from "./support/config-home.ts";
 import { readContext, writeContext } from "./support/context.ts";
@@ -48,7 +49,12 @@ describe("runCollectionList", () => {
 
 describe("runCollectionCreate", () => {
 	test("delegates with the storage mode and selects the collection", async () => {
-		const { ctx, captured } = writeContext({ reader: readerWithCaps() });
+		// The target must be the active publication for selection to happen;
+		// collection names are scoped per publication.
+		const { ctx, captured } = writeContext({
+			reader: readerWithCaps(),
+			settings: { publication: ID },
+		});
 		await runCollectionCreate(
 			ctx,
 			"posts",
@@ -97,12 +103,46 @@ describe("runCollectionDelete", () => {
 
 	test("with --yes deletes and clears the active collection when it matches", async () => {
 		const { ctx, captured } = writeContext({
-			settings: { collection: "posts" },
+			settings: { publication: ID, collection: "posts" },
 			reader: readerWithCaps(),
 		});
+		// Seed a profile so "cleared" is observable rather than vacuously absent.
+		await updateActiveProfile({}, { publication: ID, collection: "posts" });
 		await runCollectionDelete(ctx, "posts", { publication: ID }, { yes: true });
 		expect(ops.deleteCollection).toHaveBeenCalledTimes(1);
 		expect(captured.stdout()).toContain('Deleted collection "posts"');
+		const cfg = await loadConfig();
+		expect(cfg.profiles.default?.collection).toBeUndefined();
+	});
+
+	test("does not clear an active collection belonging to another publication", async () => {
+		// Collection names are per-publication. Matching on name alone wiped a
+		// still-valid selection when a same-named collection was deleted from an
+		// unrelated publication.
+		const other = `0x${"2".repeat(64)}`;
+		const { ctx } = writeContext({
+			settings: { publication: other, collection: "posts" },
+			reader: readerWithCaps(),
+		});
+		await updateActiveProfile({}, { publication: other, collection: "posts" });
+		await runCollectionDelete(ctx, "posts", { publication: ID }, { yes: true });
+		const cfg = await loadConfig();
+		expect(cfg.profiles.default?.collection).toBe("posts");
+	});
+
+	test("does not select a collection created under a non-active publication", async () => {
+		const other = `0x${"2".repeat(64)}`;
+		const { ctx, captured } = writeContext({
+			settings: { publication: other },
+			reader: readerWithCaps(),
+		});
+		await runCollectionCreate(
+			ctx,
+			"posts",
+			{ publication: ID, mode: "blob" },
+			{},
+		);
+		expect(captured.stdout()).not.toContain("active collection");
 		const cfg = await loadConfig();
 		expect(cfg.profiles.default?.collection).toBeUndefined();
 	});

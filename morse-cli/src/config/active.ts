@@ -24,9 +24,15 @@ export async function updateActiveProfile(
 	const profileName =
 		opts.profile ?? env.MORSE_PROFILE ?? config.defaultProfile;
 	const existing = config.profiles[profileName];
-	const network = coerceNetwork(
-		opts.network ?? env.MORSE_NETWORK ?? existing?.network ?? "testnet",
-	);
+	// An existing profile keeps its stored network. `--network` and
+	// MORSE_NETWORK are per-invocation overrides, not edits: without this,
+	// a one-off `--network testnet use --clear` silently and permanently
+	// rewrote a mainnet profile, and every later command targeted the wrong
+	// chain with no indication anything had changed. Only a profile being
+	// created here takes the resolved network, since it has none yet.
+	const network =
+		existing?.network ??
+		coerceNetwork(opts.network ?? env.MORSE_NETWORK ?? "testnet");
 	const merged: Profile = { ...existing, network, ...patch };
 	const profiles = { ...config.profiles, [profileName]: merged };
 	const defaultProfile =

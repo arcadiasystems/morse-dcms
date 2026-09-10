@@ -44,6 +44,18 @@ export async function runCollectionList(
 	});
 }
 
+/**
+ * Whether `target` is the publication the profile currently has active.
+ * Collection names are per-publication, so active-collection state is only
+ * meaningful when the two agree.
+ */
+function isActivePublication(
+	ctx: { settings: { publication?: string } },
+	target: string,
+): boolean {
+	return ctx.settings.publication === target;
+}
+
 export async function runCollectionCreate(
 	ctx: WriteContext,
 	name: string,
@@ -72,10 +84,16 @@ export async function runCollectionCreate(
 		storageMode,
 		signal: ctx.signal,
 	});
-	// Select the collection so follow-up entry commands need no -C.
-	await updateActiveProfile(gopts, { collection: name });
+	// Select it so follow-up entry commands need no -C, but only when it was
+	// created under the active publication. Collection names are scoped per
+	// publication, so selecting one created under an explicit -P elsewhere
+	// would pair the active publication with a collection it does not contain.
+	const selected = isActivePublication(ctx, id);
+	if (selected) {
+		await updateActiveProfile(gopts, { collection: name });
+	}
 	ctx.output.result(
-		`Created collection "${name}". Selected as the active collection. (tx: ${result.digest})`,
+		`Created collection "${name}".${selected ? " Selected as the active collection." : ""} (tx: ${result.digest})`,
 		result,
 	);
 }
@@ -118,7 +136,10 @@ export async function runCollectionDelete(
 		name,
 		signal: ctx.signal,
 	});
-	if (ctx.settings.collection === name) {
+	// Same scoping as create: only clear the active collection when the one we
+	// deleted is actually that one, publication included. Matching on name
+	// alone cleared a still-valid selection belonging to another publication.
+	if (ctx.settings.collection === name && isActivePublication(ctx, id)) {
 		await updateActiveProfile(gopts, { collection: undefined });
 	}
 	ctx.output.result(

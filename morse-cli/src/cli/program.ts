@@ -48,7 +48,7 @@ export function buildProgram(): Command {
 		)
 		.option(
 			"--max-tip <mist>",
-			`Cap the per-upload relay tip, in MIST (default: ${DEFAULT_MAX_TIP_MIST}) [env: MORSE_WALRUS_MAX_TIP]`,
+			`Cap the per-upload relay tip, in MIST (default: ${DEFAULT_MAX_TIP_MIST}). Only applies with --upload-relay [env: MORSE_WALRUS_MAX_TIP]`,
 		)
 		.option("--json", "Output machine-readable JSON on stdout")
 		.option("-q, --quiet", "Suppress progress and informational output")

@@ -21,7 +21,6 @@ import {
 	type WalrusReadAdapter,
 } from "@arcadiasystems/morse-sdk";
 import { SuiGrpcClient } from "@mysten/sui/grpc";
-import { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import type { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import type { Command } from "commander";
 import {
@@ -35,6 +34,7 @@ import { accountAddress, resolveSigner } from "../keystore/source.ts";
 import { CliError } from "./errors.ts";
 import type { EventQuerier } from "./events.ts";
 import { ExitCode } from "./exit-codes.ts";
+import { canonicalGraphqlUrl, GraphqlEventQuerier } from "./graphql-events.ts";
 import type { Output } from "./output.ts";
 import { sigintSignal } from "./prompts.ts";
 import { globalOptions, outputFor } from "./runtime.ts";
@@ -370,18 +370,23 @@ export async function buildFileListContext(
 			ExitCode.Usage,
 		);
 	}
-	const events = new SuiJsonRpcClient({
-		network: base.settings.network,
-		url: opts.indexerUrl ?? base.config.rpcUrl,
-	});
+	// GraphQL, not JSON-RPC: public fullnodes retired suix_queryEvents, and
+	// @mysten/sui's gRPC client exposes no event API at all, so this is the only
+	// transport left that can answer "every event of this Move type".
+	const indexerUrl =
+		opts.indexerUrl ?? canonicalGraphqlUrl(base.settings.network);
+	if (indexerUrl === undefined) {
+		throw new CliError(
+			`File listing has no canonical event source for ${base.settings.network}. Pass --indexer-url pointing at a Sui GraphQL endpoint.`,
+			ExitCode.Usage,
+		);
+	}
 	return {
 		...base,
 		filesReader: RpcRecipientFilesReader.fromConfig(base.client, {
 			packageId: base.config.packageId,
 		}),
-		// queryEvents satisfies EventQuerier structurally; the only divergence is
-		// the opaque pagination cursor, which the paginator round-trips untouched.
-		events: events as unknown as EventQuerier,
+		events: new GraphqlEventQuerier(indexerUrl),
 		eventTypes: buildRecipientFileEventTypes(originPackageId),
 	};
 }

@@ -1,12 +1,14 @@
 /**
  * Event fetching for file listing. The SDK ships pure reconcile helpers but no
- * event source; this is the consumer side. It walks `suix_queryEvents` (via the
- * JSON-RPC client) for a Move event type until the pages run out, mapping each
- * event to the `RecipientFileEventInput` shape the reconcile helpers consume.
+ * event source; this is the consumer side. It walks one Move event type until
+ * the pages run out, mapping each event to the `RecipientFileEventInput` shape
+ * the reconcile helpers consume.
  *
- * This is a deprecated Sui endpoint (Mysten is sunsetting `suix_queryEvents`);
- * the listing commands accept `--indexer-url` so users can point at any source
- * that speaks the same query. Kept behind a narrow interface so the heavy
+ * The interface is still shaped like `suix_queryEvents` because that is what it
+ * originally wrapped. Public Sui fullnodes have since retired JSON-RPC, so the
+ * shipped implementation is `GraphqlEventQuerier`; the shape is kept because it
+ * is a reasonable narrow contract and lets `--indexer-url` point at anything
+ * that can answer the same question. Kept behind this interface so the heavy
  * client stays in `cli/context.ts` and the paginator is unit-testable.
  */
 
@@ -24,7 +26,7 @@ interface EventPage {
 	readonly nextCursor: unknown;
 }
 
-/** Minimal `suix_queryEvents` surface; satisfied by `@mysten/sui` SuiJsonRpcClient. */
+/** Narrow event-query surface; implemented by `GraphqlEventQuerier`. */
 export interface EventQuerier {
 	queryEvents(params: {
 		query: { MoveEventType: string };

@@ -4,6 +4,32 @@ All notable changes to `@arcadiasystems/morse-cli` are documented here. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-09-10
+### Fixed (config state, found in a whole-package bug hunt)
+
+- **A one-off `--network` permanently rewrote the profile's stored network.** `updateActiveProfile` resolved the network the same way `resolveSettings` does (flag > env > stored > default) and then wrote the result back, even though the caller was only changing the account, publication or collection. So `morse --network testnet use --clear` against a mainnet profile left `"network": "testnet"` on disk, and every later command silently targeted the wrong chain with nothing said. Every active-state mutation was affected: `account import`, `account use`, `use`, `use --clear`, `publication create`, `publication delete`, `collection create`, `collection delete`. An existing profile now keeps its stored network; only a profile being created takes the resolved one. Flags and env vars are per-invocation overrides again, as `CLAUDE.md`'s precedence rule always said.
+- **`config add` on an existing profile destroyed every field it was not given.** It replaced the profile object instead of merging, so `config add default --network testnet` on a profile that had an `rpc`, `uploadRelay`, `account`, `publication` or `collection` silently dropped all of them. The command has always been documented as "create or **update**". It merges now.
+- **`config remove` deleted a profile with no confirmation.** Every other destructive command confirms and honours `--yes`; this one took no `GlobalOptions` at all, so there was not even a flag to skip. It deletes a profile plus its account, publication and collection links and can silently reassign the default, so it now says which profile and, when relevant, what the default becomes.
+- **Collection selection ignored which publication a collection belonged to.** `collection create` selected the new collection as active even when created under an explicit `-P` pointing at some other publication, pairing the active publication with a collection it does not contain. `collection delete` had the mirror bug, clearing a still-valid active collection whenever a same-named one was deleted from an unrelated publication. Collection names are scoped per publication, so both now check the publication too. The existing test asserted the old behaviour and passed vacuously, with no profile written; it has been given a real one and joined by cases for both mismatch directions.
+- `file register --public --recipient` is now refused, matching `file upload`. A public file is readable by anyone, so a recipient list on one is a contradiction rather than a no-op.
+- `--max-tip` help text says it only applies alongside `--upload-relay`.
+
+
+### Fixed
+
+- **`morse file list` works again, on every network.** It walked `suix_queryEvents` over JSON-RPC, which public Sui fullnodes have retired: they answer every JSON-RPC method with "Method not found". The command has been failing on testnet and mainnet alike unless the user passed `--indexer-url` at a source that still spoke the old protocol.
+
+  gRPC is the documented replacement for most Sui reads, but `@mysten/sui`'s gRPC client exposes no event API at all, so it could not be the answer here. Events now come from a Sui GraphQL endpoint, defaulting to the canonical Mysten one for the network. `--indexer-url` still overrides it and now means "a Sui GraphQL endpoint".
+
+  The querier is hand-rolled over `fetch` against one query with one cursor, rather than pulling in a GraphQL client, keeping the dependency surface as-is. A GraphQL error or a non-2xx response raises a network `CliError` (exit 5) rather than an empty page, because reporting "No files" for a broken endpoint is the worst available answer.
+
+  Verified live: a file uploaded to testnet appears in `file list` with no `--indexer-url`, `--hydrate` and `--json` both work against it, and deleting the file reconciles it back out of the listing.
+
+### Changed
+
+- `--indexer-url` now expects a Sui GraphQL endpoint rather than a `suix_queryEvents` JSON-RPC source. Anyone relying on the old flag against a JSON-RPC indexer needs a GraphQL one instead; the previous behaviour could not have been working against a public fullnode regardless.
+- Listing on localnet requires `--indexer-url`, since there is no canonical GraphQL endpoint for it. Previously it would have used the local RPC URL and failed.
+
 ## [0.8.0] - 2026-09-10
 
 Usability pass. Nothing is renamed or removed; every existing spelling keeps working.

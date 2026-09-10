@@ -2,9 +2,11 @@
 
 import type { Command } from "commander";
 
-import { UsageError } from "../cli/errors.ts";
+import { cancelled, UsageError } from "../cli/errors.ts";
 import type { Output } from "../cli/output.ts";
-import { outputFor } from "../cli/runtime.ts";
+import type { GlobalOptions } from "../cli/program.ts";
+import { confirm, sigintSignal } from "../cli/prompts.ts";
+import { globalOptions, outputFor } from "../cli/runtime.ts";
 import { configFilePath } from "../config/paths.ts";
 import { resolveUploadRelay } from "../config/profile.ts";
 import { type Config, coerceNetwork } from "../config/schema.ts";
@@ -33,9 +35,13 @@ export async function runConfigAdd(
 	// The stored value stays as typed; this is validation, not normalisation.
 	resolveUploadRelay(options.uploadRelay, network);
 	const cfg = await loadConfig();
+	// Merge, do not replace. "Create or update" implies update, and a bare
+	// `config add <existing> --network x` used to wipe the profile's rpc,
+	// uploadRelay, account, publication and collection without a word.
 	const profiles = {
 		...cfg.profiles,
 		[name]: {
+			...cfg.profiles[name],
 			network,
 			...(options.rpc === undefined ? {} : { rpc: options.rpc }),
 			...(options.uploadRelay === undefined
@@ -69,6 +75,8 @@ export async function runConfigUse(
 export async function runConfigRemove(
 	output: Output,
 	name: string,
+	gopts: Pick<GlobalOptions, "yes"> = {},
+	signal?: AbortSignal,
 ): Promise<void> {
 	const cfg = await loadConfig();
 	requireProfile(cfg, name);
@@ -77,6 +85,20 @@ export async function runConfigRemove(
 		cfg.defaultProfile === name
 			? (Object.keys(rest)[0] ?? "default")
 			: cfg.defaultProfile;
+	// Every other destructive command confirms; this one deletes a profile and
+	// its account, publication and collection links, and silently reassigns the
+	// default when it was the default. Say so before doing it.
+	const reassigns = cfg.defaultProfile === name && defaultProfile !== name;
+	const proceed = await confirm(
+		`Delete profile "${name}"?${reassigns ? ` The default becomes "${defaultProfile}".` : ""}`,
+		{
+			assumeYes: Boolean(gopts.yes),
+			...(signal === undefined ? {} : { signal }),
+		},
+	);
+	if (!proceed) {
+		cancelled();
+	}
 	await saveConfig({ ...cfg, profiles: rest, defaultProfile });
 	output.result(`Removed profile "${name}".`, {
 		removed: name,
@@ -138,7 +160,12 @@ export function registerConfigCommands(program: Command): void {
 		.alias("delete")
 		.description("Delete a profile")
 		.action(async (name: string, _options, command: Command) => {
-			await runConfigRemove(outputFor(command), name);
+			await runConfigRemove(
+				outputFor(command),
+				name,
+				globalOptions(command),
+				sigintSignal(),
+			);
 		});
 }
 
