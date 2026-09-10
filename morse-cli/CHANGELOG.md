@@ -4,6 +4,18 @@ All notable changes to `@arcadiasystems/morse-cli` are documented here. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-09-10
+
+### Added
+
+- **Encrypted commands work on mainnet when you bring a Seal credential.** Mainnet pins no key servers because every operator there is commercial, and the CLI previously had no way to be pointed at one, so `entry add-encrypted`, `entry decrypt` and `file upload --encrypt` simply could not run there.
+
+  `MORSE_SEAL_API_KEY` supplies a credential for Mysten's committee, whose object id and aggregator the SDK already exports; `MORSE_SEAL_API_KEY_NAME` overrides the header for operators that want something other than `X-API-Key`. `MORSE_SEAL_KEY_SERVERS` takes a JSON array of `{ objectId, weight }` for a non-committee operator and wins when both are set. Neither is a flag: a credential in argv leaks through `ps` and shell history, the same reason the signing key is not one.
+
+- **The credential is checked before anything is encrypted.** Seal reads key-server public keys from chain but fetches key shares from the operator, so a wrong credential would let `encrypt` succeed and fail only at `decrypt`, leaving the user paying to store content nobody can read. That exact shape shipped once as the mainnet Seal default, and an unchecked API key would have reintroduced it user-side. Only an explicit `401` or `403` refuses; any other outcome, including the check being unreachable, proceeds, because a flaky pre-flight must never block a working key.
+
+  Verified live: a full encrypt and decrypt round trip on testnet through `MORSE_SEAL_KEY_SERVERS` (the same code path a credential takes), and a bogus `MORSE_SEAL_API_KEY` refused against the real Mysten aggregator with the pre-flight message rather than producing unreadable ciphertext.
+
 ## [0.9.0] - 2026-09-10
 ### Fixed (config state, found in a whole-package bug hunt)
 

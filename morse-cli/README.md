@@ -6,15 +6,14 @@ content entries from your terminal, signing with a locally encrypted key.
 Content is stored on [Walrus](https://walrus.xyz); private entries are encrypted
 with [Seal](https://github.com/MystenLabs/seal).
 
-> Status: v0.9.0. Mainnet and testnet are both supported for public content;
+> Status: v0.10.0. Mainnet and testnet are both supported for public content;
 > the command surface is stable.
 >
-> **Encrypted commands are testnet-only.** `entry add-encrypted`, `entry
-> decrypt`, `file upload --encrypt` (and `--recipient`, which implies it), and
-> decrypting a downloaded file all need Seal key servers. Testnet has an open
-> set; mainnet does not, because every mainnet Seal operator is commercial, and
-> the CLI has no flag or env var for supplying one. These commands exit 2 on
-> mainnet with an explanation.
+> **Encrypted commands need Seal key servers.** Testnet has an open set, so
+> they work there out of the box. Mainnet has none, because every mainnet Seal
+> operator is commercial: supply your own credential via `MORSE_SEAL_API_KEY`
+> (see [Seal on mainnet](#seal-on-mainnet)), or these commands exit 2 with an
+> explanation.
 >
 > Everything that does not encrypt works on both networks, including
 > `file upload --public`, `file download` of a public file, and the whole
@@ -114,6 +113,9 @@ Environment variables (override the config file, overridden by flags):
 | `MORSE_NETWORK` | `--network` | `mainnet`, `testnet`, or `localnet`. |
 | `MORSE_WALRUS_UPLOAD_RELAY` | `--upload-relay` | Upload through a Walrus relay instead of the direct fanout. `auto` picks the canonical relay for the network. |
 | `MORSE_WALRUS_MAX_TIP` | `--max-tip` | Cap the relay's per-upload tip, in MIST. Defaults to 10000000 (0.01 SUI). |
+| `MORSE_SEAL_API_KEY` | (none) | Credential for Mysten's Seal committee, enabling encrypted commands on mainnet. |
+| `MORSE_SEAL_API_KEY_NAME` | (none) | Header name for that credential. Defaults to `X-API-Key`. |
+| `MORSE_SEAL_KEY_SERVERS` | (none) | JSON array of `{ objectId, weight }` for a non-committee Seal operator. Wins over `MORSE_SEAL_API_KEY`. |
 | `MORSE_RPC_URL` | `--rpc` | Sui RPC URL override. |
 | `MORSE_ADDRESS` | (no flag) | Active account address, selecting which keystore to use. |
 | `MORSE_PUBLICATION` | `-P, --publication` | Active publication id. |
@@ -371,6 +373,41 @@ for works. These are aliases, not separate commands:
 | `entry scan` | `entry list --all` |
 
 `publication` also answers to `pub`.
+
+## Seal on mainnet
+
+Encrypted commands need Seal key servers. Testnet pins an open set, so they
+work there with no setup. Mainnet pins none: every mainnet Seal operator is
+commercial, so you bring your own.
+
+The usual route is a credential for Mysten's decentralized committee, which
+the CLI already knows the object id and aggregator for:
+
+```sh
+export MORSE_SEAL_API_KEY=your-key-here
+morse --network mainnet file upload ./secret.pdf --encrypt -r 0xrecipient
+```
+
+For an operator that is not the committee, give the servers directly:
+
+```sh
+export MORSE_SEAL_KEY_SERVERS='[{"objectId":"0x...","weight":1}]'
+```
+
+Entries may carry `aggregatorUrl`, `apiKeyName` and `apiKey`; Seal requires
+`aggregatorUrl` on a committee-mode server and forbids it on an independent
+one. `MORSE_SEAL_KEY_SERVERS` takes precedence when both are set.
+
+**Neither is a flag, deliberately.** A credential in argv leaks through `ps`
+and shell history, the same reason the signing key is never a flag either.
+
+Before encrypting anything, the CLI checks the credential against the operator
+and refuses if it comes back `401` or `403`. This matters more than it looks:
+Seal reads key-server public keys from chain but fetches key *shares* from the
+operator, so a bad credential would let encryption succeed and fail only at
+decryption, leaving you paying to store content nobody can ever read. Any other
+outcome, including the check being offline, proceeds normally, because a flaky
+check must never block a working key.
 
 ## When uploads fail: the upload relay
 

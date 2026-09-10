@@ -29,6 +29,10 @@ import {
 	resolveSettings,
 	resolveUploadRelay,
 } from "../config/profile.ts";
+import {
+	assertSealCredentialAccepted,
+	sealServersFromEnv,
+} from "../config/seal.ts";
 import { loadConfig } from "../config/store.ts";
 import { accountAddress, resolveSigner } from "../keystore/source.ts";
 import { CliError } from "./errors.ts";
@@ -156,21 +160,29 @@ export async function buildContentContext(
 }
 
 /**
- * Refuse Seal-backed commands on a network with no canonical key servers.
+ * Build a Seal adapter, preferring key servers supplied by the operator.
  *
- * The SDK raises its own `ConfigurationError` here, but its advice ("pass
- * seal.serverConfigs", "start from MAINNET_SEAL_COMMITTEE") names an API the
- * CLI does not expose: there is no flag or env var for key servers, so on
- * mainnet these commands cannot work at all. Say that instead of forwarding
- * guidance the reader cannot act on.
+ * `morseConfig` pins an open allowlist on testnet and nothing on mainnet,
+ * where every operator is commercial. `MORSE_SEAL_API_KEY` /
+ * `MORSE_SEAL_KEY_SERVERS` let someone who has credentials use them; without
+ * either, a network with no pinned servers gets a CLI-shaped refusal rather
+ * than the SDK's, whose advice names an API the CLI does not expose.
  */
-function assertSealAvailable(config: NetworkConfig): void {
-	if (config.sealKeyServers.length > 0) {
-		return;
+function buildSeal(
+	config: NetworkConfig,
+	client: SuiGrpcClient,
+): DefaultSealAdapter {
+	const fromEnv = sealServersFromEnv();
+	if (fromEnv === undefined && config.sealKeyServers.length === 0) {
+		throw new CliError(
+			`Encrypted commands are not available on ${config.network}: it pins no Seal key servers, because every operator there is commercial. Set MORSE_SEAL_API_KEY if you have a credential for Mysten's committee, or MORSE_SEAL_KEY_SERVERS to a JSON array for another operator. Otherwise use --network testnet.`,
+			ExitCode.Usage,
+		);
 	}
-	throw new CliError(
-		`Encrypted commands are not available on ${config.network}. Seal key servers there are operated commercially and the CLI cannot yet be pointed at one. Use --network testnet, or drive @arcadiasystems/morse-sdk directly with your own seal.serverConfigs.`,
-		ExitCode.Usage,
+	return DefaultSealAdapter.fromMorseConfig(
+		config,
+		fromEnv === undefined ? {} : { serverConfigs: fromEnv.servers },
+		client,
 	);
 }
 
@@ -213,6 +225,12 @@ export async function buildEncryptContext(
 	command: Command,
 ): Promise<EncryptContext> {
 	const ctx = await buildContentContext(command);
+	// Before anything is encrypted or paid for: a credential the operator
+	// already refuses would still let encrypt succeed and only fail at decrypt.
+	const fromEnv = sealServersFromEnv();
+	if (fromEnv !== undefined) {
+		await assertSealCredentialAccepted(fromEnv);
+	}
 	return { ...ctx, seal: lazySeal(ctx) };
 }
 
@@ -283,8 +301,7 @@ export async function buildDecryptContext(
 			ExitCode.Usage,
 		);
 	}
-	assertSealAvailable(base.config);
-	const seal = DefaultSealAdapter.fromMorseConfig(base.config, {}, base.client);
+	const seal = buildSeal(base.config, base.client);
 	return {
 		...base,
 		keypair,
@@ -340,12 +357,7 @@ export async function buildFileDownloadContext(
 function lazySeal(base: ReadContext): () => DefaultSealAdapter {
 	let adapter: DefaultSealAdapter | undefined;
 	return () => {
-		assertSealAvailable(base.config);
-		adapter ??= DefaultSealAdapter.fromMorseConfig(
-			base.config,
-			{},
-			base.client,
-		);
+		adapter ??= buildSeal(base.config, base.client);
 		return adapter;
 	};
 }
