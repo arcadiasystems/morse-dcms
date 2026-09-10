@@ -40,13 +40,17 @@ morse-sdk is built and tested against specific minor versions of its Mysten subs
 
 | morse-sdk | `@mysten/sui` | `@mysten/walrus` | `@mysten/seal` | Sui network | Verified  |
 | --------- | ------------- | ---------------- | -------------- | ----------- | --------- |
+| 0.7.x     | 2.16.2-2.16.x | 1.1.6-1.1.x      | 1.1.3-1.1.x    | testnet     | 2026-09-09 |
+| 0.6.x     | 2.16.2-2.16.x | 1.1.6-1.1.x      | 1.1.3-1.1.x    | testnet     | 2026-09-09 |
 | 0.5.x     | 2.16.2-2.16.x | 1.1.6-1.1.x      | 1.1.3-1.1.x    | testnet     | 2026-06-05 |
 | 0.4.x     | 2.16.2-2.16.x | 1.1.6-1.1.x      | 1.1.3-1.1.x    | testnet     | 2026-06-05 |
 | 0.1.x     | 2.16.2-2.16.x | 1.1.6-1.1.x      | 1.1.3-1.1.x    | testnet     | 2026-05-10 |
 
-Mysten ships breaking changes inside major version boundaries. Newer minors (e.g. `@mysten/walrus@1.2.x`, `@mysten/sui@2.17+`) are outside the verified ranges and may produce runtime errors; morse-sdk needs a coordinated bump and re-verification before a new Mysten minor is supported. Pin via `bun add @arcadiasystems/morse-sdk@~0.4.0` if you want patch updates without surprise minors.
+Mysten ships breaking changes inside major version boundaries. Newer minors (e.g. `@mysten/walrus@1.2.x`, `@mysten/sui@2.17+`) are outside the verified ranges and may produce runtime errors; morse-sdk needs a coordinated bump and re-verification before a new Mysten minor is supported. Pin via `bun add @arcadiasystems/morse-sdk@~0.7.0` if you want patch updates without surprise minors.
 
-The verification protocol is documented in [`CONTRIBUTING.md`](https://github.com/arcadiasystems/morse-dcms/blob/main/morse-sdk/CONTRIBUTING.md): every Mysten dep bump runs the full `scripts/phase-N-*.ts` smoke suite against testnet before the bump lands. The `Sui network` column records where that paid smoke suite actually ran, which is why it still reads `testnet` for 0.5.x even though mainnet addresses ship. `TESTED_SUBSTRATE.suiNetwork` reports the same thing programmatically.
+The verification protocol is documented in [`CONTRIBUTING.md`](https://github.com/arcadiasystems/morse-dcms/blob/main/morse-sdk/CONTRIBUTING.md): every Mysten dep bump runs the full `scripts/phase-N-*.ts` smoke suite before the bump lands.
+
+The `Sui network` column records where the suite passes **in full**, which is testnet. Most of it also passes on mainnet: publications, publisher caps, collections, Walrus blob and quilt uploads, and the entry lifecycle in both collection modes were all verified against live mainnet on 2026-09-09. The two Seal phases cannot run there, because mainnet has no key servers this SDK can reach without commercial credentials, so mainnet has no fully green run to record. `TESTED_SUBSTRATE.suiNetwork` reports the same thing programmatically.
 
 ### Runtime requirements
 
@@ -270,6 +274,7 @@ The full public surface, grouped by concern. Every export carries a JSDoc on its
 | `reader.scanEntries` | Async-iterator over every entry in a collection. |
 | `RpcRecipientFilesReader.fromMorseConfig(config, client)` | Construct a reader for the `recipient_file` module. |
 | `filesReader.getRecipientFile(id)` | Live single-object read (parses embedded `members`, blob refs). |
+| `filesReader.getRecipientFileSealPrefix(id)` | The file's Seal id prefix, or `null`. The only reliable "is this encrypted" signal. Costs an extra round trip, so it is a separate call. |
 | `buildRecipientFileEventTypes(originPackageId)` | Fully-qualified event type strings for the `RecipientFile*` events; pass `config.recipientFileEventOriginPackageId`. |
 | `reconcileRecipientFilesOwnedBy(events, address, eventTypes)` / `reconcileRecipientFilesAccessibleBy(...)` | Pure event-reconciliation helpers — bring your own indexer, get current file sets back. |
 

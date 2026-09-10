@@ -36,7 +36,9 @@ All four gates must pass on every PR. The repository uses [biome](https://biomej
 ## Tests
 
 - Unit tests live alongside the source as `*.test.ts`. Mocks use `@bun:test`'s `mock(...)` helper. Deterministic test fixtures (fixed-secret keypairs, synthetic addresses ending in `0x...0001`-style padding) — no `Math.random()`, no `crypto.getRandomValues()`.
-- Smoke scripts in `scripts/` exercise live testnet end-to-end. They cost real SUI and (from phase-5 onward) WAL. Run them when a change touches the Mysten substrate or could regress on-chain behavior.
+- Smoke scripts in `scripts/` exercise a live network end-to-end. They cost real SUI and (from phase-5 onward) WAL. Run them when a change touches the Mysten substrate or could regress on-chain behavior.
+- `MORSE_NETWORK` selects the network (default testnet); mainnet additionally requires `MORSE_ALLOW_MAINNET=1`, because there the cost is real. `WALRUS_UPLOAD_RELAY=1` routes uploads through the canonical relay instead of the direct fanout, which is what to reach for when phases 5 onward fail with `NotEnoughBlobConfirmationsError` on an otherwise healthy network.
+- Phases 7 and 8 cannot pass on mainnet: they need Seal key servers, and every mainnet operator is commercial. A full green run is testnet-only until that changes.
 - Cause-preservation test in `default-adapter.test.ts` locks in the contract that consumers can `instanceof`-narrow upstream errors through `MorseError.cause`. Keep this passing.
 
 ## Bumping the Mysten substrate

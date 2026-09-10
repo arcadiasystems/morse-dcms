@@ -2,6 +2,18 @@
 
 All notable changes to `morse-sdk` will be documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.2] - 2026-09-10
+
+Documentation accuracy pass. No behaviour changes.
+
+### Fixed
+
+- **`getRecipientFileSealPrefix` was absent from the API reference.** It shipped in 0.7.0 as the only reliable way to tell an encrypted `RecipientFile` from a public one, added precisely because `members` cannot serve that purpose (the contract auto-includes the owner, so it is never empty). A reader of the README had no way to discover it, which is how the same trap reached morse-cli in the first place. Now listed under the reader table.
+- **Compatibility table stopped at 0.5.x** and the pin example still suggested `~0.4.0`. Adds 0.6.x and 0.7.x rows and corrects the pin.
+- **The note under that table explained the `Sui network` column with reasoning that predated the mainnet smokes.** It said the column reads `testnet` "even though mainnet addresses ship", implying mainnet was simply unverified. It now says what is actually true: publications, publisher caps, collections, Walrus blob and quilt uploads, and the entry lifecycle in both collection modes were verified against live mainnet on 2026-09-09, and the column reads testnet only because the two Seal phases cannot run on mainnet without commercial credentials, so no fully green mainnet run exists to record.
+- `TESTED_SUBSTRATE.verifiedOn` was four months stale at `2026-05-10`; it is now `2026-09-09`. `suiNetwork` stays `"testnet"` and its doc comment now explains that this records where the suite passes in full, not that mainnet is untested.
+- `CONTRIBUTING.md` described the smoke suite as testnet-only, predating `MORSE_NETWORK`, `MORSE_ALLOW_MAINNET` and `WALRUS_UPLOAD_RELAY`. It now documents all three and states why phases 7 and 8 cannot pass on mainnet.
+
 ## [0.7.1] - 2026-09-10
 
 ### Fixed
