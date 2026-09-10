@@ -494,6 +494,30 @@ function assertRevisionIndex(revisionId: number): void {
 	}
 }
 
+/**
+ * Reject an object that is not the Move type we expect.
+ *
+ * `type` comes back on every getObject at no extra cost. Without this, an
+ * object whose JSON happens to share field names parses cleanly into the wrong
+ * record: a wrong answer rather than an error. Only module and struct name are
+ * matched, because Sui stamps an object with the package where its struct was
+ * first defined, which need not be the current published-at.
+ */
+function assertMoveType(
+	object: SuiClientTypes.Object<{ json: true }>,
+	moduleAndName: string,
+	resource: string,
+): void {
+	const actual = object.type;
+	if (typeof actual === "string" && actual.endsWith(`::${moduleAndName}`)) {
+		return;
+	}
+	throw new ValidationError(
+		`Object ${object.objectId} is not a ${resource} (expected a ${moduleAndName} type, got ${actual ?? "no type"})`,
+		"type",
+	);
+}
+
 function parsePublication(
 	object: SuiClientTypes.Object<{ json: true }>,
 ): Publication {
@@ -508,6 +532,9 @@ function parsePublication(
 		// shape) on the per-field branches below.
 		throw new NotFoundError("publication", object.objectId);
 	}
+	// After the not-found check on purpose: a stub for a nonexistent object has
+	// neither json nor type, and that case is NotFoundError, not a type error.
+	assertMoveType(object, "publication::Publication", "publication");
 	const id = toPublicationId(object.objectId);
 	const name = readString(json, "name", "publication.name");
 	const slug = readString(json, "slug", "publication.slug");
@@ -577,6 +604,7 @@ function parsePublisherCap(
 		// Same not-found semantics as parsePublication; see comment there.
 		throw new NotFoundError("publisher-cap", object.objectId);
 	}
+	assertMoveType(object, "publication::PublisherCap", "publisher-cap");
 	// Move `ID` and `address` fields serialize as bare hex strings.
 	// Move `UID` (e.g. the struct's own `id` field) serializes as `{ id: "0x..." }`;
 	// we use `object.objectId` from the SDK metadata wrapper for the cap's ID instead.
@@ -608,6 +636,7 @@ function parseOwnedPublication(
 		// Same not-found semantics as parsePublication; see comment there.
 		throw new NotFoundError("owner-cap", object.objectId);
 	}
+	assertMoveType(object, "publication::OwnerCap", "owner-cap");
 	const publicationIdRaw = (json as { publication_id?: unknown })
 		.publication_id;
 	if (typeof publicationIdRaw !== "string") {

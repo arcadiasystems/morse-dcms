@@ -37,6 +37,8 @@ function fileResponse(jsonOverrides: Partial<Record<string, unknown>> = {}) {
 	return {
 		object: {
 			objectId: FILE_ID,
+			// Real getObject always returns `type`; the reader now checks it.
+			type: `${PACKAGE_ID}::recipient_file::RecipientFile`,
 			version: "1",
 			digest: "abc",
 			owner: { $kind: "Shared", Shared: { initialSharedVersion: "1" } },
@@ -103,6 +105,52 @@ function sealPrefixField(packageId: string) {
 		valueType: "vector<u8>",
 	};
 }
+
+describe("RpcRecipientFilesReader type checking", () => {
+	function withType(type: unknown) {
+		return async () => {
+			const r = fileResponse();
+			return {
+				object: { ...r.object, type },
+			};
+		};
+	}
+
+	test("rejects an object of a different Move type", async () => {
+		// Without this the reader parses any object whose JSON happens to carry
+		// owner/blob_id/name/content_type/size/members: a wrong answer, silently.
+		const reader = RpcRecipientFilesReader.fromConfig(
+			makeReader(withType(`${PACKAGE_ID}::other::Thing`)),
+			{ packageId: PACKAGE_ID },
+		);
+		await expect(reader.getRecipientFile(FILE_ID)).rejects.toThrow(
+			ValidationError,
+		);
+	});
+
+	test("rejects an object with no type at all", async () => {
+		const reader = RpcRecipientFilesReader.fromConfig(
+			makeReader(withType(undefined)),
+			{ packageId: PACKAGE_ID },
+		);
+		await expect(reader.getRecipientFile(FILE_ID)).rejects.toThrow(
+			ValidationError,
+		);
+	});
+
+	test("accepts the type from a different package id", async () => {
+		// Sui stamps an object with the package where its struct was FIRST
+		// defined, which is an upgrade address distinct from the published-at.
+		// Matching the full string would reject every real object post-upgrade.
+		const other = `0x${"9".repeat(64)}`;
+		const reader = RpcRecipientFilesReader.fromConfig(
+			makeReader(withType(`${other}::recipient_file::RecipientFile`)),
+			{ packageId: PACKAGE_ID },
+		);
+		const file = await reader.getRecipientFile(FILE_ID);
+		expect(file.id).toBe(FILE_ID);
+	});
+});
 
 describe("RpcRecipientFilesReader.getRecipientFileSealPrefix", () => {
 	test("returns null when the file has no dynamic fields", async () => {
@@ -235,6 +283,8 @@ describe("RpcRecipientFilesReader.getRecipientFile", () => {
 			makeReader(async () => ({
 				object: {
 					objectId: FILE_ID,
+					// Right type, no json: this test is about the json path.
+					type: `${PACKAGE_ID}::recipient_file::RecipientFile`,
 					version: "1",
 					digest: "abc",
 					owner: { $kind: "Shared", Shared: { initialSharedVersion: "1" } },

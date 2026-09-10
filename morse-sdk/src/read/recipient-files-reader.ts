@@ -52,6 +52,30 @@ export interface RpcRecipientFilesReaderConfig {
 	readonly packageId: PackageId;
 }
 
+/**
+ * Reject an object that is not the Move type we expect.
+ *
+ * Only the module and struct name are matched, not the package id: Sui stamps
+ * an object with the package where its struct was FIRST defined, which for
+ * RecipientFile is an upgrade address distinct from the current published-at.
+ * Pinning the full string would reject every real object after an upgrade,
+ * which is the failure this guard exists to avoid, inverted.
+ */
+function assertMoveType(
+	object: SuiClientTypes.Object<{ json: true }>,
+	expectedPackageId: PackageId,
+	moduleAndName: string,
+): void {
+	const actual = object.type;
+	if (typeof actual === "string" && actual.endsWith(`::${moduleAndName}`)) {
+		return;
+	}
+	throw new ValidationError(
+		`Object ${object.objectId} is not a ${moduleAndName} (expected a type from a Morse deployment such as ${expectedPackageId}, got ${actual ?? "no type"})`,
+		"type",
+	);
+}
+
 /** The seal prefix dynamic field's value is a bare `vector<u8>`. */
 const SealPrefixBcs = bcs.vector(bcs.u8()).transform({
 	output: (value: number[]) => new Uint8Array(value),
@@ -148,12 +172,17 @@ export class RpcRecipientFilesReader implements RecipientFilesReader {
 
 function parseRecipientFile(
 	object: SuiClientTypes.Object<{ json: true }>,
-	_expectedPackageId: PackageId,
+	expectedPackageId: PackageId,
 ): RecipientFile {
 	const json = object.json;
 	if (!json) {
 		throw new NotFoundError("recipient-file", object.objectId);
 	}
+	// Checked after not-found on purpose: a stub for a nonexistent object has
+	// neither json nor type, and that case is NotFoundError. With json present,
+	// the type is what stops an unrelated object whose fields happen to line up
+	// from parsing cleanly into a RecipientFile.
+	assertMoveType(object, expectedPackageId, "recipient_file::RecipientFile");
 	return {
 		id: toRecipientFileId(object.objectId),
 		owner: toSuiAddress(readString(json, "owner", "recipient_file.owner")),

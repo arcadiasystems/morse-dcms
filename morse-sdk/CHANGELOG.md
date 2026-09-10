@@ -2,6 +2,21 @@
 
 All notable changes to `morse-sdk` will be documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-09-10
+
+Bug-hunt pass over the whole package, not a diff review.
+
+### Fixed
+
+- **Object readers now verify the fetched object's Move type.** `getRecipientFile`, `getPublication`, `getPublisherCap` and the owned-publication parser trusted the response's JSON shape without ever checking `object.type`, which every `getObject` returns at no extra cost. `parseRecipientFile` even accepted an `_expectedPackageId` parameter and never used it. Fetching an unrelated object whose JSON happened to carry the same field names (`owner`, `blob_id`, `name`, `content_type`, `size`, `members`) parsed cleanly into a typed record and returned a confidently wrong answer instead of throwing.
+
+  The check runs **after** the not-found branch, deliberately: a gRPC stub for a nonexistent object carries neither JSON nor type, and that case must stay `NotFoundError`. Only the module and struct name are matched, not the package id, because Sui stamps an object with the package where its struct was first defined; pinning the full type string would reject every real object after an upgrade, which is this guard's own failure mode inverted.
+- **Untrusted publisher error bodies no longer flow verbatim into user-facing copy.** `HttpPublisherWriteAdapter` embedded the raw HTTP body from a consumer-configured, third-party-operated Walrus publisher into `TransportError.message`, which `formatUserMessage` surfaces as the description shown to end users. An operator error page or stack trace would have been displayed as-is. The message now carries a bounded, whitespace-collapsed 200-character excerpt and the full body moves to `cause`.
+
+### Changed
+
+- The simulated-id caveat is now repeated on every public function that returns one (`addEntry`, `appendDraftRevision`, `publishFromDraft`, `publishDirect`, `addEncryptedEntry`, `appendEncryptedDraftRevision`, `addEntryFromBytes`, `addEncryptedEntryFromBytes`), rather than only in the module header. `entryId` and `revisionId` come from a pre-flight simulation; Move assigns them from a counter on the shared `Collection`, so a concurrent write by another `PublisherCap` holder between simulate and execute shifts the real id. The contract treats multi-publisher writes as first-class, so this belongs where a caller reads the value, not in a header they may never open.
+
 ## [0.7.2] - 2026-09-10
 
 Documentation accuracy pass. No behaviour changes.

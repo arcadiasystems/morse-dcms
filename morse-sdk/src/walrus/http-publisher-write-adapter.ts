@@ -76,6 +76,15 @@ export type ParsePublisherResponse = (
 	raw: unknown,
 ) => UploadBlobResult | Promise<UploadBlobResult>;
 
+/**
+ * Collapse an untrusted upstream body to one short line for display. The full
+ * text stays on the error's `cause` for debugging.
+ */
+function excerpt(body: string, max = 200): string {
+	const oneLine = body.replace(/\s+/g, " ").trim();
+	return oneLine.length > max ? `${oneLine.slice(0, max)}...` : oneLine;
+}
+
 /** Construction options for `HttpPublisherWriteAdapter`. */
 export interface HttpPublisherWriteAdapterOptions {
 	/** Publisher base URL, e.g. `"https://walrus-testnet-publisher.nami.cloud"`. No trailing slash. */
@@ -365,9 +374,16 @@ export class HttpPublisherWriteAdapter implements WalrusWriteAdapter {
 			} catch {
 				// ignore body-read failures; surface the status code anyway.
 			}
+			// The body comes from a third-party operator and ends up in
+			// `formatUserMessage`'s description, i.e. in front of end users. An
+			// operator error page or stack trace does not belong there, so keep
+			// the full text on `cause` and put a bounded, single-line excerpt in
+			// the message.
 			throw new TransportError(
-				`Walrus publisher returned HTTP ${response.status} ${response.statusText}${detail ? `: ${detail}` : ""}`,
-				{ operation },
+				`Walrus publisher returned HTTP ${response.status} ${response.statusText}${
+					detail ? `: ${excerpt(detail)}` : ""
+				}`,
+				{ operation, ...(detail ? { cause: new Error(detail) } : {}) },
 			);
 		}
 		try {

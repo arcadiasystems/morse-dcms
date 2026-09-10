@@ -72,6 +72,13 @@ export interface AddEntryResult {
  *
  * @throws {ContractAbortError} On Move abort.
  * @throws {TransportError} On RPC, network, or response-parsing failure.
+ *
+ * The returned `entryId` / `revisionId` come from a pre-flight simulation,
+ * not from the executed transaction. Move assigns them from a counter on the
+ * shared `Collection`, so a concurrent write by another PublisherCap holder
+ * between simulate and execute shifts the real id. Safe for a single writer;
+ * if several publishers write the same collection, confirm with
+ * `reader.listEntries` rather than trusting the returned id.
  */
 export async function addEntry(
 	adapter: WalletAdapter,
@@ -125,6 +132,13 @@ export interface RevisionAppendResult {
  * @throws {ContractAbortError} On Move abort (e.g. entry not found surfaces as
  *   `module: "collection", reason: "EEntryNotFound"`).
  * @throws {TransportError} On RPC, network, or response-parsing failure.
+ *
+ * The returned `entryId` / `revisionId` come from a pre-flight simulation,
+ * not from the executed transaction. Move assigns them from a counter on the
+ * shared `Collection`, so a concurrent write by another PublisherCap holder
+ * between simulate and execute shifts the real id. Safe for a single writer;
+ * if several publishers write the same collection, confirm with
+ * `reader.listEntries` rather than trusting the returned id.
  */
 export async function appendDraftRevision(
 	adapter: WalletAdapter,
@@ -173,6 +187,13 @@ export interface PublishFromDraftArgs {
  * and may differ from the draft's.
  * @throws {ContractAbortError} On Move abort.
  * @throws {TransportError} On RPC, network, or response-parsing failure.
+ *
+ * The returned `entryId` / `revisionId` come from a pre-flight simulation,
+ * not from the executed transaction. Move assigns them from a counter on the
+ * shared `Collection`, so a concurrent write by another PublisherCap holder
+ * between simulate and execute shifts the real id. Safe for a single writer;
+ * if several publishers write the same collection, confirm with
+ * `reader.listEntries` rather than trusting the returned id.
  */
 export async function publishFromDraft(
 	adapter: WalletAdapter,
@@ -218,6 +239,13 @@ export interface PublishDirectArgs {
  * Append a public, non-encrypted revision in one step (no draft).
  * @throws {ContractAbortError} On Move abort.
  * @throws {TransportError} On RPC, network, or response-parsing failure.
+ *
+ * The returned `entryId` / `revisionId` come from a pre-flight simulation,
+ * not from the executed transaction. Move assigns them from a counter on the
+ * shared `Collection`, so a concurrent write by another PublisherCap holder
+ * between simulate and execute shifts the real id. Safe for a single writer;
+ * if several publishers write the same collection, confirm with
+ * `reader.listEntries` rather than trusting the returned id.
  */
 export async function publishDirect(
 	adapter: WalletAdapter,
@@ -303,6 +331,13 @@ export interface AddEncryptedEntryArgs {
  *
  * @throws {ContractAbortError} On Move abort.
  * @throws {TransportError} On RPC, network, or response-parsing failure.
+ *
+ * The returned `entryId` / `revisionId` come from a pre-flight simulation,
+ * not from the executed transaction. Move assigns them from a counter on the
+ * shared `Collection`, so a concurrent write by another PublisherCap holder
+ * between simulate and execute shifts the real id. Safe for a single writer;
+ * if several publishers write the same collection, confirm with
+ * `reader.listEntries` rather than trusting the returned id.
  */
 export async function addEncryptedEntry(
 	adapter: WalletAdapter,
@@ -353,6 +388,13 @@ export interface AppendEncryptedDraftRevisionArgs {
  *
  * @throws {ContractAbortError} On Move abort.
  * @throws {TransportError} On RPC, network, or response-parsing failure.
+ *
+ * The returned `entryId` / `revisionId` come from a pre-flight simulation,
+ * not from the executed transaction. Move assigns them from a counter on the
+ * shared `Collection`, so a concurrent write by another PublisherCap holder
+ * between simulate and execute shifts the real id. Safe for a single writer;
+ * if several publishers write the same collection, confirm with
+ * `reader.listEntries` rather than trusting the returned id.
  */
 export async function appendEncryptedDraftRevision(
 	adapter: WalletAdapter,

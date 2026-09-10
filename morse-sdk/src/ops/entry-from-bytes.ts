@@ -108,6 +108,13 @@ export interface AddEntryFromBytesArgs {
  *   before any popup happens.
  * @throws {TransportError} On RPC, network, or upload-step failure before
  *   the blob is uploaded.
+ *
+ * The returned `entryId` / `revisionId` come from a pre-flight simulation,
+ * not from the executed transaction. Move assigns them from a counter on the
+ * shared `Collection`, so a concurrent write by another PublisherCap holder
+ * between simulate and execute shifts the real id. Safe for a single writer;
+ * if several publishers write the same collection, confirm with
+ * `reader.listEntries` rather than trusting the returned id.
  */
 export async function addEntryFromBytes(
 	adapter: WalletAdapter,
@@ -178,6 +185,13 @@ export interface AddEncryptedEntryFromBytesArgs {
  * @throws {ContractAbortError} On Move abort during simulation.
  * @throws {TransportError} On RPC, network, or upload-step failure before
  *   the blob is uploaded.
+ *
+ * The returned `entryId` / `revisionId` come from a pre-flight simulation,
+ * not from the executed transaction. Move assigns them from a counter on the
+ * shared `Collection`, so a concurrent write by another PublisherCap holder
+ * between simulate and execute shifts the real id. Safe for a single writer;
+ * if several publishers write the same collection, confirm with
+ * `reader.listEntries` rather than trusting the returned id.
  */
 export async function addEncryptedEntryFromBytes(
 	adapter: WalletAdapter,
