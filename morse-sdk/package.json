@@ -1,6 +1,6 @@
 {
 	"name": "@arcadiasystems/morse-sdk",
-	"version": "0.8.0",
+	"version": "0.8.1",
 	"description": "TypeScript SDK for Morse dCMS on the Sui blockchain.",
 	"license": "MIT",
 	"type": "module",
@@ -41,9 +41,10 @@
 	},
 	"scripts": {
 		"prebuild": "rm -rf dist",
-		"prepublishOnly": "bun run lint && bun run typecheck && bun test && bun run build",
+		"prepublishOnly": "bun run lint && bun run typecheck && bun run docs-gate && bun test && bun run build",
 		"build": "tsc -p tsconfig.build.json",
 		"typecheck": "tsc --noEmit",
+		"docs-gate": "bun scripts/docs-gate.ts",
 		"lint": "biome check .",
 		"lint:fix": "biome check --write .",
 		"test": "bun test",

@@ -2,9 +2,22 @@
 
 All notable changes to `morse-sdk` will be documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.1] - 2026-09-10
+
+Documentation only.
+
+### Fixed
+
+- Compatibility table had no `0.8.x` row and the pin example still said `~0.7.0`. The table is what people read before pinning, so a missing row tells them the newest supported version is older than the one they just installed.
+- The reader table now records that `getRecipientFile` throws `ValidationError` when the id resolves to an object of another Move type, which 0.8.0 introduced and only the changelog mentioned.
+
+### Added
+
+- `bun run docs-gate`, wired into `prepublishOnly`. It fails when the compatibility table has no row for the current minor, when the pin example names an older one, or when CHANGELOG's newest entry does not match `package.json`. This section had gone stale twice for exactly these reasons and nothing in lint, typecheck or the tests could notice.
+
 ## [0.8.0] - 2026-09-10
 
-Bug-hunt pass over the whole package, not a diff review.
+Bug-hunt pass over the whole package, not a diff review. README gains an 0.8.x compatibility row, corrected pin advice, and a note that the recipient-file reader now rejects a wrong Move type.
 
 ### Fixed
 

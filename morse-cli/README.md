@@ -6,7 +6,7 @@ content entries from your terminal, signing with a locally encrypted key.
 Content is stored on [Walrus](https://walrus.xyz); private entries are encrypted
 with [Seal](https://github.com/MystenLabs/seal).
 
-> Status: v0.10.0. Mainnet and testnet are both supported for public content;
+> Status: v0.10.1. Mainnet and testnet are both supported for public content;
 > the command surface is stable.
 >
 > **Encrypted commands need Seal key servers.** Testnet has an open set, so
