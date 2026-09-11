@@ -2,6 +2,16 @@
 
 All notable changes to `morse-sdk` will be documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.2] - 2026-09-11
+
+Documentation only.
+
+### Fixed
+
+- **The status banner said the Walrus paths were unverified on mainnet, contradicting the Compatibility section two sections below it**, which had recorded mainnet blob and quilt uploads since 0.8.0. The banner is the first thing a reader sees, so it was the version that stuck. Walrus on mainnet is verified; Seal is not, and that distinction is now stated the same way in both places.
+- **The smoke-script section said mainnet runs were "not wired up".** They have been since 0.6.0: `MORSE_NETWORK=mainnet` targets mainnet and `MORSE_ALLOW_MAINNET=1` is the guard that stops an accidental one from spending real value.
+- Recorded the browser round trip verified on mainnet on 2026-09-11 through `@arcadiasystems/morse-uploader`: a wallet-signed upload via the Walrus upload relay, then the same blob read back byte for byte from the mainnet aggregator. The known-limitations note about browser reads now scopes its warning to direct storage-node fanout, which remains unmeasured on mainnet, rather than to the aggregator path that was just proven.
+
 ## [0.8.1] - 2026-09-10
 
 Documentation only.

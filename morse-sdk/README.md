@@ -8,7 +8,7 @@ Pre-release. Mainnet and testnet are both wired: the Move contract addresses are
 
 **Encrypted content needs your own Seal key servers on mainnet.** Public publications, collections, entries and files work out of the box on both networks. Encryption does not, on mainnet: every mainnet Seal operator is commercial, including Mysten's committee aggregator, which rejects unauthenticated requests. `DefaultSealAdapter.fromMorseConfig` therefore throws `ConfigurationError` on mainnet until you supply `serverConfigs`. See [Network configuration](#network-configuration).
 
-**The contracts are unaudited.** On mainnet, SUI and WAL cost real money, there is no faucet, and a mistake is not recoverable. The publication lifecycle has been verified end to end on mainnet; the Walrus and Seal paths have not (see [Compatibility](#compatibility)). Treat mainnet as usable but young, and size your first deployment accordingly.
+**The contracts are unaudited.** On mainnet, SUI and WAL cost real money, there is no faucet, and a mistake is not recoverable. The publication lifecycle and the Walrus paths are verified end to end on mainnet; Seal is not, because mainnet has no key servers this SDK can reach without commercial credentials (see [Compatibility](#compatibility)). Treat mainnet as usable but young, and size your first deployment accordingly.
 
 ## Install
 
@@ -51,7 +51,7 @@ Mysten ships breaking changes inside major version boundaries. Newer minors (e.g
 
 The verification protocol is documented in [`CONTRIBUTING.md`](https://github.com/arcadiasystems/morse-dcms/blob/main/morse-sdk/CONTRIBUTING.md): every Mysten dep bump runs the full `scripts/phase-N-*.ts` smoke suite before the bump lands.
 
-The `Sui network` column records where the suite passes **in full**, which is testnet. Most of it also passes on mainnet: publications, publisher caps, collections, Walrus blob and quilt uploads, and the entry lifecycle in both collection modes were all verified against live mainnet on 2026-09-09. The two Seal phases cannot run there, because mainnet has no key servers this SDK can reach without commercial credentials, so mainnet has no fully green run to record. `TESTED_SUBSTRATE.suiNetwork` reports the same thing programmatically.
+The `Sui network` column records where the suite passes **in full**, which is testnet. Most of it also passes on mainnet: publications, publisher caps, collections, Walrus blob and quilt uploads, and the entry lifecycle in both collection modes were all verified against live mainnet on 2026-09-09. A browser round trip was verified separately on 2026-09-11, through [@arcadiasystems/morse-uploader](https://www.npmjs.com/package/@arcadiasystems/morse-uploader): a wallet-signed upload via the Walrus upload relay, then the same blob read back byte for byte from the mainnet aggregator. The two Seal phases cannot run on mainnet, because it has no key servers this SDK can reach without commercial credentials, so mainnet has no fully green run to record. `TESTED_SUBSTRATE.suiNetwork` reports the same thing programmatically.
 
 ### Runtime requirements
 
@@ -516,14 +516,14 @@ const config = morseConfig({
 - **No encrypted publish path**. The Move contract hardcodes `encrypted=false` on `publish_from_draft` and `publish_direct`. Encrypted content stays as drafts.
 - **`Subscription` access policy is reserved**, not enforced.
 - **`listEntries` ordering is dynamic-field object-store order**, not chronological. Sort by `entry.id` for insertion order.
-- **Walrus flakiness**. `NotEnoughBlobConfirmationsError` from the underlying client is environmental; rerun. The SDK preserves the original error as the `cause` (use `instanceof` for narrowing - Walrus error classes don't set `.name`). Browser consumers may additionally see `NoBlobMetadataReceivedError` on reads from testnet due to CORS gaps on a subset of Walrus storage nodes; `HttpAggregatorReadAdapter` exists to route around that. Mainnet node CORS coverage has not been measured by this project, so browser fanout reads there are unproven rather than known-good.
+- **Walrus flakiness**. `NotEnoughBlobConfirmationsError` from the underlying client is environmental; rerun. The SDK preserves the original error as the `cause` (use `instanceof` for narrowing - Walrus error classes don't set `.name`). Browser consumers may additionally see `NoBlobMetadataReceivedError` on reads from testnet due to CORS gaps on a subset of Walrus storage nodes; `HttpAggregatorReadAdapter` exists to route around that. Mainnet node CORS coverage has not been measured by this project, so browser *fanout* reads there are unproven rather than known-good; the aggregator read path is the one verified on mainnet.
 - **Walrus uploads need WAL, not just SUI**. Uploads error with `Insufficient balance of ::wal::WAL` if you skip this. On testnet, get SUI from the [Sui faucet](https://faucet.sui.io/) and swap some for WAL at [stake-wal.wal.app](https://stake-wal.wal.app/?network=testnet). On mainnet there is no faucet: both SUI and WAL have to be acquired, and every upload spends real value.
 - **Walrus storage is epoch-funded, not permanent**. Blobs persist for the epochs you pay for and expire afterwards unless renewed, on both networks. Epoch length differs (a testnet epoch is roughly a day; mainnet epochs are much longer), so the same `epochs` argument buys very different durations. Walrus testnet is additionally wiped periodically, so treat testnet payloads as disposable; mainnet blobs are not wiped but still lapse if you let storage expire. The on-chain revision history is immutable either way.
 - **gRPC client only**. The reader and adapter interfaces are typed against `Pick<SuiGrpcClient, ...>` from `@mysten/sui/grpc`. `SuiJsonRpcClient` from `@mysten/sui/jsonRpc` has differently-named methods (`getDynamicFields` vs `listDynamicFields`, etc.) and is not yet a drop-in alternative. JSON-RPC fallback is planned; for now, environments that block gRPC need to proxy or use a gRPC-compatible RPC endpoint.
 
 ## Smoke scripts
 
-The `scripts/` directory has end-to-end smokes that cost real WAL and SUI. They're the canonical "this works against the live deployment" checks. All of them are hardcoded to testnet via `scripts/_shared.ts`; running them against mainnet would spend real value and is not wired up.
+The `scripts/` directory has end-to-end smokes that cost real WAL and SUI. They're the canonical "this works against the live deployment" checks. They default to testnet; set `MORSE_NETWORK=mainnet` to point them at mainnet, which additionally requires `MORSE_ALLOW_MAINNET=1` because every mainnet run spends real value.
 
 | Script                    | Exercises                                          |
 | ------------------------- | -------------------------------------------------- |
