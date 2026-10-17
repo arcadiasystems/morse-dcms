@@ -4,6 +4,12 @@ All notable changes to `@arcadiasystems/morse-cli` are documented here. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.2] - 2026-10-17
+
+### Fixed
+
+- **`entry read` and `entry decrypt` work on the default storage-node path.** For entries in a blob-mode collection, both failed with "The Walrus blob is not retrievable" ("No valid blob metadata could be retrieved from any storage node"), and only `--via-aggregator` worked. The bug was in the SDK, which sent the storage nodes the on-chain `u256` form of the blob id instead of the base64 id they store blobs under. `@arcadiasystems/morse-sdk` 0.8.3 fixes it, and the CLI now requires `^0.8.3`. Quilt-mode entries and files were not affected.
+
 ## [0.10.1] - 2026-09-10
 
 Tooling only. No behaviour changes.
