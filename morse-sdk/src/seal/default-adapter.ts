@@ -14,6 +14,7 @@ import {
 	type KeyServerConfig,
 	NoAccessError,
 	SealClient,
+	type SealClientOptions,
 	type SealCompatibleClient,
 	type SessionKey,
 	TooManyFailedFetchKeyRequestsError,
@@ -64,6 +65,11 @@ export interface SealAdapterConfig {
 	readonly targetPackageId?: PackageId;
 	readonly serverConfigs: readonly KeyServerConfig[];
 	readonly threshold: number;
+	/**
+	 * Check each independent key server's `/v1/service` proof of possession and
+	 * version on first use. Defaults to `true`. Committee servers are never
+	 * checked this way; Seal skips them.
+	 */
 	readonly verifyKeyServers?: boolean;
 	readonly timeout?: number;
 }
@@ -201,14 +207,7 @@ export class DefaultSealAdapter implements SealAdapter {
 				"threshold",
 			);
 		}
-		const client = new SealClient({
-			suiClient,
-			serverConfigs: [...config.serverConfigs],
-			...(config.verifyKeyServers === undefined
-				? {}
-				: { verifyKeyServers: config.verifyKeyServers }),
-			...(config.timeout === undefined ? {} : { timeout: config.timeout }),
-		});
+		const client = new SealClient(sealClientOptions(config, suiClient));
 		return new DefaultSealAdapter({
 			client,
 			suiClient,
@@ -354,6 +353,26 @@ export class DefaultSealAdapter implements SealAdapter {
 			);
 		}
 	}
+}
+
+/**
+ * Options for the `SealClient` behind an adapter. `verifyKeyServers` defaults
+ * to `true` instead of inheriting `@mysten/seal`'s default, which became
+ * `false` in 1.3.0. Encrypt otherwise needs only the key servers' on-chain
+ * public keys, so this check is the one request that can catch an
+ * unreachable, misconfigured or outdated server before a consumer pays to
+ * store ciphertext that server will never help decrypt.
+ */
+export function sealClientOptions(
+	config: SealAdapterConfig,
+	suiClient: SealCompatibleClient,
+): SealClientOptions {
+	return {
+		suiClient,
+		serverConfigs: [...config.serverConfigs],
+		verifyKeyServers: config.verifyKeyServers ?? true,
+		...(config.timeout === undefined ? {} : { timeout: config.timeout }),
+	};
 }
 
 async function runSealCall<T>(
