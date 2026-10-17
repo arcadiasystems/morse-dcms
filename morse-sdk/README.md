@@ -17,19 +17,19 @@ All three Mysten packages are required peer dependencies. Pin the minors the SDK
 Bun:
 
 ```sh
-bun add @arcadiasystems/morse-sdk @mysten/sui@2.16.2 @mysten/walrus@1.1.6 @mysten/seal@1.1.3
+bun add @arcadiasystems/morse-sdk @mysten/sui@2.36.0 @mysten/walrus@1.2.35 @mysten/seal@1.5.0
 ```
 
 npm:
 
 ```sh
-npm install @arcadiasystems/morse-sdk @mysten/sui@2.16.2 @mysten/walrus@1.1.6 @mysten/seal@1.1.3
+npm install @arcadiasystems/morse-sdk @mysten/sui@2.36.0 @mysten/walrus@1.2.35 @mysten/seal@1.5.0
 ```
 
 pnpm:
 
 ```sh
-pnpm add @arcadiasystems/morse-sdk @mysten/sui@2.16.2 @mysten/walrus@1.1.6 @mysten/seal@1.1.3
+pnpm add @arcadiasystems/morse-sdk @mysten/sui@2.36.0 @mysten/walrus@1.2.35 @mysten/seal@1.5.0
 ```
 
 `@mysten/sui` provides the client, keypairs, and transaction types; `@mysten/walrus` backs the default storage adapters (any publish path needs it); `@mysten/seal` backs threshold encryption. All three are imported by the SDK's public surface, so they must be installed even if you only use a subset — npm 7+ installs required peers automatically when you omit them.
@@ -40,6 +40,7 @@ morse-sdk is built and tested against specific minor versions of its Mysten subs
 
 | morse-sdk | `@mysten/sui` | `@mysten/walrus` | `@mysten/seal` | Sui network | Verified  |
 | --------- | ------------- | ---------------- | -------------- | ----------- | --------- |
+| 0.9.x     | 2.36.0-2.36.x | 1.2.35-1.2.x     | 1.5.0-1.5.x    | testnet     | 2026-10-17 |
 | 0.8.x     | 2.16.2-2.16.x | 1.1.6-1.1.x      | 1.1.3-1.1.x    | testnet     | 2026-09-09 |
 | 0.7.x     | 2.16.2-2.16.x | 1.1.6-1.1.x      | 1.1.3-1.1.x    | testnet     | 2026-09-09 |
 | 0.6.x     | 2.16.2-2.16.x | 1.1.6-1.1.x      | 1.1.3-1.1.x    | testnet     | 2026-09-09 |
@@ -47,7 +48,9 @@ morse-sdk is built and tested against specific minor versions of its Mysten subs
 | 0.4.x     | 2.16.2-2.16.x | 1.1.6-1.1.x      | 1.1.3-1.1.x    | testnet     | 2026-06-05 |
 | 0.1.x     | 2.16.2-2.16.x | 1.1.6-1.1.x      | 1.1.3-1.1.x    | testnet     | 2026-05-10 |
 
-Mysten ships breaking changes inside major version boundaries. Newer minors (e.g. `@mysten/walrus@1.2.x`, `@mysten/sui@2.17+`) are outside the verified ranges and may produce runtime errors; morse-sdk needs a coordinated bump and re-verification before a new Mysten minor is supported. Pin via `bun add @arcadiasystems/morse-sdk@~0.8.0` if you want patch updates without surprise minors.
+The 0.9.x row rests on a narrower run than the rows below it. On testnet, against the new substrate: the unit suite, a storage-node read through `readBlobByObjectId`, the publication, blob collection, `addEntryFromBytes` and byte-for-byte read-back path, and Seal encrypt with key-server verification. The other smoke phases (publisher caps, quilt collections and uploads, encrypted entries and recipient files, which are the live coverage of Seal decrypt) have not been rerun on 0.9.x.
+
+Mysten ships breaking changes inside major version boundaries. Newer minors (e.g. `@mysten/walrus@1.3.x`, `@mysten/sui@2.37+`) are outside the verified ranges and may produce runtime errors; morse-sdk needs a coordinated bump and re-verification before a new Mysten minor is supported. Pin via `bun add @arcadiasystems/morse-sdk@~0.9.0` if you want patch updates without surprise minors.
 
 The verification protocol is documented in [`CONTRIBUTING.md`](https://github.com/arcadiasystems/morse-dcms/blob/main/morse-sdk/CONTRIBUTING.md): every Mysten dep bump runs the full `scripts/phase-N-*.ts` smoke suite before the bump lands.
 
@@ -291,7 +294,7 @@ The full public surface, grouped by concern. Every export carries a JSDoc on its
 | `DefaultWalrusReadAdapter.fromConfig(config)` | Walrus reads (`readBlob`, `readBlobByObjectId`, `readQuiltPatch`, `readBlobRef`). |
 | `HttpPublisherWriteAdapter.fromConfig({ publisherUrl, ownerAddress })` | Walrus uploads via a publisher HTTP service (operator pays storage; 1 popup for upload + addEntry). |
 | `HttpAggregatorReadAdapter.fromMorseConfig(config, suiClient)` / `.fromConfig({ aggregatorUrl, suiClient })` | Walrus reads via a single CORS-friendly aggregator endpoint instead of fanout to ~30 storage nodes. |
-| `DefaultSealAdapter.fromMorseConfig(config, options, suiClient)` | Threshold encryption / decryption. Defaults to the network's canonical key servers: two independent servers on testnet, none on mainnet (throws `ConfigurationError`; pass `serverConfigs`). |
+| `DefaultSealAdapter.fromMorseConfig(config, options, suiClient)` | Threshold encryption / decryption. Defaults to the network's canonical key servers: two independent servers on testnet, none on mainnet (throws `ConfigurationError`; pass `serverConfigs`). Checks each independent key server's `/v1/service` proof on first use unless you pass `verifyKeyServers: false`. |
 | `MAINNET_SEAL_COMMITTEE` | Mysten's mainnet Seal committee as a ready-made `sealKeyServers` value. Requires the `apiKeyName` / `apiKey` Mysten issues you; not a default. |
 | `WalletAdapter` / `WalrusWriteAdapter` / `WalrusReadAdapter` / `SealAdapter` | Interfaces for substituting custom implementations. |
 | `WalrusFlowCapable` / `isWalrusFlowCapable` | Optional capability for the 2-popup `addEntryFromBytes` path. |

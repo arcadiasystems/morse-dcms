@@ -28,9 +28,9 @@ export const TESTED_SUBSTRATE: {
 	readonly verifiedOn: string;
 	readonly suiNetwork: "testnet";
 } = {
-	"@mysten/sui": "2.16.2",
-	"@mysten/seal": "1.1.3",
-	"@mysten/walrus": "1.1.6",
-	verifiedOn: "2026-09-09",
+	"@mysten/sui": "2.36.0",
+	"@mysten/seal": "1.5.0",
+	"@mysten/walrus": "1.2.35",
+	verifiedOn: "2026-10-17",
 	suiNetwork: "testnet",
 };

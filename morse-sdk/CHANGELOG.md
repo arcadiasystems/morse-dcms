@@ -2,6 +2,32 @@
 
 All notable changes to `morse-sdk` will be documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-10-17
+
+Moves the Mysten substrate to the current lines. The public API is unchanged; this is a minor bump because the new peer ranges exclude every version 0.8.x accepted, so upgrading means upgrading all three Mysten packages with it.
+
+### Changed
+
+- **Peer dependencies.** `@mysten/sui` `>=2.36.0 <2.37.0` (was `>=2.16.2 <2.17.0`), `@mysten/walrus` `>=1.2.35 <1.3.0` (was `>=1.1.6 <1.2.0`), `@mysten/seal` `>=1.5.0 <1.6.0` (was `>=1.1.3 <1.2.0`). The walrus floor is the first release with the quilt reader fix below, and walrus 1.2.35 and seal 1.5.0 both require `@mysten/sui ^2.36.0` themselves. `TESTED_SUBSTRATE` records the new versions.
+- **`DefaultSealAdapter` sets `verifyKeyServers: true` unless you pass it.** It used to leave the option out and inherit Seal's default, which was `true` through 1.2.x and is `false` from `@mysten/seal` 1.3.0. Inheriting it would have silently dropped the check for every consumer who never set it. Behaviour therefore matches 0.8.x: on first use, each independent key server must answer `/v1/service` with a valid proof of possession and a supported version. Encrypt otherwise touches only on-chain public keys, so this is the one request that catches an unreachable or misconfigured key server before you pay to store ciphertext it will never help decrypt. Pass `verifyKeyServers: false` to skip it. Committee servers are skipped either way, by Seal.
+
+### Fixed
+
+- **Quilt patch reads over the storage nodes could return corrupted bytes.** `@mysten/walrus` before 1.2.35 fetched one sliver too few when a patch's content started partway into a column, so the end of the patch came back as zeros. That affected `DefaultWalrusReadAdapter.readQuiltPatch` and `readBlobRef` on a quilt ref. The 1.2.35 floor picks up the upstream fix. Reads through `HttpAggregatorReadAdapter` were not affected.
+
+### Upstream behaviour changes
+
+- `@mysten/seal` 1.5.0 supports address aliases, so `SessionKey.create` no longer rejects a `signer` whose address differs from `address`, and `setPersonalMessageSignature` no longer checks the signature against it. A session key signed by the wrong account now fails at decrypt, when the key server checks it, instead of when you build it.
+- `@mysten/sui` 2.26 wraps per-object gRPC failures in `ObjectError` but keeps the server's message, so readers still map a missing object to `NotFoundError`.
+
+### Verified on testnet
+
+Against the new substrate on 2026-10-17: the unit suite; `readBlobByObjectId` on a certified 2048-byte blob, byte for byte; a nonexistent object id surfacing as `NotFoundError`; publication, blob collection, `addEntryFromBytes` (one epoch, through the upload relay), `getEntry` and `readBlobRef`, byte for byte; and Seal encrypt against both pinned key servers, with verification on (two `/v1/service` checks) and off.
+
+### Known gaps
+
+- The other smoke phases have not been rerun on the new substrate: publisher caps, quilt collections and Walrus quilt uploads, encrypted entries and recipient files. The last two are the only live coverage of Seal decrypt, which is where seal 1.5's `SessionKey` change lands.
+
 ## [0.8.3] - 2026-10-17
 
 ### Fixed
