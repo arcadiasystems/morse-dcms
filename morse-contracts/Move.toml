@@ -7,5 +7,8 @@ edition = "2024"         # edition = "legacy" to use legacy (pre-2024) Move
 [dependencies]
 Walrus = { git = "https://github.com/MystenLabs/walrus.git", subdir = "testnet-contracts/walrus", rev = "testnet", rename-from = "walrus" }
 
+[dep-replacements.mainnet]
+Walrus = { git = "https://github.com/MystenLabs/walrus.git", subdir = "mainnet-contracts/walrus", rev = "mainnet-v1.48.1", rename-from = "walrus" }
+
 # Read more about the package management system options:
 # https://docs.sui.io/guides/developer/sui-101/move-package-management
