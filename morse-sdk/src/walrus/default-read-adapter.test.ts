@@ -1,18 +1,23 @@
 import { describe, expect, mock, test } from "bun:test";
 import {
+	blobIdFromInt,
 	NoBlobMetadataReceivedError,
 	type WalrusFile,
 	NotFoundError as WalrusNotFoundError,
 } from "@mysten/walrus";
 
 import { toBlobObjectId, toQuiltPatchId, toWalrusBlobId } from "../codecs.js";
-import { NotFoundError, TransportError } from "../errors.js";
+import { NotFoundError, TransportError, ValidationError } from "../errors.js";
 import { QUILT_PATCH_ID_LENGTH } from "../types.js";
 import { DefaultWalrusReadAdapter } from "./default-read-adapter.js";
 
 const SAMPLE_BLOB_ID = toWalrusBlobId(
 	"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 );
+// `getBlobObject` returns `blob_id` as Sui decodes a Move u256: a decimal
+// string, never the base64 form. This one is a real testnet Blob object's.
+const ON_CHAIN_BLOB_ID =
+	"76712379166943265631249750039322264804099220978611039441823192841119112366022";
 const SUI_OBJECT_ID = toBlobObjectId(
 	"0xd1dd47c84e7c2f217a8b5a4fcec849a3b985df4fada82f72b72602423d8d018e",
 );
@@ -48,7 +53,7 @@ function fakeClient(overrides: Partial<FakeReadClient> = {}): {
 		getBlobObject: async (objectId) => {
 			calls.getBlobObject.push(objectId);
 			if (overrides.getBlobObject) return overrides.getBlobObject(objectId);
-			return { id: objectId, blob_id: SAMPLE_BLOB_ID };
+			return { id: objectId, blob_id: ON_CHAIN_BLOB_ID };
 		},
 		getFiles: async (args) => {
 			calls.getFiles.push(args);
@@ -92,19 +97,34 @@ describe("DefaultWalrusReadAdapter.readBlob", () => {
 });
 
 describe("DefaultWalrusReadAdapter.readBlobByObjectId", () => {
-	test("resolves the Sui object to a blob_id then reads the bytes", async () => {
-		const { client, calls } = fakeClient({
-			getBlobObject: async () => ({
-				id: SUI_OBJECT_ID,
-				blob_id: SAMPLE_BLOB_ID,
-			}),
-		});
+	test("converts the on-chain u256 blob_id to the base64url id before reading", async () => {
+		const { client, calls } = fakeClient();
 		const adapter = new DefaultWalrusReadAdapter({ client });
 		const out = await adapter.readBlobByObjectId(SUI_OBJECT_ID);
 		expect(Array.from(out)).toEqual([0xde, 0xad]);
 		expect(calls.getBlobObject[0]).toBe(SUI_OBJECT_ID);
 		const readArgs = calls.readBlob[0] as { blobId: string };
-		expect(readArgs.blobId).toBe(SAMPLE_BLOB_ID);
+		expect(readArgs.blobId).toBe(blobIdFromInt(BigInt(ON_CHAIN_BLOB_ID)));
+	});
+
+	test("propagates the AbortSignal to the blob read", async () => {
+		const { client, calls } = fakeClient();
+		const adapter = new DefaultWalrusReadAdapter({ client });
+		const signal = new AbortController().signal;
+		await adapter.readBlobByObjectId(SUI_OBJECT_ID, { signal });
+		const readArgs = calls.readBlob[0] as { signal?: AbortSignal };
+		expect(readArgs.signal).toBe(signal);
+	});
+
+	test("rejects a blob_id that is not a u256 with ValidationError, without reading", async () => {
+		const { client, calls } = fakeClient({
+			getBlobObject: async () => ({ id: SUI_OBJECT_ID, blob_id: "not-a-u256" }),
+		});
+		const adapter = new DefaultWalrusReadAdapter({ client });
+		await expect(
+			adapter.readBlobByObjectId(SUI_OBJECT_ID),
+		).rejects.toBeInstanceOf(ValidationError);
+		expect(calls.readBlob).toHaveLength(0);
 	});
 
 	test("maps Walrus NotFoundError on the object lookup to morse NotFoundError", async () => {

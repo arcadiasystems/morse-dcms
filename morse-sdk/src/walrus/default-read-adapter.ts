@@ -17,6 +17,7 @@ import {
 	NotFoundError as WalrusNotFoundError,
 } from "@mysten/walrus";
 
+import { walrusBlobIdFromU256 } from "../codecs.js";
 import { NotFoundError, TransportError } from "../errors.js";
 import type {
 	BlobObjectId,
@@ -90,6 +91,7 @@ interface WalrusReadClient {
 	readBlob(args: { blobId: string; signal?: AbortSignal }): Promise<Uint8Array>;
 	getBlobObject(blobObjectId: string): Promise<{
 		id: string;
+		/** Move `u256` as a decimal string, not the base64 id `readBlob` takes. */
 		blob_id: string;
 	}>;
 	getFiles(args: { ids: string[] }): Promise<WalrusFile[]>;
@@ -142,14 +144,7 @@ export class DefaultWalrusReadAdapter implements WalrusReadAdapter {
 			() => this.client.getBlobObject(blobObjectId),
 			"walrus.getBlobObject",
 		);
-		return runWalrusCall(
-			() =>
-				this.client.readBlob({
-					blobId: blob.blob_id,
-					...(options.signal === undefined ? {} : { signal: options.signal }),
-				}),
-			"walrus.readBlob",
-		);
+		return this.readBlob(walrusBlobIdFromU256(blob.blob_id), options);
 	}
 
 	async readQuiltPatch(
