@@ -26,10 +26,8 @@
  * substitutes the bytes-fetch step.
  */
 
-import { blobIdFromInt } from "@mysten/walrus";
-
 import type { ObjectReader } from "../clients.js";
-import { toWalrusBlobId } from "../codecs.js";
+import { walrusBlobIdFromU256 } from "../codecs.js";
 import type { NetworkConfig } from "../config.js";
 import {
 	ConfigurationError,
@@ -308,17 +306,6 @@ export class HttpAggregatorReadAdapter implements WalrusReadAdapter {
 				"blob.blob_id",
 			);
 		}
-		// Move `u256` BCS-decodes to a decimal string in Sui RPC json mode;
-		// `blobIdFromInt` converts it to the URL-safe-base64 form aggregators expect.
-		try {
-			const asBigInt = BigInt(blobIdRaw);
-			return toWalrusBlobId(blobIdFromInt(asBigInt));
-		} catch (cause) {
-			throw new ValidationError(
-				`Walrus blob_id u256 could not be converted to base64: ${cause instanceof Error ? cause.message : String(cause)}`,
-				"blob.blob_id",
-				{ cause },
-			);
-		}
+		return walrusBlobIdFromU256(blobIdRaw);
 	}
 }

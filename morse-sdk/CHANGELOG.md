@@ -2,6 +2,47 @@
 
 All notable changes to `morse-sdk` will be documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-10-17
+
+Moves the Mysten substrate to the current lines. The public API is unchanged; this is a minor bump because the new peer ranges exclude every version 0.8.x accepted, so upgrading means upgrading all three Mysten packages with it.
+
+### Changed
+
+- **Peer dependencies.** `@mysten/sui` `>=2.36.0 <2.37.0` (was `>=2.16.2 <2.17.0`), `@mysten/walrus` `>=1.2.35 <1.3.0` (was `>=1.1.6 <1.2.0`), `@mysten/seal` `>=1.5.0 <1.6.0` (was `>=1.1.3 <1.2.0`). The walrus floor is the first release with the quilt reader fix below, and walrus 1.2.35 and seal 1.5.0 both require `@mysten/sui ^2.36.0` themselves. `TESTED_SUBSTRATE` records the new versions.
+- **`DefaultSealAdapter` sets `verifyKeyServers: true` unless you pass it.** It used to leave the option out and inherit Seal's default, which was `true` through 1.2.x and is `false` from `@mysten/seal` 1.3.0. Inheriting it would have silently dropped the check for every consumer who never set it. Behaviour therefore matches 0.8.x: on first use, each independent key server must answer `/v1/service` with a valid proof of possession and a supported version. Encrypt otherwise touches only on-chain public keys, so this is the one request that catches an unreachable or misconfigured key server before you pay to store ciphertext it will never help decrypt. Pass `verifyKeyServers: false` to skip it. Committee servers are skipped either way, by Seal.
+
+### Fixed
+
+- **Quilt patch reads over the storage nodes could return corrupted bytes.** `@mysten/walrus` before 1.2.35 fetched one sliver too few when a patch's content started partway into a column, so the end of the patch came back as zeros. That affected `DefaultWalrusReadAdapter.readQuiltPatch` and `readBlobRef` on a quilt ref. The 1.2.35 floor picks up the upstream fix. Reads through `HttpAggregatorReadAdapter` were not affected.
+
+### Upstream behaviour changes
+
+- `@mysten/seal` 1.5.0 supports address aliases, so `SessionKey.create` no longer rejects a `signer` whose address differs from `address`, and `setPersonalMessageSignature` no longer checks the signature against it. A session key signed by the wrong account now fails at decrypt, when the key server checks it, instead of when you build it.
+- `@mysten/sui` 2.26 wraps per-object gRPC failures in `ObjectError` but keeps the server's message, so readers still map a missing object to `NotFoundError`.
+
+### Verified on testnet
+
+The full smoke suite passes against the new substrate, on 2026-10-18, over the direct storage-node fanout with no upload relay. That covers phases 2 to 8: the publication lifecycle, publisher caps, blob and quilt collections, Walrus blob and quilt uploads, the entry lifecycle in both collection modes, an encrypted entry and Seal decrypt, and public and encrypted recipient files. The HTTP publisher variants were skipped, as they are whenever `WALRUS_PUBLISHER_URL` is unset.
+
+Also checked live on the new substrate:
+- `readBlobByObjectId` on a certified 2048-byte blob returns the original bytes.
+- Both patches of a fresh quilt read back exactly through `readQuiltPatch` over the storage nodes, matching the aggregator.
+- A nonexistent object id still surfaces as `NotFoundError`.
+- `addEntryFromBytes` works with a one-epoch upload through the upload relay.
+- Seal encrypt works against both pinned key servers, with verification on (two `/v1/service` checks) and off.
+
+## [0.8.3] - 2026-10-17
+
+### Fixed
+
+- **`DefaultWalrusReadAdapter.readBlobByObjectId` could not read any blob.** It took `blob_id` from the on-chain `Blob` object and passed it straight to `readBlob`. On chain that field is a Move `u256`, which Sui decodes to a decimal string, but `readBlob` takes the 43-character URL-safe base64 blob id. The storage nodes hold nothing under the decimal form, so every read failed with `NotFoundError` ("No valid blob metadata could be retrieved from any storage node"), even for healthy, certified blobs. `readBlobRef` on a blob-mode ref goes through the same method and failed the same way, which is what broke `morse entry read` and `morse entry decrypt` on the CLI's default path.
+
+  The id is now converted before the read, as `HttpAggregatorReadAdapter` already did; that is why reads through the aggregator kept working. `readBlob` by content id and `readQuiltPatch` were never affected. The unit test missed the bug because its fake `getBlobObject` returned an id that was already base64; it now returns the decimal string the chain returns. Verified live on testnet: a 2048-byte blob that fails to read on 0.8.2 now comes back byte for byte.
+
+### Changed
+
+- `DefaultWalrusReadAdapter.readBlobByObjectId` throws `ValidationError` (field `blob.blob_id`) when the on-chain `blob_id` is not a valid `u256`, the same error `HttpAggregatorReadAdapter` throws. The two adapters now share that conversion rather than each carrying its own.
+
 ## [0.8.2] - 2026-09-11
 
 Documentation only.

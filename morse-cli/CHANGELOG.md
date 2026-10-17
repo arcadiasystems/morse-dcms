@@ -4,6 +4,25 @@ All notable changes to `@arcadiasystems/morse-cli` are documented here. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-10-17
+
+Moves to `@arcadiasystems/morse-sdk` 0.9 and the current Mysten packages. Commands, flags, output and exit codes are unchanged.
+
+### Changed
+
+- **Dependencies.** `@arcadiasystems/morse-sdk` `^0.9.0` (was `^0.8.3`), `@mysten/sui` 2.36.0 (was 2.16.2), `@mysten/walrus` 1.2.35 (was 1.1.6), `@mysten/seal` 1.5.0 (was 1.1.3).
+- Encrypted commands still check each independent Seal key server's `/v1/service` proof before encrypting. `@mysten/seal` 1.3 stopped doing that by default; morse-sdk 0.9.0 opts back in, so the CLI's behaviour is the same as before.
+
+### Fixed
+
+- **`entry read` and `entry decrypt` could return corrupted bytes for quilt-mode entries.** On the default storage-node path, `@mysten/walrus` before 1.2.35 fetched one sliver too few when a patch's content started partway into a column, so the end of the content came back as zeros. 1.2.35 fixes the reader. `--via-aggregator` reads and blob-mode entries were never affected.
+
+## [0.10.2] - 2026-10-17
+
+### Fixed
+
+- **`entry read` and `entry decrypt` work on the default storage-node path.** For entries in a blob-mode collection, both failed with "The Walrus blob is not retrievable" ("No valid blob metadata could be retrieved from any storage node"), and only `--via-aggregator` worked. The bug was in the SDK, which sent the storage nodes the on-chain `u256` form of the blob id instead of the base64 id they store blobs under. `@arcadiasystems/morse-sdk` 0.8.3 fixes it, and the CLI now requires `^0.8.3`. Quilt-mode entries and files were not affected.
+
 ## [0.10.1] - 2026-09-10
 
 Tooling only. No behaviour changes.
