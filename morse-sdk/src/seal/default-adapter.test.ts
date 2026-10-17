@@ -8,7 +8,7 @@ import {
 import { toPackageId, toPublicationId } from "../codecs.js";
 import { MAINNET_SEAL_COMMITTEE, morseConfig } from "../config.js";
 import { ConfigurationError, SealError, TransportError } from "../errors.js";
-import { DefaultSealAdapter } from "./default-adapter.js";
+import { DefaultSealAdapter, sealClientOptions } from "./default-adapter.js";
 import { buildPublisherSealId } from "./identity.js";
 
 interface FakeSealClient {
@@ -233,6 +233,47 @@ describe("DefaultSealAdapter.fromMorseConfig", () => {
 				fakeSuiClient(),
 			),
 		).toThrow(ConfigurationError);
+	});
+});
+
+describe("sealClientOptions", () => {
+	const SERVERS = [{ objectId: "0xone", weight: 1 }];
+
+	test("verifies key servers when the caller does not say", () => {
+		// @mysten/seal 1.3.0 flipped its own default to false. Inheriting it would
+		// silently drop the only pre-encrypt check that a key server is reachable.
+		const options = sealClientOptions(
+			{ packageId: PACKAGE_ID, serverConfigs: SERVERS, threshold: 1 },
+			fakeSuiClient(),
+		);
+		expect(options.verifyKeyServers).toBe(true);
+	});
+
+	test("honors an explicit opt-out", () => {
+		const options = sealClientOptions(
+			{
+				packageId: PACKAGE_ID,
+				serverConfigs: SERVERS,
+				threshold: 1,
+				verifyKeyServers: false,
+			},
+			fakeSuiClient(),
+		);
+		expect(options.verifyKeyServers).toBe(false);
+	});
+
+	test("forwards timeout only when set", () => {
+		const base = {
+			packageId: PACKAGE_ID,
+			serverConfigs: SERVERS,
+			threshold: 1,
+		};
+		expect(sealClientOptions(base, fakeSuiClient())).not.toHaveProperty(
+			"timeout",
+		);
+		expect(
+			sealClientOptions({ ...base, timeout: 5000 }, fakeSuiClient()).timeout,
+		).toBe(5000);
 	});
 });
 
