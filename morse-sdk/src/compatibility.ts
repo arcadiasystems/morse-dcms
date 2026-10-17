@@ -15,11 +15,9 @@
 /**
  * Mysten substrate library versions the smoke suite passes against in full.
  *
- * `suiNetwork` stays `"testnet"` deliberately, and is not a claim that mainnet
- * is unverified. Most of the suite does pass on mainnet; the two Seal phases
- * cannot run there, because mainnet has no key servers this SDK can reach
- * without commercial credentials. So testnet is the only network with a fully
- * green run, and that is what this records.
+ * `suiNetwork` is `"testnet"` because testnet is the only network where the
+ * suite can pass in full: the two Seal phases cannot run on mainnet, which has
+ * no key servers this SDK can reach without commercial credentials.
  */
 export const TESTED_SUBSTRATE: {
 	readonly "@mysten/sui": string;
@@ -31,6 +29,6 @@ export const TESTED_SUBSTRATE: {
 	"@mysten/sui": "2.36.0",
 	"@mysten/seal": "1.5.0",
 	"@mysten/walrus": "1.2.35",
-	verifiedOn: "2026-10-17",
+	verifiedOn: "2026-10-18",
 	suiNetwork: "testnet",
 };

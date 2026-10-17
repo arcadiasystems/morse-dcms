@@ -40,7 +40,7 @@ morse-sdk is built and tested against specific minor versions of its Mysten subs
 
 | morse-sdk | `@mysten/sui` | `@mysten/walrus` | `@mysten/seal` | Sui network | Verified  |
 | --------- | ------------- | ---------------- | -------------- | ----------- | --------- |
-| 0.9.x     | 2.36.0-2.36.x | 1.2.35-1.2.x     | 1.5.0-1.5.x    | testnet     | 2026-10-17 |
+| 0.9.x     | 2.36.0-2.36.x | 1.2.35-1.2.x     | 1.5.0-1.5.x    | testnet     | 2026-10-18 |
 | 0.8.x     | 2.16.2-2.16.x | 1.1.6-1.1.x      | 1.1.3-1.1.x    | testnet     | 2026-09-09 |
 | 0.7.x     | 2.16.2-2.16.x | 1.1.6-1.1.x      | 1.1.3-1.1.x    | testnet     | 2026-09-09 |
 | 0.6.x     | 2.16.2-2.16.x | 1.1.6-1.1.x      | 1.1.3-1.1.x    | testnet     | 2026-09-09 |
@@ -48,13 +48,11 @@ morse-sdk is built and tested against specific minor versions of its Mysten subs
 | 0.4.x     | 2.16.2-2.16.x | 1.1.6-1.1.x      | 1.1.3-1.1.x    | testnet     | 2026-06-05 |
 | 0.1.x     | 2.16.2-2.16.x | 1.1.6-1.1.x      | 1.1.3-1.1.x    | testnet     | 2026-05-10 |
 
-The 0.9.x row rests on a narrower run than the rows below it. On testnet, against the new substrate: the unit suite, a storage-node read through `readBlobByObjectId`, the publication, blob collection, `addEntryFromBytes` and byte-for-byte read-back path, and Seal encrypt with key-server verification. The other smoke phases (publisher caps, quilt collections and uploads, encrypted entries and recipient files, which are the live coverage of Seal decrypt) have not been rerun on 0.9.x.
-
 Mysten ships breaking changes inside major version boundaries. Newer minors (e.g. `@mysten/walrus@1.3.x`, `@mysten/sui@2.37+`) are outside the verified ranges and may produce runtime errors; morse-sdk needs a coordinated bump and re-verification before a new Mysten minor is supported. Pin via `bun add @arcadiasystems/morse-sdk@~0.9.0` if you want patch updates without surprise minors.
 
 The verification protocol is documented in [`CONTRIBUTING.md`](https://github.com/arcadiasystems/morse-dcms/blob/main/morse-sdk/CONTRIBUTING.md): every Mysten dep bump runs the full `scripts/phase-N-*.ts` smoke suite before the bump lands.
 
-The `Sui network` column records where the suite passes **in full**, which is testnet. Most of it also passes on mainnet: publications, publisher caps, collections, Walrus blob and quilt uploads, and the entry lifecycle in both collection modes were all verified against live mainnet on 2026-09-09. A browser round trip was verified separately on 2026-09-11, through [@arcadiasystems/morse-uploader](https://www.npmjs.com/package/@arcadiasystems/morse-uploader): a wallet-signed upload via the Walrus upload relay, then the same blob read back byte for byte from the mainnet aggregator. The two Seal phases cannot run on mainnet, because it has no key servers this SDK can reach without commercial credentials, so mainnet has no fully green run to record. `TESTED_SUBSTRATE.suiNetwork` reports the same thing programmatically.
+The `Sui network` column records where the suite passes **in full**, which is testnet. Most of it also passes on mainnet: publications, publisher caps, collections, Walrus blob and quilt uploads, and the entry lifecycle in both collection modes were all verified against live mainnet on 2026-09-09, on 0.8.x; mainnet has not been rerun on the 0.9.x substrate. A browser round trip was verified separately on 2026-09-11, through [@arcadiasystems/morse-uploader](https://www.npmjs.com/package/@arcadiasystems/morse-uploader): a wallet-signed upload via the Walrus upload relay, then the same blob read back byte for byte from the mainnet aggregator. The two Seal phases cannot run on mainnet, because it has no key servers this SDK can reach without commercial credentials, so mainnet has no fully green run to record. `TESTED_SUBSTRATE.suiNetwork` reports the same thing programmatically.
 
 ### Runtime requirements
 

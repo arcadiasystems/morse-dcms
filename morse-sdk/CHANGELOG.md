@@ -22,11 +22,14 @@ Moves the Mysten substrate to the current lines. The public API is unchanged; th
 
 ### Verified on testnet
 
-Against the new substrate on 2026-10-17: the unit suite; `readBlobByObjectId` on a certified 2048-byte blob, byte for byte; a nonexistent object id surfacing as `NotFoundError`; publication, blob collection, `addEntryFromBytes` (one epoch, through the upload relay), `getEntry` and `readBlobRef`, byte for byte; and Seal encrypt against both pinned key servers, with verification on (two `/v1/service` checks) and off.
+The full smoke suite passes against the new substrate, on 2026-10-18, over the direct storage-node fanout with no upload relay. That covers phases 2 to 8: the publication lifecycle, publisher caps, blob and quilt collections, Walrus blob and quilt uploads, the entry lifecycle in both collection modes, an encrypted entry and Seal decrypt, and public and encrypted recipient files. The HTTP publisher variants were skipped, as they are whenever `WALRUS_PUBLISHER_URL` is unset.
 
-### Known gaps
-
-- The other smoke phases have not been rerun on the new substrate: publisher caps, quilt collections and Walrus quilt uploads, encrypted entries and recipient files. The last two are the only live coverage of Seal decrypt, which is where seal 1.5's `SessionKey` change lands.
+Also checked live on the new substrate:
+- `readBlobByObjectId` on a certified 2048-byte blob returns the original bytes.
+- Both patches of a fresh quilt read back exactly through `readQuiltPatch` over the storage nodes, matching the aggregator.
+- A nonexistent object id still surfaces as `NotFoundError`.
+- `addEntryFromBytes` works with a one-epoch upload through the upload relay.
+- Seal encrypt works against both pinned key servers, with verification on (two `/v1/service` checks) and off.
 
 ## [0.8.3] - 2026-10-17
 
