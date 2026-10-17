@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { blobIdFromInt } from "@mysten/walrus";
 
 import {
 	accessPolicyFromU8,
@@ -14,6 +15,7 @@ import {
 	toRegistryId,
 	toSuiAddress,
 	toSuiObjectId,
+	walrusBlobIdFromU256,
 } from "./codecs.js";
 import { ValidationError } from "./errors.js";
 import { AccessPolicy, StorageMode } from "./types.js";
@@ -89,6 +91,42 @@ describe("ID constructors", () => {
 			}
 		});
 	}
+});
+
+describe("walrusBlobIdFromU256", () => {
+	// A real testnet Blob object's blob_id, in the decimal form Sui decodes a
+	// Move u256 to.
+	const ON_CHAIN_BLOB_ID =
+		"76712379166943265631249750039322264804099220978611039441823192841119112366022";
+
+	test("converts a decimal u256 string to the base64url blob id", () => {
+		const blobId = walrusBlobIdFromU256(ON_CHAIN_BLOB_ID);
+		expect(blobId as string).toBe(blobIdFromInt(BigInt(ON_CHAIN_BLOB_ID)));
+		expect(blobId as string).toMatch(/^[A-Za-z0-9_-]{43}$/);
+	});
+
+	test("accepts a JSON number", () => {
+		expect(walrusBlobIdFromU256(42) as string).toBe(blobIdFromInt(42n));
+	});
+
+	test("rejects a non-integer string with a ValidationError on blob.blob_id", () => {
+		const alreadyBase64 = blobIdFromInt(BigInt(ON_CHAIN_BLOB_ID));
+		try {
+			walrusBlobIdFromU256(alreadyBase64);
+			throw new Error("expected throw");
+		} catch (error) {
+			expect(error).toBeInstanceOf(ValidationError);
+			expect((error as ValidationError).field).toBe("blob.blob_id");
+			expect((error as ValidationError).cause).toBeInstanceOf(SyntaxError);
+		}
+	});
+
+	test("rejects values outside the u256 range", () => {
+		expect(() => walrusBlobIdFromU256((2n ** 256n).toString())).toThrow(
+			ValidationError,
+		);
+		expect(() => walrusBlobIdFromU256("-1")).toThrow(ValidationError);
+	});
 });
 
 describe("storage mode codec", () => {

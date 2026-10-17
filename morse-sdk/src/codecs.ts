@@ -3,6 +3,8 @@
  * TypeScript values and on-chain Move representations.
  */
 
+import { blobIdFromInt } from "@mysten/walrus";
+
 import { ValidationError } from "./errors.js";
 import {
 	AccessPolicy,
@@ -115,6 +117,24 @@ export function toWalrusBlobId(value: string): WalrusBlobId {
 		);
 	}
 	return value as WalrusBlobId;
+}
+
+/**
+ * Convert the `blob_id` of an on-chain Walrus `Blob` object into a
+ * `WalrusBlobId`. Move stores it as a `u256`, which Sui decodes to a decimal
+ * string, while Walrus reads take the URL-safe base64 form.
+ * @throws {ValidationError} When the value is not a valid u256.
+ */
+export function walrusBlobIdFromU256(value: string | number): WalrusBlobId {
+	try {
+		return toWalrusBlobId(blobIdFromInt(BigInt(value)));
+	} catch (cause) {
+		throw new ValidationError(
+			`Walrus blob_id u256 could not be converted to base64: ${cause instanceof Error ? cause.message : String(cause)}`,
+			"blob.blob_id",
+			{ cause },
+		);
+	}
 }
 
 // Quilt patch id
