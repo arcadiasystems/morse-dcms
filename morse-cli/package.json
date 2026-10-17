@@ -1,6 +1,6 @@
 {
 	"name": "@arcadiasystems/morse-cli",
-	"version": "0.10.2",
+	"version": "0.11.0",
 	"description": "Command-line interface for the Morse decentralized CMS on Sui.",
 	"license": "MIT",
 	"type": "module",
