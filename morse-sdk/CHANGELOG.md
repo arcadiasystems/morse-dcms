@@ -2,6 +2,18 @@
 
 All notable changes to `morse-sdk` will be documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.3] - 2026-10-17
+
+### Fixed
+
+- **`DefaultWalrusReadAdapter.readBlobByObjectId` could not read any blob.** It took `blob_id` from the on-chain `Blob` object and passed it straight to `readBlob`. On chain that field is a Move `u256`, which Sui decodes to a decimal string, but `readBlob` takes the 43-character URL-safe base64 blob id. The storage nodes hold nothing under the decimal form, so every read failed with `NotFoundError` ("No valid blob metadata could be retrieved from any storage node"), even for healthy, certified blobs. `readBlobRef` on a blob-mode ref goes through the same method and failed the same way, which is what broke `morse entry read` and `morse entry decrypt` on the CLI's default path.
+
+  The id is now converted before the read, as `HttpAggregatorReadAdapter` already did; that is why reads through the aggregator kept working. `readBlob` by content id and `readQuiltPatch` were never affected. The unit test missed the bug because its fake `getBlobObject` returned an id that was already base64; it now returns the decimal string the chain returns. Verified live on testnet: a 2048-byte blob that fails to read on 0.8.2 now comes back byte for byte.
+
+### Changed
+
+- `DefaultWalrusReadAdapter.readBlobByObjectId` throws `ValidationError` (field `blob.blob_id`) when the on-chain `blob_id` is not a valid `u256`, the same error `HttpAggregatorReadAdapter` throws. The two adapters now share that conversion rather than each carrying its own.
+
 ## [0.8.2] - 2026-09-11
 
 Documentation only.

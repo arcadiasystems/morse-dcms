@@ -38,7 +38,7 @@
     },
     "morse-sdk": {
       "name": "@arcadiasystems/morse-sdk",
-      "version": "0.8.1",
+      "version": "0.8.3",
       "devDependencies": {
         "@biomejs/biome": "2.4.7",
         "@mysten/bcs": "2.0.3",
