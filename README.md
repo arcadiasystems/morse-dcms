@@ -6,7 +6,7 @@
 
 > **Status** - Morse is live on **Sui mainnet and testnet**. Deployment addresses for both are in [`morse-contracts/Published.toml`](./morse-contracts/Published.toml) and ship baked into the SDK and CLI.
 >
-> The contracts are **unaudited**. On mainnet, gas and Walrus storage cost real SUI and WAL, there is no faucet, and deletions are irreversible. The end-to-end smoke suite has only been run against testnet; mainnet is verified at the config and read layers. Size your first deployment accordingly.
+> On mainnet, gas and Walrus storage cost real SUI and WAL, there is no faucet, and deletions are irreversible. The end-to-end smoke suite has only been run against testnet; mainnet is verified at the config and read layers. Size your first deployment accordingly.
 >
 > On testnet, Sui and Walrus reset periodically (Walrus wipes every few months): stored content and object IDs will be lost on reset, and testnet SUI/WAL have no monetary value. Don't store anything you can't afford to lose.
 
