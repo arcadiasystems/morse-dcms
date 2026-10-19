@@ -14,6 +14,11 @@
  * No encrypted publish path: `publishFromDraft` and `publishDirect` always
  * write non-encrypted public revisions. Encrypted content stays as drafts.
  *
+ * These examples encrypt with Seal and stay on testnet. Every flow calls
+ * `requireTestnet` first, so a context built with `MORSE_NETWORK=mainnet`
+ * (see `setup.ts`) throws `ConfigurationError` before any upload or
+ * transaction.
+ *
  * Function names in this file are illustrative.
  */
 
@@ -27,6 +32,7 @@ import {
 	addEncryptedEntryFromBytes,
 	appendEncryptedDraftRevision,
 	buildPublisherSealId,
+	ConfigurationError,
 	DefaultSealAdapter,
 	DefaultWalrusWriteAdapter,
 } from "@arcadiasystems/morse-sdk";
@@ -50,17 +56,28 @@ export function newSealIdFor(publicationId: PublicationId): SealId {
 }
 
 /**
+ * Keep these examples on testnet. Throws before any adapter is built, so a
+ * context for another network never reaches an upload or a transaction.
+ */
+function requireTestnet(ctx: ExampleContext): void {
+	if (ctx.network !== "testnet") {
+		throw new ConfigurationError(
+			`The encrypted-entry examples run on testnet only, but this context targets ${ctx.network}. Build it with MORSE_NETWORK unset or set to testnet.`,
+		);
+	}
+}
+
+/**
  * Build the Seal and Walrus adapters once per encryption flow. Defaults the
  * Seal `serverConfigs` and `threshold` from `ctx.config.sealKeyServers` (the
  * canonical testnet allowlist baked into morse-sdk). Walrus is constructed
- * against the Walrus testnet — Walrus's `network` parameter accepts only
- * `"mainnet" | "testnet"`, so production code with a non-testnet morseConfig
- * maps `ctx.config.network` accordingly.
+ * against Walrus testnet, the only network these examples run on.
  */
 function buildAdapters(ctx: ExampleContext): {
 	seal: DefaultSealAdapter;
 	walrus: DefaultWalrusWriteAdapter;
 } {
+	requireTestnet(ctx);
 	const seal = DefaultSealAdapter.fromMorseConfig(ctx.config, {}, ctx.client);
 	const walrus = DefaultWalrusWriteAdapter.fromConfig(
 		{ network: "testnet", suiClient: ctx.client },
@@ -212,6 +229,7 @@ export async function publishEncryptedEntryWithCustomServers(
 		threshold?: number;
 	},
 ): Promise<{ entryId: number; sealId: SealId }> {
+	requireTestnet(ctx);
 	const seal = DefaultSealAdapter.fromMorseConfig(
 		ctx.config,
 		{

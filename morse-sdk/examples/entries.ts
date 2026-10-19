@@ -64,7 +64,7 @@ export async function createPost(
 	},
 ): Promise<number> {
 	const walrus = DefaultWalrusWriteAdapter.fromConfig(
-		{ network: "testnet", suiClient: ctx.client },
+		{ network: ctx.network, suiClient: ctx.client },
 		ctx.keypair,
 	);
 	const result = await addEntryFromBytes(ctx.adapter, ctx.config, {

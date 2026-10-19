@@ -47,7 +47,7 @@ export async function quickstart(privateKey: string): Promise<void> {
 	//    wallet-standard signer for `ctx.keypair`. The Move layer rejects
 	//    non-deletable blobs; always pass `deletable: true`.
 	const walrus = DefaultWalrusWriteAdapter.fromConfig(
-		{ network: "testnet", suiClient: ctx.client },
+		{ network: ctx.network, suiClient: ctx.client },
 		ctx.keypair,
 	);
 

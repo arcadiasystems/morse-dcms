@@ -218,6 +218,8 @@ If `addEntryFromBytes` succeeds in popup 1 (register + upload) but fails in popu
 
 Per-concern, compile-checked illustrative code. Each file is short, focused, and intended to be read alongside the JSDoc on the public exports.
 
+The examples pick their network from `MORSE_NETWORK`, the variable morse-cli and the smoke scripts also read. `examples/setup.ts` builds the shared context for testnet when it is unset. For mainnet, set `MORSE_NETWORK=mainnet` and `MORSE_ALLOW_MAINNET=1`, since mainnet writes spend real SUI and WAL. Any other value throws, and so does mainnet without the second variable. `examples/encrypted-entries.ts` encrypts with Seal and stays on testnet.
+
 | Concern                               | File                                                                | Covers                                                                                |
 | ------------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
 | Setup                                 | [`examples/setup.ts`](https://github.com/arcadiasystems/morse-dcms/blob/main/morse-sdk/examples/setup.ts)                          | morseConfig, gRPC client, KeypairAdapter, reader                                      |
