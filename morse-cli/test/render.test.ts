@@ -252,4 +252,37 @@ describe("renderFileList", () => {
 		expect(row).toContain("2"); // recipient count
 		expect(row).toContain("2023-11-14"); // 1_700_000_000_000 ms -> date
 	});
+
+	test("summaries carry no blob id, so the plain table has no blobId column", () => {
+		const out = renderFileList([
+			{
+				...base,
+				id: `0x${"9".repeat(64)}`,
+				name: "doc.pdf",
+				size: 1024,
+				members: [],
+			},
+		] as never);
+		expect(out.split("\n")[0]).toBe("id  name  size  recipients  created");
+		expect(out).not.toContain("blob123");
+	});
+
+	test("hydrated records add the full blob id as the last column", () => {
+		const blobId = "B".repeat(43);
+		const out = renderFileList([
+			{
+				...base,
+				kind: "full",
+				id: `0x${"9".repeat(64)}`,
+				blobId,
+				blobObjectId: null,
+				name: "doc.pdf",
+				size: 1024,
+				members: [],
+			},
+		] as never);
+		const [header, row] = out.split("\n");
+		expect(header).toBe("id  name  size  recipients  created  blobId");
+		expect(row).toEndWith(`  ${blobId}`);
+	});
 });

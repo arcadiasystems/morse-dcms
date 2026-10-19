@@ -290,7 +290,8 @@ endpoint, defaulting to the canonical Mysten one for the network. It used to use
 that remains. Point `--indexer-url <url>` at a different GraphQL endpoint (a
 self-hosted indexer, a third-party endpoint) to stay in control. Results are
 best-effort and eventually consistent (subject to indexer lag and retention). Summary rows omit `blobId`/`blobObjectId`; add `--hydrate`
-to fetch the full record per file (one read each) when you need them.
+to fetch the full record per file (one read each) when you need them. The
+hydrated table gains a `blobId` column, and `--json` returns the full records.
 
 ## Output and scripting
 

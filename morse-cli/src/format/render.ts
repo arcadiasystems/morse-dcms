@@ -140,16 +140,28 @@ export function renderEntryList(entries: readonly Entry[]): string {
 		.join("\n");
 }
 
+/**
+ * The `file list` table. Hydrated records add a `blobId` column; event-derived
+ * summaries do not carry the blob id, so a summary row in a hydrated table
+ * shows `-` there.
+ */
 export function renderFileList(
 	items: readonly RecipientFileSummaryOrFull[],
 ): string {
 	if (items.length === 0) {
 		return "No files.";
 	}
-	const header = "id  name  size  recipients  created";
+	const hydrated = items.some((file) => file.kind === "full");
+	const header = hydrated
+		? "id  name  size  recipients  created  blobId"
+		: "id  name  size  recipients  created";
 	const rows = items.map((file) => {
 		const created = new Date(file.createdAtMs).toISOString().slice(0, 10);
-		return `${shortId(file.id)}  ${file.name}  ${file.size}  ${file.members.length}  ${created}`;
+		const row = `${shortId(file.id)}  ${file.name}  ${file.size}  ${file.members.length}  ${created}`;
+		if (!hydrated) {
+			return row;
+		}
+		return `${row}  ${file.kind === "full" ? file.blobId : "-"}`;
 	});
 	return [header, ...rows].join("\n");
 }
