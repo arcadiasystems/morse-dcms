@@ -4,12 +4,12 @@ import type {
 	Entry,
 	OwnedPublication,
 	Publication,
-	PublisherCap,
 	RecipientFile,
 } from "@arcadiasystems/morse-sdk";
 
 import { shortId } from "../src/format/ids.ts";
 import {
+	type ListedPublisherCap,
 	renderCollectionList,
 	renderEntry,
 	renderEntryList,
@@ -144,11 +144,27 @@ describe("renderPublisherCapList", () => {
 	test("handles empty and populated lists", () => {
 		expect(renderPublisherCapList([])).toContain("No publisher caps");
 		const caps = [
-			{ id: ADDR, publicationId: ADDR, holder: ADDR },
-		] as unknown as PublisherCap[];
+			{ id: ADDR, publicationId: ADDR, holder: ADDR, status: "active" },
+		] as unknown as ListedPublisherCap[];
 		const out = renderPublisherCapList(caps);
-		expect(out).toContain(ADDR);
-		expect(out).toContain("holder");
+		expect(out).toBe(
+			`${ADDR}  publication ${shortId(ADDR)}  holder ${shortId(ADDR)}`,
+		);
+	});
+
+	test("marks caps that can no longer write", () => {
+		const caps = [
+			{ id: "0x1", publicationId: ADDR, holder: ADDR, status: "revoked" },
+			{
+				id: "0x2",
+				publicationId: ADDR,
+				holder: ADDR,
+				status: "publication-deleted",
+			},
+		] as unknown as ListedPublisherCap[];
+		const [revoked, orphaned] = renderPublisherCapList(caps).split("\n");
+		expect(revoked).toEndWith("  [revoked]");
+		expect(orphaned).toEndWith("  [publication deleted]");
 	});
 });
 

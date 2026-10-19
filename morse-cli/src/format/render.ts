@@ -34,14 +34,34 @@ export function renderEnrichedPublicationList(
 		.join("\n");
 }
 
-export function renderPublisherCapList(caps: readonly PublisherCap[]): string {
+/**
+ * Whether a held PublisherCap can still write. Revoking a cap or deleting its
+ * publication leaves the cap object in the holder's account, so the owned-object
+ * listing alone reports every cap the same way.
+ */
+export type PublisherCapStatus = "active" | "revoked" | "publication-deleted";
+
+/** A held PublisherCap with its write status (two reads per cap). */
+export interface ListedPublisherCap extends PublisherCap {
+	readonly status: PublisherCapStatus;
+}
+
+const CAP_STATUS_MARKERS: Readonly<Record<PublisherCapStatus, string>> = {
+	active: "",
+	revoked: "  [revoked]",
+	"publication-deleted": "  [publication deleted]",
+};
+
+export function renderPublisherCapList(
+	caps: readonly ListedPublisherCap[],
+): string {
 	if (caps.length === 0) {
 		return "No publisher caps held by this address.";
 	}
 	return caps
 		.map(
 			(cap) =>
-				`${cap.id}  publication ${shortId(cap.publicationId)}  holder ${shortId(cap.holder)}`,
+				`${cap.id}  publication ${shortId(cap.publicationId)}  holder ${shortId(cap.holder)}${CAP_STATUS_MARKERS[cap.status]}`,
 		)
 		.join("\n");
 }

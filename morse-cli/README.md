@@ -244,7 +244,7 @@ commands; pure on-chain commands (publication, collection, cap) have no epochs.
 
 | Command | Purpose |
 | --- | --- |
-| `cap list [address]` | List PublisherCaps held by an address. |
+| `cap list [address]` | List PublisherCaps held by an address. Caps that can no longer write are marked `[revoked]` or `[publication deleted]`; `--json` gives each a `status` of `active`, `revoked` or `publication-deleted`. Costs two reads per cap. |
 | `cap issue <holder> [-P <slug\|id>] [--owner-cap <id>]` | Issue a PublisherCap bound to an address. |
 | `cap revoke <publisherCapId> [-P <slug\|id>] [--owner-cap <id>]` | Revoke a PublisherCap. |
 | `cap destroy <publisherCapId> [-P <slug\|id>]` | Destroy a PublisherCap you hold. |

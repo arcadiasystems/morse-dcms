@@ -3,6 +3,8 @@
 import {
 	destroyPublisherCap,
 	issuePublisherCap,
+	NotFoundError,
+	type PublisherCap,
 	revokePublisherCap,
 	toPublisherCapId,
 	toSuiAddress,
@@ -21,7 +23,11 @@ import type { GlobalOptions } from "../cli/program.ts";
 import { confirm } from "../cli/prompts.ts";
 import { globalOptions } from "../cli/runtime.ts";
 import { resolvePublication } from "../cli/target.ts";
-import { renderPublisherCapList } from "../format/render.ts";
+import {
+	type ListedPublisherCap,
+	type PublisherCapStatus,
+	renderPublisherCapList,
+} from "../format/render.ts";
 import {
 	ownerCapOption,
 	publicationOption,
@@ -31,6 +37,27 @@ import { resolveOwnerCap } from "./resolve.ts";
 import { parseLimit } from "./shared.ts";
 
 type OwnerCapTargetOptions = TargetOptions & { ownerCap?: string };
+
+async function capStatus(
+	ctx: ReadContext,
+	cap: PublisherCap,
+): Promise<PublisherCapStatus> {
+	try {
+		const revoked = await ctx.reader.isPublisherCapRevoked(
+			cap.publicationId,
+			cap.id,
+			ctx.signal,
+		);
+		return revoked ? "revoked" : "active";
+	} catch (error) {
+		// Deleting a publication leaves its caps behind; one such cap must not
+		// fail the whole listing.
+		if (error instanceof NotFoundError && error.resource === "publication") {
+			return "publication-deleted";
+		}
+		throw error;
+	}
+}
 
 export async function runCapList(
 	ctx: ReadContext,
@@ -54,8 +81,14 @@ export async function runCapList(
 	if (page.nextCursor !== null) {
 		ctx.output.info(`More results: pass --cursor "${page.nextCursor}"`);
 	}
-	ctx.output.result(renderPublisherCapList(page.results), {
-		results: page.results,
+	const results: ListedPublisherCap[] = await Promise.all(
+		page.results.map(async (cap) => ({
+			...cap,
+			status: await capStatus(ctx, cap),
+		})),
+	);
+	ctx.output.result(renderPublisherCapList(results), {
+		results,
 		nextCursor: page.nextCursor,
 	});
 }
@@ -182,7 +215,7 @@ export function registerCapCommands(program: Command): void {
 	cap
 		.command("list [address]")
 		.description(
-			"List publisher caps held by an address (default: the active account)",
+			"List publisher caps held by an address (default: the active account), marking revoked ones",
 		)
 		.option("--limit <n>", "Maximum results per page")
 		.option("--cursor <cursor>", "Continue from a previous page cursor")
