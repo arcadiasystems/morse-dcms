@@ -4,7 +4,7 @@
 
 **Docs: [docs.morsecms.xyz](https://docs.morsecms.xyz)** · Website: [morsecms.xyz](https://www.morsecms.xyz) · X: [@arcadiasysweb3](https://x.com/arcadiasysweb3)
 
-> **Status** - Morse is live on **Sui mainnet and testnet**. Deployment addresses for both are in [`morse-contracts/Published.toml`](./morse-contracts/Published.toml) and ship baked into the SDK and CLI.
+> **Status** - Morse is live on **Walrus Mainnet and testnet**. Deployment addresses for both are in [`morse-contracts/Published.toml`](./morse-contracts/Published.toml) and ship baked into the SDK and CLI.
 >
 > On mainnet, gas and Walrus storage cost real SUI and WAL, there is no faucet, and deletions are irreversible.
 >
@@ -33,7 +33,7 @@ Using an AI coding agent? Point it at [docs.morsecms.xyz/llms.txt](https://docs.
 
 | Component | Status | Where |
 |-----------|--------|-------|
-| Move contracts | ✅ Active - deployed on Sui mainnet (v1) and testnet (v4) | [`morse-contracts/`](./morse-contracts/) |
+| Move contracts | ✅ Active - deployed on mainnet (v1) and testnet (v4) | [`morse-contracts/`](./morse-contracts/) |
 | TypeScript SDK | ✅ Active — [`@arcadiasystems/morse-sdk`](https://www.npmjs.com/package/@arcadiasystems/morse-sdk) on npm | [`morse-sdk/`](./morse-sdk/) |
 | CLI | ✅ Active — [`@arcadiasystems/morse-cli`](https://www.npmjs.com/package/@arcadiasystems/morse-cli) on npm | [`morse-cli/`](./morse-cli/) |
 | Indexer | 📋 Planned — event indexer for read-optimized queries | [`morse-indexer/`](./morse-indexer/) (stub) |
@@ -82,7 +82,7 @@ bun run lint && bun run typecheck && bun run test && bun run build
 
 Contracts (from `morse-contracts/`): `task build`, `task test`, `task publish`, `task upgrade`. `task publish` and `task upgrade` both run against whichever Sui environment is currently active and need a funded wallet there, so check `sui client active-env` first.
 
-`task publish` is for a new deployment only. It runs `sui client publish`, which creates a new package and updates `Published.toml`, and the package's `init` creates a new `PublicationRegistry`. Do not run it to change the live Walrus Mainnet or Testnet packages: it would create a second, separate deployment, not a new version of the live one. Changes to the live packages ship as a package upgrade. `task upgrade` runs `sui client upgrade` against the active environment, and `Published.toml` records each network's `upgrade-capability`. After an upgrade, update `KNOWN_DEPLOYMENTS` in [`morse-sdk/src/config.ts`](./morse-sdk/src/config.ts) to match `Published.toml`, since the SDK and CLI read their addresses from it.
+`task publish` is for a new deployment only. It runs `sui client publish`, which creates a new package and updates `Published.toml`, and the package's `init` creates a new `PublicationRegistry`. Do not run it to change the live mainnet or testnet packages: it would create a second, separate deployment, not a new version of the live one. Changes to the live packages ship as a package upgrade. `task upgrade` runs `sui client upgrade` against the active environment, and `Published.toml` records each network's `upgrade-capability`. After an upgrade, update `KNOWN_DEPLOYMENTS` in [`morse-sdk/src/config.ts`](./morse-sdk/src/config.ts) to match `Published.toml`, since the SDK and CLI read their addresses from it.
 
 A localnet workflow (`task localnet` / `task publish:local`) exists for ephemeral local iteration; see the taskfile for the full sequence.
 
