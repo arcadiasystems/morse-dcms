@@ -31,8 +31,9 @@ import {
 import type { ExampleContext } from "./setup.js";
 
 /**
- * Read a blob via the canonical Mysten testnet aggregator. Single
- * CORS-friendly endpoint instead of the ~30-node direct fanout.
+ * Read a blob via the canonical Mysten aggregator that `ctx.config` pins for
+ * its network. Single CORS-friendly endpoint instead of the ~30-node direct
+ * fanout.
  */
 export async function readBlobViaAggregator(
 	ctx: ExampleContext,

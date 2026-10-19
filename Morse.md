@@ -1,5 +1,7 @@
 # Morse dCMS
 
+> **Original design note, April 2026.** This is the design deep-dive Morse started from, kept as written. Parts of it may differ from what shipped. Current behaviour is documented at [docs.morsecms.xyz](https://docs.morsecms.xyz) and in the package READMEs: [morse-sdk](./morse-sdk/README.md), [morse-cli](./morse-cli/README.md), [morse-contracts](./morse-contracts/README.md) and [morse-indexer](./morse-indexer/README.md).
+
 Canonical stakeholder and technical document for the **Morse protocol**.
 
 ## Executive Summary
