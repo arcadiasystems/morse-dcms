@@ -6,7 +6,9 @@
 
 > **Status** - Morse is live on **Sui mainnet and testnet**. Deployment addresses for both are in [`morse-contracts/Published.toml`](./morse-contracts/Published.toml) and ship baked into the SDK and CLI.
 >
-> On mainnet, gas and Walrus storage cost real SUI and WAL, there is no faucet, and deletions are irreversible. The end-to-end smoke suite has only been run against testnet; mainnet is verified at the config and read layers. Size your first deployment accordingly.
+> On mainnet, gas and Walrus storage cost real SUI and WAL, there is no faucet, and deletions are irreversible.
+>
+> What has been verified, as recorded in the [SDK changelog](./morse-sdk/CHANGELOG.md): the full smoke suite passes on Testnet only, most recently with SDK 0.9.0 on 2026-10-18. On Walrus Mainnet, the SDK 0.6.0 smoke run on 2026-09-09, through the Walrus upload relay, verified publications, publisher caps, collections (blob and quilt), Walrus blob and quilt uploads, and the entry lifecycle in both collection modes. SDK 0.8.2 recorded a browser round trip on Walrus Mainnet on 2026-09-11 through `@arcadiasystems/morse-uploader`: a wallet-signed upload via the Walrus upload relay, then the same blob read back byte for byte from the Walrus Mainnet aggregator. The SDK 0.9.0 checks ran on Testnet only. Size your first deployment accordingly.
 >
 > On testnet, Sui and Walrus reset periodically (Walrus wipes every few months): stored content and object IDs will be lost on reset, and testnet SUI/WAL have no monetary value. Don't store anything you can't afford to lose.
 
