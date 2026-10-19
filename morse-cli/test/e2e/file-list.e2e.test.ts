@@ -1,6 +1,6 @@
 /**
  * Live testnet check for `morse file list`: upload a public file, then confirm
- * it shows up in the owned-files listing (via suix_queryEvents + the SDK
+ * it shows up in the owned-files listing (via Sui GraphQL events + the SDK
  * reconcile helpers), then tear it down. Opt-in (MORSE_E2E=1). Event indexing
  * lags behind the write, so the list step retries until the file appears.
  */

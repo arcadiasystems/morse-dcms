@@ -362,9 +362,9 @@ function lazySeal(base: ReadContext): () => DefaultSealAdapter {
 	};
 }
 
-// File listing: an event source (JSON-RPC suix_queryEvents, or a --indexer-url
-// override) plus the morse event-type strings, fed into the SDK's pure reconcile
-// helpers. Carries the files reader too, for --hydrate.
+// File listing: an event source (Sui GraphQL, at --indexer-url or the network's
+// canonical endpoint) plus the morse event-type strings, fed into the SDK's pure
+// reconcile helpers. Carries the files reader too, for --hydrate.
 export interface FileListContext extends FilesReadContext {
 	readonly events: EventQuerier;
 	readonly eventTypes: RecipientFileEventTypes;
