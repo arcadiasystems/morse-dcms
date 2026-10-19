@@ -80,7 +80,11 @@ cd morse-sdk           # or morse-cli
 bun run lint && bun run typecheck && bun run test && bun run build
 ```
 
-Contracts (from `morse-contracts/`): `task build`, `task test`, `task publish`. Note that `task publish` runs `sui client publish` against whichever Sui environment is currently active and needs a funded wallet there, so check `sui client active-env` first: on mainnet it spends real SUI and writes a new `[published.mainnet]` block. A localnet workflow (`task localnet` / `task publish:local`) exists for ephemeral local iteration; see the taskfile for the full sequence.
+Contracts (from `morse-contracts/`): `task build`, `task test`, `task publish`, `task upgrade`. `task publish` and `task upgrade` both run against whichever Sui environment is currently active and need a funded wallet there, so check `sui client active-env` first.
+
+`task publish` is for a new deployment only. It runs `sui client publish`, which creates a new package and updates `Published.toml`, and the package's `init` creates a new `PublicationRegistry`. Do not run it to change the live Walrus Mainnet or Testnet packages: it would create a second, separate deployment, not a new version of the live one. Changes to the live packages ship as a package upgrade. `task upgrade` runs `sui client upgrade` against the active environment, and `Published.toml` records each network's `upgrade-capability`. After an upgrade, update `KNOWN_DEPLOYMENTS` in [`morse-sdk/src/config.ts`](./morse-sdk/src/config.ts) to match `Published.toml`, since the SDK and CLI read their addresses from it.
+
+A localnet workflow (`task localnet` / `task publish:local`) exists for ephemeral local iteration; see the taskfile for the full sequence.
 
 ## Feedback
 
