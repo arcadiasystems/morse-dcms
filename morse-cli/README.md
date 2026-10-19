@@ -294,12 +294,15 @@ to fetch the full record per file (one read each) when you need them.
 
 ## Output and scripting
 
-- Human-readable output goes to stdout; progress, warnings, and prompts go to
-  stderr. Redirecting stdout yields only the result.
-- `--json` emits a single JSON document on stdout (nothing else). `bigint` values
-  (e.g. `gasUsedMist`) are encoded as decimal strings and byte arrays (quilt patch
-  ids) as `0x`-hex. Encrypted uploads also return `sealIdPrefix` / `sealNonce` as
-  hex and a `share` string.
+- Human-readable output goes to stdout; progress, warnings, prompts, and error
+  messages go to stderr. Redirecting stdout yields only the result.
+- `--json` emits a single JSON document on stdout (nothing else), when a command
+  fails as well as when it succeeds. A failure prints
+  `{"error": {"title": ..., "description": ..., "exitCode": ...}}` and exits
+  with that `exitCode`, so a script reads one stream and checks `$?`.
+- In `--json` output, `bigint` values (e.g. `gasUsedMist`) are encoded as
+  decimal strings and byte arrays (quilt patch ids) as `0x`-hex. Encrypted
+  uploads also return `sealIdPrefix` / `sealNonce` as hex and a `share` string.
 - Color is emitted only to a TTY and honors `NO_COLOR` and `FORCE_COLOR`.
 
 ## Exit codes

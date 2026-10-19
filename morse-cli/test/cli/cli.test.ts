@@ -21,4 +21,17 @@ describe("morse top-level", () => {
 		expect(stdout).toBe("");
 		expect(stderr).toContain("unknown option");
 	});
+
+	test("under --json an unknown flag also prints a JSON usage error on stdout", async () => {
+		const { code, stdout } = await runCli(["--json", "cap", "list", "--nope"]);
+		expect(code).toBe(2);
+		const parsed = JSON.parse(stdout) as {
+			error: { title: string; description: string; exitCode: number };
+		};
+		expect(parsed.error).toEqual({
+			title: "Usage error",
+			description: "unknown option '--nope'",
+			exitCode: 2,
+		});
+	});
 });
