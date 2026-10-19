@@ -30,6 +30,11 @@ jobs:
       - name: Typecheck
         working-directory: morse-sdk
         run: bun run typecheck
+      # Same gate prepublishOnly runs: README compatibility row, pin example
+      # and newest CHANGELOG entry must match package.json's version.
+      - name: Docs gate
+        working-directory: morse-sdk
+        run: bun run docs-gate
       - name: Test
         working-directory: morse-sdk
         run: bun run test
