@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+	BlobExpiredError,
 	ConfigurationError,
 	ContractAbortError,
 	NotFoundError,
@@ -86,6 +87,20 @@ describe("resolveExitCode", () => {
 		);
 	});
 
+	test("an expired blob is a not-found (3); a live blob the nodes did not return is a network failure (5)", () => {
+		const expired = new BlobExpiredError("blobid", {
+			blobObjectId: "0xobj",
+			endEpoch: 12,
+			currentEpoch: 15,
+		});
+		expect(resolveExitCode(expired)).toBe(ExitCode.NotFound);
+		const unreturned = new TransportError(
+			"Walrus storage nodes did not return blob blobid",
+			{ operation: "walrus.readBlob" },
+		);
+		expect(resolveExitCode(unreturned)).toBe(ExitCode.Network);
+	});
+
 	test("SealError no-access maps to 4, other Seal codes to 1", () => {
 		expect(resolveExitCode(new SealError("no-access", "denied"))).toBe(
 			ExitCode.Auth,
@@ -142,6 +157,44 @@ describe("renderError via handleError", () => {
 		};
 		expect(parsed.error.exitCode).toBe(ExitCode.NotFound);
 		expect(parsed.error.title).toBeDefined();
+	});
+
+	test("a blob not-found names the blob id, not the cause, and does not blame expiry", () => {
+		const { stderr } = captureStderr(() =>
+			handleError(new NotFoundError("blob", "blobid"), {
+				json: false,
+				debug: false,
+			}),
+		);
+		expect(stderr).toBe(
+			"Error: Walrus has no stored copy of this content. (id: blobid)\n",
+		);
+	});
+
+	test("a storage-node read failure suggests --via-aggregator", () => {
+		const err = new TransportError(
+			"Walrus storage nodes did not return blob blobid",
+			{ operation: "walrus.readBlob" },
+		);
+		const { value, stderr } = captureStderr(() =>
+			handleError(err, { json: false, debug: false }),
+		);
+		expect(value).toBe(ExitCode.Network);
+		expect(stderr).toBe(
+			"Error: Walrus storage nodes did not return blob blobid (walrus.readBlob) Retry, or pass --via-aggregator to read through a Walrus aggregator.\n",
+		);
+	});
+
+	test("other network failures carry no aggregator hint", () => {
+		const { stderr } = captureStderr(() =>
+			handleError(
+				new TransportError("getObject failed", {
+					operation: "sui.getObject",
+				}),
+				{ json: false, debug: false },
+			),
+		);
+		expect(stderr).not.toContain("--via-aggregator");
 	});
 
 	test("debug mode appends a stack trace, following the cause chain", () => {

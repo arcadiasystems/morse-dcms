@@ -68,6 +68,18 @@ const AUTH_ABORT_REASONS: ReadonlySet<string> = new Set([
 	"EPublisherCapWrongHolder",
 ]);
 
+// Reads that fan out to the storage nodes directly. They fail on a flaky
+// committee (common on Testnet) even for a healthy blob, and every command that
+// reads content can go through an aggregator instead.
+const STORAGE_NODE_READ_OPERATIONS: ReadonlySet<string> = new Set([
+	"walrus.readBlob",
+	"walrus.getFiles",
+	"walrus.readQuiltPatch",
+]);
+
+const VIA_AGGREGATOR_HINT =
+	"Retry, or pass --via-aggregator to read through a Walrus aggregator.";
+
 // Commander throws these after printing help or the version; they are not failures.
 const COMMANDER_SUCCESS_CODES: ReadonlySet<string> = new Set([
 	"commander.helpDisplayed",
@@ -118,7 +130,21 @@ function describe(err: unknown): { title: string; description: string } {
 		return { title: "Error", description: err.message };
 	}
 	const formatted = formatUserMessage(err);
+	if (isStorageNodeReadFailure(err)) {
+		return {
+			title: formatted.title,
+			description: `${formatted.description} ${VIA_AGGREGATOR_HINT}`,
+		};
+	}
 	return { title: formatted.title, description: formatted.description };
+}
+
+function isStorageNodeReadFailure(err: unknown): boolean {
+	return (
+		err instanceof TransportError &&
+		err.operation !== undefined &&
+		STORAGE_NODE_READ_OPERATIONS.has(err.operation)
+	);
 }
 
 export function renderError(
