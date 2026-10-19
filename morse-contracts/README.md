@@ -183,6 +183,14 @@ Run a single Move test:
 sui move test <test_function_name>
 ```
 
+## Build environments
+
+The package builds for two environments, `testnet` and `mainnet`. `Move.toml` has no `[environments]` table of its own; these are the two names that `[dep-replacements.mainnet]`, `Move.lock` and `Published.toml` use.
+
+- **Dependencies.** `[dependencies]` points Walrus at `testnet-contracts/walrus` in the MystenLabs/walrus repo, at rev `testnet`, and a testnet build uses it unchanged. For a mainnet build, `[dep-replacements.mainnet]` swaps it for `mainnet-contracts/walrus` at rev `mainnet-v1.48.1`. `Move.lock` pins the resolved commits for each environment separately, under `[pinned.testnet.*]` and `[pinned.mainnet.*]`.
+- **Choosing one.** `task build`, `task test`, `task publish` and `task upgrade` run against the active `sui client` environment, so switch to testnet or mainnet first. `task build` and `task test` do not work while localnet is active. The Taskfile has `switch:testnet` and `switch:local` but no mainnet shortcut; for mainnet, run `sui client switch --env <alias>` with the alias your client config uses for it.
+- **Published addresses.** Each environment has its own entry in `Published.toml`; see [Deployment metadata](#deployment-metadata).
+
 ## Localnet workflow
 
 One-time setup:
@@ -201,13 +209,13 @@ task clean         # when localnet is regenerated
 task switch:testnet
 ```
 
-Note:
+Notes:
 
-- `Move.toml` is kept targeting testnet for build/test compatibility.
-- `publish:local` compiles with `--build-env testnet` and publishes to localnet.
+- `publish:local` switches to the `local` environment and runs `sui client test-publish --build-env testnet`, so localnet gets the testnet build, including the testnet Walrus dependency. It writes `Pub.local.toml` and leaves `Published.toml` alone.
+- The iteration ends with `task switch:testnet` because `task build` and `task test` do not work while localnet is active.
 - If localnet chain ID changes (`--force-regenesis`), regenerate local publish metadata with `task clean` then republish.
 
 ## Deployment metadata
 
-- `Published.toml` is committed and tracks canonical published package IDs by environment.
+- `Published.toml` is committed and records the canonical publish for each environment, under `[published.testnet]` and `[published.mainnet]`. Each entry has its `chain-id`, `published-at`, `original-id`, `version` and `upgrade-capability`. `task publish` writes the entry for the active environment. Testnet is at version 4, so its `published-at` and `original-id` differ; mainnet is still at version 1, so the two are the same address.
 - `Pub.*.toml` files are ephemeral publish outputs and should not be committed.
