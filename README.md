@@ -4,9 +4,11 @@
 
 **Docs: [docs.morsecms.xyz](https://docs.morsecms.xyz)** · Website: [morsecms.xyz](https://www.morsecms.xyz) · X: [@arcadiasysweb3](https://x.com/arcadiasysweb3)
 
-> **Status** - Morse is live on **Sui mainnet and testnet**. Deployment addresses for both are in [`morse-contracts/Published.toml`](./morse-contracts/Published.toml) and ship baked into the SDK and CLI.
+> **Status** - Morse is live on **Walrus Mainnet and testnet**. Deployment addresses for both are in [`morse-contracts/Published.toml`](./morse-contracts/Published.toml) and ship baked into the SDK and CLI.
 >
-> On mainnet, gas and Walrus storage cost real SUI and WAL, there is no faucet, and deletions are irreversible. The end-to-end smoke suite has only been run against testnet; mainnet is verified at the config and read layers. Size your first deployment accordingly.
+> On mainnet, gas and Walrus storage cost real SUI and WAL, there is no faucet, and deletions are irreversible.
+>
+> What has been verified, as recorded in the [SDK changelog](./morse-sdk/CHANGELOG.md): the full smoke suite passes on Testnet only, most recently with SDK 0.9.0 on 2026-10-18. On Walrus Mainnet, the SDK 0.6.0 smoke run on 2026-09-09, through the Walrus upload relay, verified publications, publisher caps, collections (blob and quilt), Walrus blob and quilt uploads, and the entry lifecycle in both collection modes. SDK 0.8.2 recorded a browser round trip on Walrus Mainnet on 2026-09-11 through `@arcadiasystems/morse-uploader`: a wallet-signed upload via the Walrus upload relay, then the same blob read back byte for byte from the Walrus Mainnet aggregator. The SDK 0.9.0 checks ran on Testnet only. Size your first deployment accordingly.
 >
 > On testnet, Sui and Walrus reset periodically (Walrus wipes every few months): stored content and object IDs will be lost on reset, and testnet SUI/WAL have no monetary value. Don't store anything you can't afford to lose.
 
@@ -31,7 +33,7 @@ Using an AI coding agent? Point it at [docs.morsecms.xyz/llms.txt](https://docs.
 
 | Component | Status | Where |
 |-----------|--------|-------|
-| Move contracts | ✅ Active - deployed on Sui mainnet (v1) and testnet (v4) | [`morse-contracts/`](./morse-contracts/) |
+| Move contracts | ✅ Active - deployed on mainnet (v1) and testnet (v4) | [`morse-contracts/`](./morse-contracts/) |
 | TypeScript SDK | ✅ Active — [`@arcadiasystems/morse-sdk`](https://www.npmjs.com/package/@arcadiasystems/morse-sdk) on npm | [`morse-sdk/`](./morse-sdk/) |
 | CLI | ✅ Active — [`@arcadiasystems/morse-cli`](https://www.npmjs.com/package/@arcadiasystems/morse-cli) on npm | [`morse-cli/`](./morse-cli/) |
 | Indexer | 📋 Planned — event indexer for read-optimized queries | [`morse-indexer/`](./morse-indexer/) (stub) |
@@ -78,7 +80,11 @@ cd morse-sdk           # or morse-cli
 bun run lint && bun run typecheck && bun run test && bun run build
 ```
 
-Contracts (from `morse-contracts/`): `task build`, `task test`, `task publish`. Note that `task publish` runs `sui client publish` against whichever Sui environment is currently active and needs a funded wallet there, so check `sui client active-env` first: on mainnet it spends real SUI and writes a new `[published.mainnet]` block. A localnet workflow (`task localnet` / `task publish:local`) exists for ephemeral local iteration; see the taskfile for the full sequence.
+Contracts (from `morse-contracts/`): `task build`, `task test`, `task publish`, `task upgrade`. `task publish` and `task upgrade` both run against whichever Sui environment is currently active and need a funded wallet there, so check `sui client active-env` first.
+
+`task publish` is for a new deployment only. It runs `sui client publish`, which creates a new package and updates `Published.toml`, and the package's `init` creates a new `PublicationRegistry`. Do not run it to change the live mainnet or testnet packages: it would create a second, separate deployment, not a new version of the live one. Changes to the live packages ship as a package upgrade. `task upgrade` runs `sui client upgrade` against the active environment, and `Published.toml` records each network's `upgrade-capability`. After an upgrade, update `KNOWN_DEPLOYMENTS` in [`morse-sdk/src/config.ts`](./morse-sdk/src/config.ts) to match `Published.toml`, since the SDK and CLI read their addresses from it.
+
+A localnet workflow (`task localnet` / `task publish:local`) exists for ephemeral local iteration; see the taskfile for the full sequence.
 
 ## Feedback
 
