@@ -304,6 +304,15 @@ hydrated table gains a `blobId` column, and `--json` returns the full records.
 - In `--json` output, `bigint` values (e.g. `gasUsedMist`) are encoded as
   decimal strings and byte arrays (quilt patch ids) as `0x`-hex. Encrypted
   uploads also return `sealIdPrefix` / `sealNonce` as hex and a `share` string.
+- `gasUsedMist` is the net gas (computation plus storage, minus the storage
+  rebate) of the one Morse transaction whose `digest` the result reports, not
+  the whole cost of the command. Commands that upload to Walrus send more
+  transactions than that: `entry add`, `entry add-encrypted` and `file upload`
+  register the blob in a transaction of its own first (the Morse transaction
+  then certifies it), and the `revision` commands, when they upload content,
+  register and certify the blob in two Walrus transactions before the Morse
+  one. Their gas, the WAL storage fee and any upload-relay tip are not in
+  `gasUsedMist`.
 - Color is emitted only to a TTY and honors `NO_COLOR` and `FORCE_COLOR`.
 
 ## Exit codes

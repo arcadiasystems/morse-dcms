@@ -66,6 +66,13 @@ export type ProgressCallback = (event: ProgressEvent) => void;
 /** Result of `addEntryFromBytes` / `addEncryptedEntryFromBytes`. */
 export interface AddEntryFromBytesResult {
 	readonly digest: string;
+	/**
+	 * Net gas, in MIST, of the combined `certify_blob + add_entry_to_collection`
+	 * transaction (`digest`) only. The `register_blob` transaction that
+	 * `startBlobUpload` ran first pays its own gas, the WAL storage fee and
+	 * any upload-relay tip; the flow returns no effects for it, so none of
+	 * that is included.
+	 */
 	readonly gasUsedMist: bigint;
 	readonly entryId: number;
 	/** Always `0` for the entry's first revision; surfaced for symmetry. */

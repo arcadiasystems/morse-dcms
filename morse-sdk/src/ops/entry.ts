@@ -55,6 +55,7 @@ export interface AddEntryArgs {
 
 export interface AddEntryResult {
 	readonly digest: string;
+	/** Net gas, in MIST, of this transaction only; uploading the blob was separate. */
 	readonly gasUsedMist: bigint;
 	/** Stable monotonic ID assigned to the new entry. */
 	readonly entryId: number;
@@ -122,6 +123,7 @@ export interface AppendDraftRevisionArgs {
 
 export interface RevisionAppendResult {
 	readonly digest: string;
+	/** Net gas, in MIST, of this transaction only; uploading the blob was separate. */
 	readonly gasUsedMist: bigint;
 	/** Index of the newly appended revision in the entry's revision vector. */
 	readonly revisionId: number;
