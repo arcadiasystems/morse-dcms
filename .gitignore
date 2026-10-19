@@ -1,4 +1,5 @@
 .claude/*
+.DS_Store
 morse-cli/.env.testnet
 node_modules
 playground/
