@@ -4,11 +4,14 @@ on:
   pull_request:
     paths:
       - "morse-cli/**"
+      # The CLI builds against the workspace SDK, so SDK changes can break it.
+      - "morse-sdk/**"
       - ".github/workflows/cli-ci.yml"
   push:
     branches: [main]
     paths:
       - "morse-cli/**"
+      - "morse-sdk/**"
       - ".github/workflows/cli-ci.yml"
 
 jobs:
