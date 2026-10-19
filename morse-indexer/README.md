@@ -1,15 +1,7 @@
+**Placeholder, not implemented.**
+
 # morse-indexer
 
-To install dependencies:
+This package is meant to become the Morse event indexer: a service that follows the events emitted by the Morse Move contracts and serves read-optimized queries over that data, so client apps do not have to read every object from chain themselves. The contracts stay the source of truth; the indexer would be a convenience layer, not a gatekeeper.
 
-```bash
-bun install
-```
-
-To run:
-
-```bash
-bun run index.ts
-```
-
-This project was created using `bun init` in bun v1.2.23. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
+None of that exists yet. `index.ts` is a `bun init` scratch script that prints the SUI balance of one hard-coded testnet address and contains no indexing logic. The package is marked `private`, is not published to npm, and stays in the bun workspace only as a reserved slot for the planned indexer.
