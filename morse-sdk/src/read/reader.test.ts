@@ -461,6 +461,82 @@ function buildEntryIdName(entryId: number): { type: string; bcs: Uint8Array } {
 	return { type: "u64", bcs: EntryIdBcs.serialize(entryId).toBytes() };
 }
 
+describe("RpcPublicationReader.isPublisherCapRevoked", () => {
+	const REVOKED_TABLE_ID =
+		"0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+
+	test("looks the cap up in the publication's revoked denylist", async () => {
+		const getDynamicField = mock(async () => ({
+			dynamicField: { value: { bcs: new Uint8Array([1]) } },
+		}));
+		const reader = new RpcPublicationReader(
+			makeReader({
+				getObject: mock(async () =>
+					publicationObject(happyPathPublicationJson()),
+				),
+				getDynamicField,
+			}),
+			PACKAGE_ID,
+		);
+		const revoked = await reader.isPublisherCapRevoked(
+			PUBLICATION_ID,
+			PUBLISHER_CAP_ID,
+		);
+		expect(revoked).toBe(true);
+		const [args] = getDynamicField.mock.calls[0] as unknown as [
+			{ parentId: string; name: { type: string; bcs: Uint8Array } },
+		];
+		expect(args.parentId).toBe(REVOKED_TABLE_ID);
+		expect(args.name.type).toBe("0x2::object::ID");
+		expect(Array.from(args.name.bcs)).toEqual(
+			Array.from(Buffer.from(PUBLISHER_CAP_ID.slice(2), "hex")),
+		);
+	});
+
+	test("a cap missing from the denylist is not revoked", async () => {
+		const reader = new RpcPublicationReader(
+			makeReader({
+				getObject: mock(async () =>
+					publicationObject(happyPathPublicationJson()),
+				),
+				getDynamicField: mock(async () => {
+					throw new Error(
+						"Object 0x000000000000000000000000000000000000000000000000000000000000ffff not found",
+					);
+				}),
+			}),
+			PACKAGE_ID,
+		);
+		expect(
+			await reader.isPublisherCapRevoked(PUBLICATION_ID, PUBLISHER_CAP_ID),
+		).toBe(false);
+	});
+
+	test("a transport failure on the lookup is not read as 'not revoked'", async () => {
+		const reader = new RpcPublicationReader(
+			makeReader({
+				getObject: mock(async () =>
+					publicationObject(happyPathPublicationJson()),
+				),
+				getDynamicField: mock(async () => {
+					throw new Error("service unavailable: connection not found");
+				}),
+			}),
+			PACKAGE_ID,
+		);
+		await expect(
+			reader.isPublisherCapRevoked(PUBLICATION_ID, PUBLISHER_CAP_ID),
+		).rejects.toBeInstanceOf(TransportError);
+	});
+
+	test("a missing publication is a NotFoundError", async () => {
+		const reader = new RpcPublicationReader(makeReader(), PACKAGE_ID);
+		await expect(
+			reader.isPublisherCapRevoked(PUBLICATION_ID, PUBLISHER_CAP_ID),
+		).rejects.toBeInstanceOf(NotFoundError);
+	});
+});
+
 describe("RpcPublicationReader.getEntry", () => {
 	test("decodes a single entry by id", async () => {
 		const entryBytes = buildEntryBcs({

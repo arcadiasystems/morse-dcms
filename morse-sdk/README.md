@@ -275,6 +275,7 @@ The full public surface, grouped by concern. Every export carries a JSDoc on its
 | `RpcPublicationReader.fromMorseConfig(config, client)` | Construct a publication reader bound to the canonical `originalPackageId` for type filters. |
 | `reader.getPublication` / `getEntry` / `getRevision` / `getPublisherCap` | Single-object reads. |
 | `reader.listPublicationsOwnedBy` / `listPublisherCapsOwnedBy` / `listEntries` | Paginated lists. |
+| `reader.isPublisherCapRevoked(publicationId, publisherCapId)` | Whether the owner revoked a PublisherCap. A revoked cap still exists and still lists as owned, so check this before treating a listed cap as usable. |
 | `reader.scanEntries` | Async-iterator over every entry in a collection. |
 | `RpcRecipientFilesReader.fromMorseConfig(config, client)` | Construct a reader for the `recipient_file` module. |
 | `filesReader.getRecipientFile(id)` | Live single-object read (parses embedded `members`, blob refs). Throws `ValidationError` if the id resolves to an object of another Move type. |
