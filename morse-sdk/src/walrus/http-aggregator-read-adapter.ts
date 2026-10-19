@@ -244,11 +244,11 @@ export class HttpAggregatorReadAdapter implements WalrusReadAdapter {
 		}
 
 		if (response.status === 404) {
-			throw new NotFoundError(
-				"blob",
-				`Walrus aggregator: ${kind} ${identifier} not found`,
-				{ cause: new Error(`HTTP ${response.status} ${response.statusText}`) },
-			);
+			throw new NotFoundError("blob", identifier, {
+				cause: new Error(
+					`Walrus aggregator answered HTTP ${response.status} ${response.statusText} for ${kind} ${identifier}`,
+				),
+			});
 		}
 		if (!response.ok) {
 			throw new TransportError(
@@ -287,10 +287,7 @@ export class HttpAggregatorReadAdapter implements WalrusReadAdapter {
 		}
 		const object = response.object;
 		if (object === undefined || object === null) {
-			throw new NotFoundError(
-				"blob",
-				`Walrus blob object not found on-chain: ${blobObjectId}`,
-			);
+			throw new NotFoundError("blob", blobObjectId);
 		}
 		const json = object.json;
 		if (json === null || typeof json !== "object") {

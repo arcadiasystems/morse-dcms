@@ -23,6 +23,7 @@
 import {
 	ABORT_CODES,
 	type AbortModule,
+	BlobExpiredError,
 	ConfigurationError,
 	ContractAbortError,
 	MorseError,
@@ -59,6 +60,7 @@ export function formatUserMessage(err: unknown): FormattedError {
 	if (err instanceof ContractAbortError) return formatAbort(err);
 	if (err instanceof SealError) return formatSeal(err);
 	if (err instanceof UncertifiedBlobError) return formatUncertified(err);
+	if (err instanceof BlobExpiredError) return formatBlobExpired(err);
 	if (err instanceof NotFoundError) return formatNotFound(err);
 	if (err instanceof ValidationError) return formatValidation(err);
 	if (err instanceof TransportError) return formatTransport(err);
@@ -191,13 +193,23 @@ const NOT_FOUND_TITLES: Readonly<Record<NotFoundResource, string>> = {
 	"recipient-file": "File not found",
 };
 
+// Neutral on purpose: a missing blob may have expired, been deleted or never
+// been certified, and only `BlobExpiredError` has checked which.
 function formatNotFound(err: NotFoundError): FormattedError {
 	const title = NOT_FOUND_TITLES[err.resource];
 	const description =
 		err.resource === "blob"
-			? `The Walrus blob is not retrievable. The storage operator may be having issues, or the blob expired. (id: ${err.identifier})`
+			? `Walrus has no stored copy of this content. (id: ${err.identifier})`
 			: `No ${err.resource} at ${err.identifier}.`;
 	return { title, description, cause: err };
+}
+
+function formatBlobExpired(err: BlobExpiredError): FormattedError {
+	return {
+		title: "Content expired",
+		description: `The Walrus storage for this content ended at epoch ${err.endEpoch} (the current epoch is ${err.currentEpoch}), so storage nodes no longer serve it. (id: ${err.identifier})`,
+		cause: err,
+	};
 }
 
 // Validation / Transport / Configuration

@@ -105,6 +105,7 @@ describe("HttpAggregatorReadAdapter.readBlob", () => {
 		}
 		expect(caught).toBeInstanceOf(NotFoundError);
 		expect((caught as NotFoundError).resource).toBe("blob");
+		expect((caught as NotFoundError).identifier).toBe(SAMPLE_BLOB_ID);
 	});
 
 	test("maps other HTTP errors to TransportError", async () => {
@@ -298,9 +299,12 @@ describe("HttpAggregatorReadAdapter.readBlobByObjectId", () => {
 			suiClient,
 			fetch: fetchMock as unknown as FetchOption,
 		});
-		await expect(
-			adapter.readBlobByObjectId(SUI_OBJECT_ID),
-		).rejects.toBeInstanceOf(NotFoundError);
+		const caught = await adapter.readBlobByObjectId(SUI_OBJECT_ID).then(
+			() => undefined,
+			(err: unknown) => err,
+		);
+		expect(caught).toBeInstanceOf(NotFoundError);
+		expect((caught as NotFoundError).identifier).toBe(SUI_OBJECT_ID);
 	});
 });
 

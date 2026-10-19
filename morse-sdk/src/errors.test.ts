@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	ABORT_CODES,
 	type AbortModule,
+	BlobExpiredError,
 	ConfigurationError,
 	ContractAbortError,
 	MorseError,
@@ -35,6 +36,21 @@ describe("MorseError hierarchy", () => {
 		expect(error.resource).toBe("publication");
 		expect(error.identifier).toBe("0xdeadbeef");
 		expect(error.message).toBe("publication not found: 0xdeadbeef");
+	});
+
+	test("BlobExpiredError is a blob NotFoundError keyed by the blob id", () => {
+		const error = new BlobExpiredError("blobid", {
+			blobObjectId: "0xobj",
+			endEpoch: 12,
+			currentEpoch: 15,
+		});
+		expect(error).toBeInstanceOf(NotFoundError);
+		expect(error.name).toBe("BlobExpiredError");
+		expect(error.resource).toBe("blob");
+		expect(error.identifier).toBe("blobid");
+		expect(error.blobObjectId).toBe("0xobj");
+		expect(error.endEpoch).toBe(12);
+		expect(error.currentEpoch).toBe(15);
 	});
 
 	test("UnauthorizedError carries its message", () => {

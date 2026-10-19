@@ -40,6 +40,7 @@ export {
 	ABORT_CODES,
 	type AbortEntry,
 	type AbortModule,
+	BlobExpiredError,
 	ConfigurationError,
 	ContractAbortError,
 	MorseError,

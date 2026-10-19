@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { formatUserMessage } from "./errors.format.js";
 import {
+	BlobExpiredError,
 	ConfigurationError,
 	ContractAbortError,
 	NotFoundError,
@@ -125,11 +126,27 @@ describe("formatUserMessage — NotFoundError", () => {
 		expect(titles.size).toBe(resources.length);
 	});
 
-	test("blob resource has storage-operator-focused description", () => {
+	test("blob resource names the id and does not guess at expiry", () => {
 		const formatted = formatUserMessage(new NotFoundError("blob", "AAA"));
 		expect(formatted.title).toBe("Content unavailable");
-		expect(formatted.description).toContain("storage operator");
-		expect(formatted.description).toContain("AAA");
+		expect(formatted.description).toBe(
+			"Walrus has no stored copy of this content. (id: AAA)",
+		);
+		expect(formatted.description).not.toContain("expired");
+	});
+
+	test("BlobExpiredError states the lease end and current epoch", () => {
+		const formatted = formatUserMessage(
+			new BlobExpiredError("AAA", {
+				blobObjectId: "0xobj",
+				endEpoch: 12,
+				currentEpoch: 15,
+			}),
+		);
+		expect(formatted.title).toBe("Content expired");
+		expect(formatted.description).toContain("ended at epoch 12");
+		expect(formatted.description).toContain("current epoch is 15");
+		expect(formatted.description).toContain("(id: AAA)");
 	});
 
 	test("on-chain resources reference the identifier directly", () => {

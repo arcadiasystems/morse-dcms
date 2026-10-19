@@ -326,7 +326,8 @@ The full public surface, grouped by concern. Every export carries a JSDoc on its
 | --- | --- |
 | `MorseError` | Abstract base. Every SDK throw extends it. |
 | `ValidationError` (`field`) | Client-side input rejection. |
-| `NotFoundError` (`resource`, `identifier`) | Object missing on-chain or on Walrus. |
+| `NotFoundError` (`resource`, `identifier`) | Object missing on-chain or on Walrus. For `resource: "blob"`, `identifier` is the blob id (or quilt patch id) that was read. |
+| `BlobExpiredError` (`blobObjectId`, `endEpoch`, `currentEpoch`) | A `NotFoundError` for a blob whose on-chain storage lease has ended. |
 | `UnauthorizedError` | Client-side auth check failed. |
 | `ContractAbortError` (`module`, `abortCode`, `reason`) | Move VM aborted; `ABORT_CODES` table maps codes to names. |
 | `SealError` (`code`) | Seal authorization or decryption failure (`no-access` / `decrypt-failed` / `session-expired` / `rate-limited`). |
@@ -421,7 +422,8 @@ All errors extend `MorseError`. Narrow by class:
 | Class                | Carries                          | Thrown when                                                          |
 | -------------------- | -------------------------------- | -------------------------------------------------------------------- |
 | `ValidationError`    | `field`                          | Client-side input failed a precondition.                             |
-| `NotFoundError`      | `resource`, `identifier`         | Object doesn't exist on-chain.                                       |
+| `NotFoundError`      | `resource`, `identifier`         | Object doesn't exist on-chain, or Walrus reports it does not store the blob. |
+| `BlobExpiredError`   | `blobObjectId`, `endEpoch`, `currentEpoch` (plus `NotFoundError`'s fields) | `DefaultWalrusReadAdapter.readBlobByObjectId` found the blob's storage lease ended on-chain. |
 | `UnauthorizedError`  | -                                | Client-side auth check failed before submit.                         |
 | `ContractAbortError` | `module`, `abortCode`, `reason`  | Move VM aborted (e.g. `ESlugAlreadyExists`).                         |
 | `SealError`          | `code` (`no-access` / `decrypt-failed` / `session-expired` / `rate-limited`) | Seal authorization or decryption failed. |
@@ -518,7 +520,7 @@ const config = morseConfig({
 - **No encrypted publish path**. The Move contract hardcodes `encrypted=false` on `publish_from_draft` and `publish_direct`. Encrypted content stays as drafts.
 - **`Subscription` access policy is reserved**, not enforced.
 - **`listEntries` ordering is dynamic-field object-store order**, not chronological. Sort by `entry.id` for insertion order.
-- **Walrus flakiness**. `NotEnoughBlobConfirmationsError` from the underlying client is environmental; rerun. The SDK preserves the original error as the `cause` (use `instanceof` for narrowing - Walrus error classes don't set `.name`). Browser consumers may additionally see `NoBlobMetadataReceivedError` on reads from testnet due to CORS gaps on a subset of Walrus storage nodes; `HttpAggregatorReadAdapter` exists to route around that. Mainnet node CORS coverage has not been measured by this project, so browser *fanout* reads there are unproven rather than known-good; the aggregator read path is the one verified on mainnet.
+- **Walrus flakiness**. `NotEnoughBlobConfirmationsError` from the underlying client is environmental; rerun. The SDK preserves the original error as the `cause` (use `instanceof` for narrowing - Walrus error classes don't set `.name`). Browser consumers may additionally see `NoBlobMetadataReceivedError` (surfaced as a `TransportError` with it in the `cause` chain) on reads from testnet due to CORS gaps on a subset of Walrus storage nodes; `HttpAggregatorReadAdapter` exists to route around that. Mainnet node CORS coverage has not been measured by this project, so browser *fanout* reads there are unproven rather than known-good; the aggregator read path is the one verified on mainnet.
 - **Walrus uploads need WAL, not just SUI**. Uploads error with `Insufficient balance of ::wal::WAL` if you skip this. On testnet, get SUI from the [Sui faucet](https://faucet.sui.io/) and swap some for WAL at [stake-wal.wal.app](https://stake-wal.wal.app/?network=testnet). On mainnet there is no faucet: both SUI and WAL have to be acquired, and every upload spends real value.
 - **Walrus storage is epoch-funded, not permanent**. Blobs persist for the epochs you pay for and expire afterwards unless renewed, on both networks. Epoch length differs (a testnet epoch is roughly a day; mainnet epochs are much longer), so the same `epochs` argument buys very different durations. Walrus testnet is additionally wiped periodically, so treat testnet payloads as disposable; mainnet blobs are not wiped but still lapse if you let storage expire. The on-chain revision history is immutable either way.
 - **Sui over gRPC only**. The SDK reads and writes Sui through `SuiGrpcClient` from `@mysten/sui/grpc`; the reader and adapter interfaces are typed against `Pick<SuiGrpcClient, ...>`. It makes no JSON-RPC calls, and public Sui fullnodes no longer serve JSON-RPC. Environments that block gRPC need to proxy it or use a gRPC endpoint they can reach. The SDK does not query Sui events: its event-reconciliation helpers work on events you fetch yourself. morse-cli's `file list`, for example, fetches them from a Sui GraphQL endpoint.
