@@ -4,12 +4,18 @@ on:
   pull_request:
     paths:
       - "morse-cli/**"
+      # The CLI builds against the workspace SDK, so SDK changes can break it.
+      - "morse-sdk/**"
       - ".github/workflows/cli-ci.yml"
   push:
     branches: [main]
     paths:
       - "morse-cli/**"
+      - "morse-sdk/**"
       - ".github/workflows/cli-ci.yml"
+
+permissions:
+  contents: read
 
 jobs:
   ci:
@@ -17,9 +23,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Pinned: bun.lock is lockfileVersion 2, which bun 1.3.x rejects. Keep
+      # this in step with sdk-ci.yml.
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: "1.4.3"
       - name: Install (workspace root)
         run: bun install --frozen-lockfile
       # The CLI resolves @arcadiasystems/morse-sdk to the workspace package,

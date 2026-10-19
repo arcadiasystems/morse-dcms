@@ -11,15 +11,20 @@ on:
       - "morse-sdk/**"
       - ".github/workflows/sdk-ci.yml"
 
+permissions:
+  contents: read
+
 jobs:
   ci:
     name: morse-sdk
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Pinned: bun.lock is lockfileVersion 2, which bun 1.3.x rejects. Keep
+      # this in step with cli-ci.yml.
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: "1.4.3"
       - name: Install (workspace root)
         run: bun install --frozen-lockfile
       - name: Lint
@@ -28,6 +33,11 @@ jobs:
       - name: Typecheck
         working-directory: morse-sdk
         run: bun run typecheck
+      # Same gate prepublishOnly runs: README compatibility row, pin example
+      # and newest CHANGELOG entry must match package.json's version.
+      - name: Docs gate
+        working-directory: morse-sdk
+        run: bun run docs-gate
       - name: Test
         working-directory: morse-sdk
         run: bun run test

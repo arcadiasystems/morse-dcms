@@ -1,0 +1,81 @@
+name: contracts-ci
+
+on:
+  pull_request:
+    paths:
+      - "morse-contracts/**"
+      - ".github/workflows/contracts-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "morse-contracts/**"
+      - ".github/workflows/contracts-ci.yml"
+
+permissions:
+  contents: read
+
+env:
+  # Sui CLI release the Move tests run on: the toolchain Move.lock was last
+  # pinned with, which passes every test without rewriting Move.lock. Bump
+  # the tag and the checksum together.
+  SUI_RELEASE: testnet-v1.75.1
+  # sha256 of sui-<SUI_RELEASE>-ubuntu-x86_64.tgz, as published on the
+  # GitHub release.
+  SUI_ARCHIVE_SHA256: d85ec6ff2ba50005751b262fc4ca79eed54ecc7c8229136ab607c7f28f3fb98e
+
+jobs:
+  ci:
+    name: morse-contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The release archive is about 1 GiB and holds every Sui binary. Only
+      # `sui` is kept, cached per release.
+      - name: Cache Sui CLI
+        id: sui-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.sui-cli
+          key: sui-cli-${{ runner.os }}-${{ runner.arch }}-${{ env.SUI_RELEASE }}
+      - name: Install Sui CLI
+        if: steps.sui-cache.outputs.cache-hit != 'true'
+        run: |
+          archive="$RUNNER_TEMP/sui.tgz"
+          curl -fsSL --retry 3 -o "$archive" \
+            "https://github.com/MystenLabs/sui/releases/download/${SUI_RELEASE}/sui-${SUI_RELEASE}-ubuntu-x86_64.tgz"
+          echo "${SUI_ARCHIVE_SHA256}  ${archive}" | sha256sum --check --strict
+          mkdir -p ~/.sui-cli
+          tar -xzf "$archive" -C ~/.sui-cli ./sui
+      - name: Add Sui CLI to PATH
+        run: |
+          echo "$HOME/.sui-cli" >> "$GITHUB_PATH"
+          "$HOME/.sui-cli/sui" --version
+      # Without a client config, `sui move` creates one with a fresh keypair
+      # and prints its recovery phrase to the log. Unit tests need no account
+      # and no network, so give it a config with an empty keystore instead.
+      - name: Write keyless Sui client config
+        run: |
+          config_dir="$RUNNER_TEMP/sui-config"
+          mkdir -p "$config_dir"
+          echo '[]' > "$config_dir/sui.keystore"
+          cat > "$config_dir/client.yaml" <<EOF
+          keystore:
+            File: ${config_dir}/sui.keystore
+          envs: []
+          active_env: ~
+          active_address: ~
+          EOF
+          echo "SUI_CONFIG_DIR=$config_dir" >> "$GITHUB_ENV"
+      # The package is published on both networks, and mainnet builds swap in
+      # the mainnet Walrus package (Move.toml dep-replacements), so test both.
+      - name: Test (testnet build env)
+        working-directory: morse-contracts
+        run: sui move test --build-env testnet
+      - name: Test (mainnet build env)
+        working-directory: morse-contracts
+        run: sui move test --build-env mainnet
+      # The Move counterpart of --frozen-lockfile in the Bun workflows: fail if
+      # the tests only passed because the CLI re-pinned dependencies.
+      - name: Move.lock is up to date
+        working-directory: morse-contracts
+        run: git diff --exit-code -- Move.lock
