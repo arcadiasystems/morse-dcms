@@ -14,6 +14,9 @@ on:
       - "morse-sdk/**"
       - ".github/workflows/cli-ci.yml"
 
+permissions:
+  contents: read
+
 jobs:
   ci:
     name: morse-cli
