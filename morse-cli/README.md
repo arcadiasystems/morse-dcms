@@ -131,7 +131,8 @@ unlocked by a password. Specifics:
 
 - Keys are never accepted as command-line flags (they would leak via `ps`,
   `/proc/<pid>/cmdline`, and shell history). They come from an interactive hidden
-  prompt, the `MORSE_PRIVATE_KEY` env var, or the encrypted keystore.
+  prompt, stdin piped to `account import`, the `MORSE_PRIVATE_KEY` env var, or
+  the encrypted keystore.
 - Keystore files are written `chmod 600`; group- or world-readable key files are
   refused on read.
 - Keys are never printed or logged, including under `--debug`. The sole exception
@@ -184,7 +185,7 @@ and `-C, --collection <name>`, both defaulting to the active context.
 
 | Command | Purpose |
 | --- | --- |
-| `account import` | Import a key into an encrypted keystore (prompts for key + password). |
+| `account import` | Import a key into an encrypted keystore. The key comes from `MORSE_PRIVATE_KEY`, from stdin when piped (`printf '%s\n' "$SUI_KEY" \| morse account import`), or a hidden prompt. A piped import cannot prompt, so it takes the password from `MORSE_KEYSTORE_PASSWORD`. |
 | `account list` | List imported accounts; `*` marks the active one. |
 | `account show` | Print the active account address. |
 | `account use <address>` | Set the active account for the current profile. |
@@ -218,7 +219,7 @@ and `-C, --collection <name>`, both defaulting to the active context.
 | `entry scan [--drafts-only] [-P …] [-C …]` | List every entry (auto-paginated). |
 | `entry add <name> --file <path> [-P …] [-C …]` | Upload content and add a new entry; prints a viewable link. |
 | `entry delete <entryId> [-P …] [-C …]` | Delete an entry. |
-| `entry add-encrypted <name> --file <path> [-P …] [-C …]` | Encrypt, upload, and add a new entry. |
+| `entry add-encrypted <name> --file <path> [-P …] [-C …]` | Encrypt, upload, and add a new entry as a draft: its revision sets `draftHead`, not `publicHead`, so `entry list` marks it `[draft]` and `--drafts-only` includes it. The `revision` commands refuse encrypted entries, so the CLI cannot publish it; `entry decrypt` reads it. |
 | `entry decrypt <entryId> [revisionIndex] [--out <path>] [--via-aggregator] [-P …] [-C …]` | Decrypt an encrypted revision. |
 
 `add`, `add-encrypted`, and the revision commands accept `--file <path>` (or `-`
