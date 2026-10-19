@@ -20,7 +20,7 @@ with [Seal](https://github.com/MystenLabs/seal).
 > publication, collection and entry surface. All of that is verified against
 > live mainnet, including a public upload and download round trip.
 >
-> **The Move contracts are unaudited.** On mainnet, gas and Walrus storage cost
+> On mainnet, gas and Walrus storage cost
 > real SUI and WAL, there is no faucet, and deletions are irreversible. Nothing
 > selects mainnet for you: with no `--network`, `MORSE_NETWORK`, or profile
 > setting, the CLI targets testnet. Every command that spends gas prints the

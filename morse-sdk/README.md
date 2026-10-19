@@ -8,7 +8,7 @@ Pre-release. Mainnet and testnet are both wired: the Move contract addresses are
 
 **Encrypted content needs your own Seal key servers on mainnet.** Public publications, collections, entries and files work out of the box on both networks. Encryption does not, on mainnet: every mainnet Seal operator is commercial, including Mysten's committee aggregator, which rejects unauthenticated requests. `DefaultSealAdapter.fromMorseConfig` therefore throws `ConfigurationError` on mainnet until you supply `serverConfigs`. See [Network configuration](#network-configuration).
 
-**The contracts are unaudited.** On mainnet, SUI and WAL cost real money, there is no faucet, and a mistake is not recoverable. The publication lifecycle and the Walrus paths are verified end to end on mainnet; Seal is not, because mainnet has no key servers this SDK can reach without commercial credentials (see [Compatibility](#compatibility)). Treat mainnet as usable but young, and size your first deployment accordingly.
+**On mainnet, SUI and WAL cost real money.** There is no faucet, and a mistake is not recoverable. The publication lifecycle and the Walrus paths are verified end to end on mainnet; Seal is not, because mainnet has no key servers this SDK can reach without commercial credentials (see [Compatibility](#compatibility)). Treat mainnet as usable but young, and size your first deployment accordingly.
 
 ## Install
 
@@ -513,7 +513,6 @@ const config = morseConfig({
 
 ## Known limitations
 
-- **Unaudited contracts**. The Move package has not been audited. This is the main reason to be conservative about what you put on mainnet.
 - **No encrypted publish path**. The Move contract hardcodes `encrypted=false` on `publish_from_draft` and `publish_direct`. Encrypted content stays as drafts.
 - **`Subscription` access policy is reserved**, not enforced.
 - **`listEntries` ordering is dynamic-field object-store order**, not chronological. Sort by `entry.id` for insertion order.
