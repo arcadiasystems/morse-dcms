@@ -205,7 +205,7 @@ and `-C, --collection <name>`, both defaulting to the active context.
 | Command | Purpose |
 | --- | --- |
 | `collection list [-P <slug\|id>]` | List collections. |
-| `collection create <name> [--mode blob\|quilt] [-P <slug\|id>]` | Create a collection and select it. |
+| `collection create <name> [--mode blob\|quilt] [-P <slug\|id>]` | Create a collection and select it. `--json` includes its `name` and `entriesTableId`. |
 | `collection delete <name> [-P <slug\|id>] [--publisher-cap <id>]` | Delete an empty collection. |
 
 ### entry

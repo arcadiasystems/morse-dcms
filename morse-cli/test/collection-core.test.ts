@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
+import { TransportError } from "@arcadiasystems/morse-sdk";
+import { CliError } from "../src/cli/errors.ts";
+import { ExitCode } from "../src/cli/exit-codes.ts";
 import {
 	runCollectionCreate,
 	runCollectionDelete,
@@ -15,7 +18,23 @@ beforeEach(resetSdkMock);
 
 const ID = `0x${"1".repeat(64)}`;
 
-function readerWithCaps(entries: unknown[] = []) {
+const ENTRIES_TABLE_ID = `0x${"7".repeat(64)}`;
+
+function readerWithCaps(
+	entries: unknown[] = [],
+	getPublication: () => Promise<unknown> = () =>
+		Promise.resolve({
+			id: ID,
+			collections: [
+				{
+					name: "posts",
+					storageMode: "blob",
+					nextEntryId: 0,
+					entriesTableId: ENTRIES_TABLE_ID,
+				},
+			],
+		}),
+) {
 	return {
 		listPublisherCapsOwnedBy: () =>
 			Promise.resolve({
@@ -23,6 +42,7 @@ function readerWithCaps(entries: unknown[] = []) {
 				nextCursor: null,
 			}),
 		listEntries: () => Promise.resolve({ results: entries, nextCursor: null }),
+		getPublication,
 	} as never;
 }
 
@@ -69,6 +89,63 @@ describe("runCollectionCreate", () => {
 		expect(captured.stdout()).toContain("active collection");
 		const cfg = await loadConfig();
 		expect(cfg.profiles.default?.collection).toBe("posts");
+	});
+
+	test("--json reports the collection's name and entries table id", async () => {
+		const { ctx, captured } = writeContext({
+			reader: readerWithCaps(),
+			json: true,
+		});
+		await runCollectionCreate(
+			ctx,
+			"posts",
+			{ publication: ID, mode: "blob" },
+			{},
+		);
+		expect(captured.json()).toEqual({
+			network: "testnet",
+			digest: "0xtxdigest",
+			name: "posts",
+			entriesTableId: ENTRIES_TABLE_ID,
+		});
+	});
+
+	async function createFailure(
+		getPublication: () => Promise<unknown>,
+	): Promise<CliError> {
+		const { ctx } = writeContext({
+			reader: readerWithCaps([], getPublication),
+		});
+		const error = await runCollectionCreate(
+			ctx,
+			"posts",
+			{ publication: ID, mode: "blob" },
+			{},
+		).then(
+			() => undefined,
+			(thrown: unknown) => thrown,
+		);
+		expect(error).toBeInstanceOf(CliError);
+		expect(ops.createCollection).toHaveBeenCalledTimes(1);
+		return error as CliError;
+	}
+
+	test("a failed read-back says the collection was created and keeps the read's exit code", async () => {
+		const error = await createFailure(() =>
+			Promise.reject(new TransportError("getObject failed")),
+		);
+		expect(error.message).toStartWith(
+			'Created collection "posts" (tx: 0xtxdigest), but could not read it back',
+		);
+		expect(error.exitCode).toBe(ExitCode.Network);
+	});
+
+	test("a read-back that lacks the new collection says it was created", async () => {
+		const error = await createFailure(() =>
+			Promise.resolve({ id: ID, collections: [] }),
+		);
+		expect(error.message).toStartWith('Created collection "posts"');
+		expect(error.exitCode).toBe(ExitCode.Generic);
 	});
 
 	test("rejects an invalid storage mode before any op", async () => {

@@ -1,8 +1,10 @@
 /** `morse collection`: create, list, and delete collections within a publication. */
 
 import {
+	type Collection,
 	createCollection,
 	deleteCollection,
+	type PublicationId,
 	StorageMode,
 } from "@arcadiasystems/morse-sdk";
 import type { Command } from "commander";
@@ -13,7 +15,13 @@ import {
 	type ReadContext,
 	type WriteContext,
 } from "../cli/context.ts";
-import { cancelled, UsageError } from "../cli/errors.ts";
+import {
+	CliError,
+	cancelled,
+	resolveExitCode,
+	UsageError,
+} from "../cli/errors.ts";
+import { ExitCode } from "../cli/exit-codes.ts";
 import type { GlobalOptions } from "../cli/program.ts";
 import { confirm } from "../cli/prompts.ts";
 import { globalOptions } from "../cli/runtime.ts";
@@ -56,6 +64,33 @@ function isActivePublication(
 	return ctx.settings.publication === target;
 }
 
+/**
+ * Read a just-created collection back from its publication. Collections live
+ * inline in the publication, so the create receipt carries no object id for the
+ * entries table. The create is final by now, so a failed read-back says so
+ * instead of looking like the create failed.
+ */
+async function readBackCollection(
+	ctx: WriteContext,
+	publicationId: PublicationId,
+	name: string,
+	digest: string,
+): Promise<Collection> {
+	const failure = `Created collection "${name}" (tx: ${digest}), but could not read it back to get its entries table id. Run \`morse --json collection list\` to see it.`;
+	let collections: readonly Collection[];
+	try {
+		collections = (await ctx.reader.getPublication(publicationId, ctx.signal))
+			.collections;
+	} catch (cause) {
+		throw new CliError(failure, resolveExitCode(cause), { cause });
+	}
+	const created = collections.find((c) => c.name === name);
+	if (created === undefined) {
+		throw new CliError(failure, ExitCode.Generic);
+	}
+	return created;
+}
+
 export async function runCollectionCreate(
 	ctx: WriteContext,
 	name: string,
@@ -92,9 +127,10 @@ export async function runCollectionCreate(
 	if (selected) {
 		await updateActiveProfile(gopts, { collection: name });
 	}
+	const created = await readBackCollection(ctx, id, name, result.digest);
 	ctx.output.result(
 		`Created collection "${name}".${selected ? " Selected as the active collection." : ""} (tx: ${result.digest})`,
-		result,
+		{ ...result, name, entriesTableId: created.entriesTableId },
 	);
 }
 
