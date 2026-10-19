@@ -625,7 +625,7 @@ export function registerFileCommands(program: Command): void {
 		.option("--limit <n>", "Cap the number of results")
 		.option(
 			"--indexer-url <url>",
-			"Event source URL (default: the RPC; uses suix_queryEvents, a deprecated Sui endpoint)",
+			"Sui GraphQL endpoint to read file events from (default: Mysten's endpoint for the network; required on localnet)",
 		)
 		.action(
 			async (
