@@ -1,5 +1,8 @@
 {
   "name": "morse",
   "private": true,
-  "workspaces": ["morse-cli", "morse-sdk", "morse-indexer"]
+  "workspaces": ["morse-cli", "morse-sdk", "morse-indexer"],
+  "engines": {
+    "bun": ">=1.4.0"
+  }
 }
