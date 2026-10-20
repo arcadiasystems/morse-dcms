@@ -71,7 +71,7 @@ Each package has its own README with development setup. The SDK's [CHANGELOG](./
 
 ## Development
 
-Prerequisites: [Bun](https://bun.sh) ≥ 1.2, [Sui CLI](https://docs.sui.io/guides/developer/getting-started/sui-install) and [Task](https://taskfile.dev/) for contract work.
+Prerequisites: [Bun](https://bun.sh) ≥ 1.4, [Sui CLI](https://docs.sui.io/guides/developer/getting-started/sui-install) and [Task](https://taskfile.dev/) for contract work.
 
 ```sh
 bun install            # repo root — installs all workspaces
