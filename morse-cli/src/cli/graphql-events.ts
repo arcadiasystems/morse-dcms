@@ -3,9 +3,23 @@
  *
  * The original source was `suix_queryEvents` over JSON-RPC, which public Sui
  * fullnodes have retired: they answer every JSON-RPC method with "Method not
- * found". gRPC is the documented replacement for most reads, but @mysten/sui's
- * gRPC client exposes no event API at all, so GraphQL is the only transport
- * left that can answer "give me every event of this Move type".
+ * found". gRPC is the documented replacement for most reads, and @mysten/sui's
+ * `SuiGrpcClient` does have `listEvents` (LedgerService/ListEvents). Public
+ * fullnodes serve it, but only from the history they have not pruned. Tested
+ * on 2026-10-20 against https://fullnode.testnet.sui.io:443 (Testnet) and
+ * https://fullnode.mainnet.sui.io:443 (Walrus Mainnet), filtering on
+ * `recipient_file::RecipientFileCreated`:
+ *   - Testnet returned 11 of the 41 events the canonical GraphQL endpoint
+ *     returns: exactly the ones at or above the node's lowest available
+ *     checkpoint (2026-10-09).
+ *   - Walrus Mainnet returned none of 6; all of them predate the node's lowest
+ *     available checkpoint (2026-10-05).
+ * Both streams ended normally (QueryEnd LEDGER_TIP, hasNextPage false), so the
+ * gap is silent. Listing needs every event since the package was published,
+ * which GraphQL returned, so GraphQL is the transport that can answer "give me
+ * every event of this Move type". gRPC events also carry a checkpoint but no
+ * timestamp; the GraphQL timestamp is what this querier maps to `timestampMs`,
+ * and the SDK's reconcile helpers turn that into each summary's `createdAtMs`.
  *
  * Hand-rolled over `fetch` rather than pulling in a GraphQL client: one query,
  * one cursor, and the CLI keeps its dependency surface minimal.

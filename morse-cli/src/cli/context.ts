@@ -382,9 +382,10 @@ export async function buildFileListContext(
 			ExitCode.Usage,
 		);
 	}
-	// GraphQL, not JSON-RPC: public fullnodes retired suix_queryEvents, and
-	// @mysten/sui's gRPC client exposes no event API at all, so this is the only
-	// transport left that can answer "every event of this Move type".
+	// GraphQL, not JSON-RPC or gRPC: public fullnodes retired suix_queryEvents,
+	// and they serve gRPC listEvents only from their pruned recent history, so
+	// it silently misses older events (tested 2026-10-20; see graphql-events.ts).
+	// GraphQL is the transport that answers "every event of this Move type".
 	const indexerUrl =
 		opts.indexerUrl ?? canonicalGraphqlUrl(base.settings.network);
 	if (indexerUrl === undefined) {
