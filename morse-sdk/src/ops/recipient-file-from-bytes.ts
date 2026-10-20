@@ -73,6 +73,13 @@ export type FileUploadProgressCallback = (
 /** Result of `uploadRecipientFileFromBytes` / `uploadEncryptedRecipientFileFromBytes`. */
 export interface UploadRecipientFileResult {
 	readonly digest: string;
+	/**
+	 * Net gas, in MIST, of the combined `certify_blob` + file-creation
+	 * transaction (`digest`) only. The `register_blob` transaction that
+	 * `startBlobUpload` ran first pays its own gas, the WAL storage fee and
+	 * any upload-relay tip; the flow returns no effects for it, so none of
+	 * that is included.
+	 */
 	readonly gasUsedMist: bigint;
 	readonly fileId: RecipientFileId;
 	readonly blobId: WalrusBlobId;

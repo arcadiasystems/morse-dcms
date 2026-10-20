@@ -34,14 +34,34 @@ export function renderEnrichedPublicationList(
 		.join("\n");
 }
 
-export function renderPublisherCapList(caps: readonly PublisherCap[]): string {
+/**
+ * Whether a held PublisherCap can still write. Revoking a cap or deleting its
+ * publication leaves the cap object in the holder's account, so the owned-object
+ * listing alone reports every cap the same way.
+ */
+export type PublisherCapStatus = "active" | "revoked" | "publication-deleted";
+
+/** A held PublisherCap with its write status (two reads per cap). */
+export interface ListedPublisherCap extends PublisherCap {
+	readonly status: PublisherCapStatus;
+}
+
+const CAP_STATUS_MARKERS: Readonly<Record<PublisherCapStatus, string>> = {
+	active: "",
+	revoked: "  [revoked]",
+	"publication-deleted": "  [publication deleted]",
+};
+
+export function renderPublisherCapList(
+	caps: readonly ListedPublisherCap[],
+): string {
 	if (caps.length === 0) {
 		return "No publisher caps held by this address.";
 	}
 	return caps
 		.map(
 			(cap) =>
-				`${cap.id}  publication ${shortId(cap.publicationId)}  holder ${shortId(cap.holder)}`,
+				`${cap.id}  publication ${shortId(cap.publicationId)}  holder ${shortId(cap.holder)}${CAP_STATUS_MARKERS[cap.status]}`,
 		)
 		.join("\n");
 }
@@ -120,16 +140,28 @@ export function renderEntryList(entries: readonly Entry[]): string {
 		.join("\n");
 }
 
+/**
+ * The `file list` table. Hydrated records add a `blobId` column; event-derived
+ * summaries do not carry the blob id, so a summary row in a hydrated table
+ * shows `-` there.
+ */
 export function renderFileList(
 	items: readonly RecipientFileSummaryOrFull[],
 ): string {
 	if (items.length === 0) {
 		return "No files.";
 	}
-	const header = "id  name  size  recipients  created";
+	const hydrated = items.some((file) => file.kind === "full");
+	const header = hydrated
+		? "id  name  size  recipients  created  blobId"
+		: "id  name  size  recipients  created";
 	const rows = items.map((file) => {
 		const created = new Date(file.createdAtMs).toISOString().slice(0, 10);
-		return `${shortId(file.id)}  ${file.name}  ${file.size}  ${file.members.length}  ${created}`;
+		const row = `${shortId(file.id)}  ${file.name}  ${file.size}  ${file.members.length}  ${created}`;
+		if (!hydrated) {
+			return row;
+		}
+		return `${row}  ${file.kind === "full" ? file.blobId : "-"}`;
 	});
 	return [header, ...rows].join("\n");
 }

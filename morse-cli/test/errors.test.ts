@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+	BlobExpiredError,
 	ConfigurationError,
 	ContractAbortError,
 	NotFoundError,
@@ -20,19 +21,29 @@ import {
 } from "../src/cli/errors.ts";
 import { ExitCode } from "../src/cli/exit-codes.ts";
 
-/** Run with process.stderr.write swallowed; return the value and what was written. */
-function captureStderr<T>(fn: () => T): { value: T; stderr: string } {
-	let buffer = "";
-	const original = process.stderr.write.bind(process.stderr);
+/** Run with both process streams swallowed; return the value and what each received. */
+function captureStreams<T>(fn: () => T): {
+	value: T;
+	stdout: string;
+	stderr: string;
+} {
+	const written = { stdout: "", stderr: "" };
+	const originalOut = process.stdout.write.bind(process.stdout);
+	const originalErr = process.stderr.write.bind(process.stderr);
+	(process.stdout as { write: unknown }).write = (text: string): boolean => {
+		written.stdout += text;
+		return true;
+	};
 	(process.stderr as { write: unknown }).write = (text: string): boolean => {
-		buffer += text;
+		written.stderr += text;
 		return true;
 	};
 	try {
 		const value = fn();
-		return { value, stderr: buffer };
+		return { value, ...written };
 	} finally {
-		(process.stderr as { write: unknown }).write = original;
+		(process.stdout as { write: unknown }).write = originalOut;
+		(process.stderr as { write: unknown }).write = originalErr;
 	}
 }
 
@@ -86,6 +97,20 @@ describe("resolveExitCode", () => {
 		);
 	});
 
+	test("an expired blob is a not-found (3); a live blob the nodes did not return is a network failure (5)", () => {
+		const expired = new BlobExpiredError("blobid", {
+			blobObjectId: "0xobj",
+			endEpoch: 12,
+			currentEpoch: 15,
+		});
+		expect(resolveExitCode(expired)).toBe(ExitCode.NotFound);
+		const unreturned = new TransportError(
+			"Walrus storage nodes did not return blob blobid",
+			{ operation: "walrus.readBlob" },
+		);
+		expect(resolveExitCode(unreturned)).toBe(ExitCode.Network);
+	});
+
 	test("SealError no-access maps to 4, other Seal codes to 1", () => {
 		expect(resolveExitCode(new SealError("no-access", "denied"))).toBe(
 			ExitCode.Auth,
@@ -108,47 +133,117 @@ describe("handleError commander codes", () => {
 		);
 	});
 
-	test("parse failures map to usage", () => {
+	test("parse failures map to usage without re-rendering", () => {
 		const unknown = new CommanderError(
 			1,
 			"commander.unknownOption",
-			"unknown option",
+			"error: unknown option '--nope'",
 		);
-		expect(handleError(unknown, { json: false, debug: false })).toBe(
-			ExitCode.Usage,
+		const { value, stdout, stderr } = captureStreams(() =>
+			handleError(unknown, { json: false, debug: false }),
 		);
+		expect(value).toBe(ExitCode.Usage);
+		expect(stdout).toBe("");
+		expect(stderr).toBe("");
+	});
+
+	test("parse failures under --json still put a JSON usage error on stdout", () => {
+		const unknown = new CommanderError(
+			1,
+			"commander.unknownOption",
+			"error: unknown option '--nope'",
+		);
+		const { value, stdout } = captureStreams(() =>
+			handleError(unknown, { json: true, debug: false }),
+		);
+		expect(value).toBe(ExitCode.Usage);
+		expect(JSON.parse(stdout)).toEqual({
+			error: {
+				title: "Usage error",
+				description: "unknown option '--nope'",
+				exitCode: ExitCode.Usage,
+			},
+		});
 	});
 });
 
 describe("renderError via handleError", () => {
 	test("plain mode writes a CliError message to stderr", () => {
-		const { value, stderr } = captureStderr(() =>
+		const { value, stderr } = captureStreams(() =>
 			handleError(new UsageError("bad input"), { json: false, debug: false }),
 		);
 		expect(value).toBe(ExitCode.Usage);
 		expect(stderr).toContain("Error: bad input");
 	});
 
-	test("json mode writes a structured error document to stderr", () => {
-		const { value, stderr } = captureStderr(() =>
+	test("json mode writes the error document to stdout and nothing to stderr", () => {
+		const { value, stdout, stderr } = captureStreams(() =>
 			handleError(new NotFoundError("publication", "0x1"), {
 				json: true,
 				debug: false,
 			}),
 		);
 		expect(value).toBe(ExitCode.NotFound);
-		const parsed = JSON.parse(stderr) as {
-			error: { exitCode: number; title: string };
-		};
-		expect(parsed.error.exitCode).toBe(ExitCode.NotFound);
-		expect(parsed.error.title).toBeDefined();
+		expect(JSON.parse(stdout)).toEqual({
+			error: {
+				title: "Publication not found",
+				description: "No publication at 0x1.",
+				exitCode: ExitCode.NotFound,
+			},
+		});
+		expect(stderr).toBe("");
+	});
+
+	test("plain mode keeps stdout clear of the error", () => {
+		const { stdout } = captureStreams(() =>
+			handleError(new UsageError("bad input"), { json: false, debug: false }),
+		);
+		expect(stdout).toBe("");
+	});
+
+	test("a blob not-found names the blob id, not the cause, and does not blame expiry", () => {
+		const { stderr } = captureStreams(() =>
+			handleError(new NotFoundError("blob", "blobid"), {
+				json: false,
+				debug: false,
+			}),
+		);
+		expect(stderr).toBe(
+			"Error: Walrus has no stored copy of this content. (id: blobid)\n",
+		);
+	});
+
+	test("a storage-node read failure suggests --via-aggregator", () => {
+		const err = new TransportError(
+			"Walrus storage nodes did not return blob blobid",
+			{ operation: "walrus.readBlob" },
+		);
+		const { value, stderr } = captureStreams(() =>
+			handleError(err, { json: false, debug: false }),
+		);
+		expect(value).toBe(ExitCode.Network);
+		expect(stderr).toBe(
+			"Error: Walrus storage nodes did not return blob blobid (walrus.readBlob) Retry, or pass --via-aggregator to read through a Walrus aggregator.\n",
+		);
+	});
+
+	test("other network failures carry no aggregator hint", () => {
+		const { stderr } = captureStreams(() =>
+			handleError(
+				new TransportError("getObject failed", {
+					operation: "sui.getObject",
+				}),
+				{ json: false, debug: false },
+			),
+		);
+		expect(stderr).not.toContain("--via-aggregator");
 	});
 
 	test("debug mode appends a stack trace, following the cause chain", () => {
 		const err = new CliError("outer", ExitCode.Generic, {
 			cause: new Error("inner cause"),
 		});
-		const { stderr } = captureStderr(() =>
+		const { stderr } = captureStreams(() =>
 			handleError(err, { json: false, debug: true }),
 		);
 		expect(stderr).toContain("Error: outer");

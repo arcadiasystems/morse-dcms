@@ -54,6 +54,34 @@ export class NotFoundError extends MorseError {
 	}
 }
 
+/**
+ * A Walrus blob whose storage lease has ended, so storage nodes no longer
+ * serve it. Raised only when the blob's on-chain `Blob` object was read and
+ * its `storage.end_epoch` is at or before the current Walrus epoch, never
+ * inferred from a failed read alone. A `NotFoundError` with resource `"blob"`
+ * and the blob id as `identifier`, so existing `NotFoundError` handling still
+ * matches.
+ */
+export class BlobExpiredError extends NotFoundError {
+	/** Sui object id of the expired `Blob`. */
+	readonly blobObjectId: string;
+	/** Exclusive end of the lease: the first epoch the blob is no longer stored in. */
+	readonly endEpoch: number;
+	/** Walrus epoch at the time of the read. */
+	readonly currentEpoch: number;
+
+	constructor(
+		blobId: string,
+		fields: { blobObjectId: string; endEpoch: number; currentEpoch: number },
+		options?: { cause?: unknown },
+	) {
+		super("blob", blobId, options);
+		this.blobObjectId = fields.blobObjectId;
+		this.endEpoch = fields.endEpoch;
+		this.currentEpoch = fields.currentEpoch;
+	}
+}
+
 // Unauthorized
 
 /** Authorization check failed client-side, before the transaction was submitted. */

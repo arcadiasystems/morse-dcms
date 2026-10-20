@@ -83,6 +83,30 @@ describe("runFileList", () => {
 		expect(items[0]?.kind).toBe("full");
 	});
 
+	test("--hydrate shows each file's blob id in the plain table", async () => {
+		const blobId = "A".repeat(43);
+		const { ctx, captured } = fileListContext({
+			filesReader: {
+				getRecipientFile: () =>
+					Promise.resolve({
+						id: FILE,
+						owner: `0x${"a".repeat(64)}`,
+						blobId,
+						blobObjectId: null,
+						name: "file.txt",
+						contentType: "text/plain",
+						size: 10,
+						members: [`0x${"7".repeat(64)}`],
+						createdAtMs: 1,
+					}),
+			},
+		});
+		await runFileList(ctx, { hydrate: true });
+		const [header, row] = captured.stdout().trimEnd().split("\n");
+		expect(header).toEndWith("blobId");
+		expect(row).toEndWith(blobId);
+	});
+
 	test("--limit caps the result count", async () => {
 		ops.reconcileRecipientFilesOwnedBy.mockReturnValueOnce([
 			SUMMARY,

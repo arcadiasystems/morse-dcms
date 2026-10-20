@@ -98,7 +98,7 @@ export class Output {
 		this.err(`${this.paint(message, DIM)}\n`);
 	}
 
-	/** Warning. Goes to stderr; silenced by --quiet and in JSON mode (stderr stays JSON-only there). */
+	/** Warning. Goes to stderr; silenced by --quiet and in JSON mode, where the JSON document on stdout is the only output. */
 	warn(message: string): void {
 		if (this.options.quiet || this.options.json) {
 			return;

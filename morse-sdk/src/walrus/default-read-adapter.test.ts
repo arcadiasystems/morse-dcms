@@ -1,5 +1,6 @@
 import { describe, expect, mock, test } from "bun:test";
 import {
+	BlobNotCertifiedError,
 	blobIdFromInt,
 	NoBlobMetadataReceivedError,
 	type WalrusFile,
@@ -7,9 +8,15 @@ import {
 } from "@mysten/walrus";
 
 import { toBlobObjectId, toQuiltPatchId, toWalrusBlobId } from "../codecs.js";
-import { NotFoundError, TransportError, ValidationError } from "../errors.js";
+import {
+	BlobExpiredError,
+	NotFoundError,
+	TransportError,
+	ValidationError,
+} from "../errors.js";
 import { QUILT_PATCH_ID_LENGTH } from "../types.js";
 import { DefaultWalrusReadAdapter } from "./default-read-adapter.js";
+import { quiltPatchIdToString } from "./quilt-patch-id.js";
 
 const SAMPLE_BLOB_ID = toWalrusBlobId(
 	"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
@@ -22,11 +29,41 @@ const SUI_OBJECT_ID = toBlobObjectId(
 	"0xd1dd47c84e7c2f217a8b5a4fcec849a3b985df4fada82f72b72602423d8d018e",
 );
 const PATCH_ID = toQuiltPatchId(new Uint8Array(QUILT_PATCH_ID_LENGTH).fill(7));
+const CURRENT_EPOCH = 10;
+const LIVE_END_EPOCH = 20;
+const READ_BLOB_ID = blobIdFromInt(BigInt(ON_CHAIN_BLOB_ID));
+
+interface FakeBlobObject {
+	id: string;
+	blob_id: string;
+	certified_epoch: number | null;
+	storage: { end_epoch: number };
+}
 
 interface FakeReadClient {
 	readBlob(args: { blobId: string; signal?: AbortSignal }): Promise<Uint8Array>;
-	getBlobObject(blobObjectId: string): Promise<{ id: string; blob_id: string }>;
+	getBlobObject(blobObjectId: string): Promise<FakeBlobObject>;
 	getFiles(args: { ids: string[] }): Promise<WalrusFile[]>;
+	systemState(): Promise<{ committee: { epoch: number } }>;
+}
+
+function blobObject(overrides: Partial<FakeBlobObject> = {}): FakeBlobObject {
+	return {
+		id: SUI_OBJECT_ID,
+		blob_id: ON_CHAIN_BLOB_ID,
+		certified_epoch: 3,
+		storage: { end_epoch: LIVE_END_EPOCH },
+		...overrides,
+	};
+}
+
+async function readFailure(promise: Promise<unknown>): Promise<unknown> {
+	try {
+		await promise;
+	} catch (error) {
+		return error;
+	}
+	throw new Error("expected the read to fail");
 }
 
 function fakeFile(bytes: Uint8Array): WalrusFile {
@@ -53,12 +90,16 @@ function fakeClient(overrides: Partial<FakeReadClient> = {}): {
 		getBlobObject: async (objectId) => {
 			calls.getBlobObject.push(objectId);
 			if (overrides.getBlobObject) return overrides.getBlobObject(objectId);
-			return { id: objectId, blob_id: ON_CHAIN_BLOB_ID };
+			return blobObject({ id: objectId });
 		},
 		getFiles: async (args) => {
 			calls.getFiles.push(args);
 			if (overrides.getFiles) return overrides.getFiles(args);
 			return [fakeFile(new Uint8Array([0xfe, 0xed]))];
+		},
+		systemState: async () => {
+			if (overrides.systemState) return overrides.systemState();
+			return { committee: { epoch: CURRENT_EPOCH } };
 		},
 	};
 	return { client, calls };
@@ -94,6 +135,35 @@ describe("DefaultWalrusReadAdapter.readBlob", () => {
 			TransportError,
 		);
 	});
+
+	test("treats no metadata from any node as a TransportError naming the blob", async () => {
+		const { client } = fakeClient({
+			readBlob: async () => {
+				throw new NoBlobMetadataReceivedError(
+					"No valid blob metadata could be retrieved from any storage node.",
+				);
+			},
+		});
+		const adapter = new DefaultWalrusReadAdapter({ client });
+		const error = await readFailure(adapter.readBlob(SAMPLE_BLOB_ID));
+		expect(error).toBeInstanceOf(TransportError);
+		expect(error).not.toBeInstanceOf(NotFoundError);
+		expect((error as TransportError).operation).toBe("walrus.readBlob");
+		expect((error as TransportError).message).toContain(SAMPLE_BLOB_ID);
+	});
+
+	test("maps a quorum reporting the blob uncertified to NotFoundError keyed by the blob id", async () => {
+		const { client } = fakeClient({
+			readBlob: async () => {
+				throw new BlobNotCertifiedError("The blob does not exist.");
+			},
+		});
+		const adapter = new DefaultWalrusReadAdapter({ client });
+		const error = await readFailure(adapter.readBlob(SAMPLE_BLOB_ID));
+		expect(error).toBeInstanceOf(NotFoundError);
+		expect((error as NotFoundError).resource).toBe("blob");
+		expect((error as NotFoundError).identifier).toBe(SAMPLE_BLOB_ID);
+	});
 });
 
 describe("DefaultWalrusReadAdapter.readBlobByObjectId", () => {
@@ -118,7 +188,7 @@ describe("DefaultWalrusReadAdapter.readBlobByObjectId", () => {
 
 	test("rejects a blob_id that is not a u256 with ValidationError, without reading", async () => {
 		const { client, calls } = fakeClient({
-			getBlobObject: async () => ({ id: SUI_OBJECT_ID, blob_id: "not-a-u256" }),
+			getBlobObject: async () => blobObject({ blob_id: "not-a-u256" }),
 		});
 		const adapter = new DefaultWalrusReadAdapter({ client });
 		await expect(
@@ -134,21 +204,104 @@ describe("DefaultWalrusReadAdapter.readBlobByObjectId", () => {
 			},
 		});
 		const adapter = new DefaultWalrusReadAdapter({ client });
-		await expect(
-			adapter.readBlobByObjectId(SUI_OBJECT_ID),
-		).rejects.toBeInstanceOf(NotFoundError);
+		const error = await readFailure(adapter.readBlobByObjectId(SUI_OBJECT_ID));
+		expect(error).toBeInstanceOf(NotFoundError);
+		expect((error as NotFoundError).identifier).toBe(SUI_OBJECT_ID);
 	});
 
-	test("maps NoBlobMetadataReceivedError to NotFoundError", async () => {
+	test("a live blob the nodes did not return is a TransportError, not a not-found", async () => {
 		const { client } = fakeClient({
 			readBlob: async () => {
-				throw new NoBlobMetadataReceivedError("blob not certified");
+				throw new NoBlobMetadataReceivedError(
+					"No valid blob metadata could be retrieved from any storage node.",
+				);
 			},
 		});
 		const adapter = new DefaultWalrusReadAdapter({ client });
-		await expect(
-			adapter.readBlobByObjectId(SUI_OBJECT_ID),
-		).rejects.toBeInstanceOf(NotFoundError);
+		const error = await readFailure(adapter.readBlobByObjectId(SUI_OBJECT_ID));
+		expect(error).toBeInstanceOf(TransportError);
+		const transport = error as TransportError;
+		expect(transport.operation).toBe("walrus.readBlob");
+		expect(transport.message).toBe(
+			`Walrus storage nodes did not return blob ${READ_BLOB_ID}, which is certified and stored until epoch ${LIVE_END_EPOCH}: No valid blob metadata could be retrieved from any storage node.`,
+		);
+	});
+
+	test("a live blob the nodes report missing is still a TransportError", async () => {
+		const { client } = fakeClient({
+			readBlob: async () => {
+				throw new BlobNotCertifiedError("The blob does not exist.");
+			},
+		});
+		const adapter = new DefaultWalrusReadAdapter({ client });
+		const error = await readFailure(adapter.readBlobByObjectId(SUI_OBJECT_ID));
+		expect(error).toBeInstanceOf(TransportError);
+		expect((error as TransportError).message).toContain(READ_BLOB_ID);
+	});
+
+	test("an ended lease is a BlobExpiredError keyed by the blob id", async () => {
+		const { client } = fakeClient({
+			getBlobObject: async () =>
+				blobObject({ storage: { end_epoch: CURRENT_EPOCH } }),
+			readBlob: async () => {
+				throw new NoBlobMetadataReceivedError("no metadata");
+			},
+		});
+		const adapter = new DefaultWalrusReadAdapter({ client });
+		const error = await readFailure(adapter.readBlobByObjectId(SUI_OBJECT_ID));
+		expect(error).toBeInstanceOf(BlobExpiredError);
+		const expired = error as BlobExpiredError;
+		expect(expired.identifier).toBe(READ_BLOB_ID);
+		expect(expired.blobObjectId).toBe(SUI_OBJECT_ID);
+		expect(expired.endEpoch).toBe(CURRENT_EPOCH);
+		expect(expired.currentEpoch).toBe(CURRENT_EPOCH);
+	});
+
+	test("a never-certified blob is a NotFoundError keyed by the blob id", async () => {
+		const { client } = fakeClient({
+			getBlobObject: async () => blobObject({ certified_epoch: null }),
+			readBlob: async () => {
+				throw new BlobNotCertifiedError("not certified");
+			},
+		});
+		const adapter = new DefaultWalrusReadAdapter({ client });
+		const error = await readFailure(adapter.readBlobByObjectId(SUI_OBJECT_ID));
+		expect(error).toBeInstanceOf(NotFoundError);
+		expect(error).not.toBeInstanceOf(BlobExpiredError);
+		expect((error as NotFoundError).identifier).toBe(READ_BLOB_ID);
+	});
+
+	test("an aborted read is passed through, not reclassified", async () => {
+		const controller = new AbortController();
+		const { client } = fakeClient({
+			readBlob: async () => {
+				controller.abort();
+				throw new Error("Request was aborted.");
+			},
+		});
+		const adapter = new DefaultWalrusReadAdapter({ client });
+		const error = await readFailure(
+			adapter.readBlobByObjectId(SUI_OBJECT_ID, {
+				signal: controller.signal,
+			}),
+		);
+		expect(error).toBeInstanceOf(TransportError);
+		expect((error as TransportError).message).toBe(
+			`Walrus read of blob ${READ_BLOB_ID} failed: Request was aborted.`,
+		);
+	});
+
+	test("an unreadable system state fails before the blob read", async () => {
+		const { client, calls } = fakeClient({
+			systemState: async () => {
+				throw new Error("rpc down");
+			},
+		});
+		const adapter = new DefaultWalrusReadAdapter({ client });
+		const error = await readFailure(adapter.readBlobByObjectId(SUI_OBJECT_ID));
+		expect(error).toBeInstanceOf(TransportError);
+		expect((error as TransportError).operation).toBe("walrus.systemState");
+		expect(calls.readBlob).toHaveLength(0);
 	});
 });
 
@@ -161,6 +314,20 @@ describe("DefaultWalrusReadAdapter.readQuiltPatch", () => {
 		const args = calls.getFiles[0] as { ids: string[] };
 		expect(args.ids).toHaveLength(1);
 		expect(typeof args.ids[0]).toBe("string");
+	});
+
+	test("maps a patch no node stores to NotFoundError keyed by the patch id", async () => {
+		const { client } = fakeClient({
+			getFiles: async () => {
+				throw new BlobNotCertifiedError("not certified");
+			},
+		});
+		const adapter = new DefaultWalrusReadAdapter({ client });
+		const error = await readFailure(adapter.readQuiltPatch(PATCH_ID));
+		expect(error).toBeInstanceOf(NotFoundError);
+		expect((error as NotFoundError).identifier).toBe(
+			quiltPatchIdToString(PATCH_ID),
+		);
 	});
 
 	test("throws TransportError when getFiles returns nothing", async () => {

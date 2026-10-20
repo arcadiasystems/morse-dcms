@@ -10,7 +10,7 @@
  */
 
 import {
-	NoBlobMetadataReceivedError,
+	BlobNotCertifiedError,
 	WalrusClient,
 	type WalrusClientConfig,
 	type WalrusFile,
@@ -18,7 +18,7 @@ import {
 } from "@mysten/walrus";
 
 import { walrusBlobIdFromU256 } from "../codecs.js";
-import { NotFoundError, TransportError } from "../errors.js";
+import { BlobExpiredError, NotFoundError, TransportError } from "../errors.js";
 import type {
 	BlobObjectId,
 	BlobRef,
@@ -49,6 +49,11 @@ export interface WalrusReadAdapter {
 	 * object to its `blob_id` first, then reads. Use this when you have
 	 * `Revision.blobRef.blobObjectId` from `reader.getEntry(...)` and need
 	 * the bytes back (e.g. for decryption).
+	 *
+	 * A failed read is classified against the object's lifecycle: an ended
+	 * lease throws `BlobExpiredError`, a never-certified blob `NotFoundError`,
+	 * and a live, certified blob the storage nodes did not return
+	 * `TransportError`, since retrying (or an aggregator) can still serve it.
 	 *
 	 * `options.signal` cancels the underlying blob fetch but not the
 	 * preceding `getBlobObject` resolution; @mysten/walrus does not accept
@@ -86,15 +91,25 @@ export interface WalrusReadAdapter {
 	): Promise<Uint8Array>;
 }
 
+/** The fields of an on-chain Walrus `Blob` object the read adapter uses. */
+interface WalrusBlobObject {
+	readonly id: string;
+	/** Move `u256` as a decimal string, not the base64 id `readBlob` takes. */
+	readonly blob_id: string;
+	/** Epoch the blob was certified in; `null` while it is only registered. */
+	readonly certified_epoch: number | null;
+	readonly storage: {
+		/** Exclusive end of the lease: the first epoch the blob is not stored in. */
+		readonly end_epoch: number;
+	};
+}
+
 /** Narrow structural slice of `WalrusClient` actually used by the read adapter. */
 interface WalrusReadClient {
 	readBlob(args: { blobId: string; signal?: AbortSignal }): Promise<Uint8Array>;
-	getBlobObject(blobObjectId: string): Promise<{
-		id: string;
-		/** Move `u256` as a decimal string, not the base64 id `readBlob` takes. */
-		blob_id: string;
-	}>;
+	getBlobObject(blobObjectId: string): Promise<WalrusBlobObject>;
 	getFiles(args: { ids: string[] }): Promise<WalrusFile[]>;
+	systemState(): Promise<{ readonly committee: { readonly epoch: number } }>;
 }
 
 interface DefaultWalrusReadAdapterOptions {
@@ -132,7 +147,7 @@ export class DefaultWalrusReadAdapter implements WalrusReadAdapter {
 					blobId,
 					...(options.signal === undefined ? {} : { signal: options.signal }),
 				}),
-			"walrus.readBlob",
+			{ operation: "walrus.readBlob", kind: "blob", id: blobId },
 		);
 	}
 
@@ -142,9 +157,30 @@ export class DefaultWalrusReadAdapter implements WalrusReadAdapter {
 	): Promise<Uint8Array> {
 		const blob = await runWalrusCall(
 			() => this.client.getBlobObject(blobObjectId),
-			"walrus.getBlobObject",
+			{
+				operation: "walrus.getBlobObject",
+				kind: "blob object",
+				id: blobObjectId,
+			},
 		);
-		return this.readBlob(walrusBlobIdFromU256(blob.blob_id), options);
+		const blobId = walrusBlobIdFromU256(blob.blob_id);
+		// Fetch the epoch before the read rather than after a failure: the read
+		// loads the same system state and the client caches it, so this costs
+		// no extra round trip, whereas a failed read clears that cache.
+		const currentEpoch = await this.currentEpoch();
+		try {
+			return await this.readBlob(blobId, options);
+		} catch (error) {
+			if (options.signal?.aborted) {
+				throw error;
+			}
+			throw classifyFailedRead(error, {
+				blob,
+				blobId,
+				blobObjectId,
+				currentEpoch,
+			});
+		}
 	}
 
 	async readQuiltPatch(
@@ -152,9 +188,14 @@ export class DefaultWalrusReadAdapter implements WalrusReadAdapter {
 		_options: WalrusReadOptions = {},
 	): Promise<Uint8Array> {
 		const id = quiltPatchIdToString(patchId);
+		const target: ReadTarget = {
+			operation: "walrus.getFiles",
+			kind: "quilt patch",
+			id,
+		};
 		const files = await runWalrusCall(
 			() => this.client.getFiles({ ids: [id] }),
-			"walrus.getFiles",
+			target,
 		);
 		const file = files[0];
 		if (!file) {
@@ -163,7 +204,10 @@ export class DefaultWalrusReadAdapter implements WalrusReadAdapter {
 				{ operation: "walrus.getFiles" },
 			);
 		}
-		return runWalrusCall(() => file.bytes(), "walrus.readQuiltPatch");
+		return runWalrusCall(() => file.bytes(), {
+			...target,
+			operation: "walrus.readQuiltPatch",
+		});
 	}
 
 	async readBlobRef(
@@ -175,11 +219,37 @@ export class DefaultWalrusReadAdapter implements WalrusReadAdapter {
 		}
 		return this.readQuiltPatch(blobRef.patchId, options);
 	}
+
+	private async currentEpoch(): Promise<number> {
+		try {
+			return (await this.client.systemState()).committee.epoch;
+		} catch (cause) {
+			throw new TransportError(
+				`Walrus system state could not be read: ${causeMessage(cause)}`,
+				{ cause, operation: "walrus.systemState" },
+			);
+		}
+	}
 }
 
+/** What a Walrus call reads, for the error it raises when it fails. */
+interface ReadTarget {
+	readonly operation: string;
+	readonly kind: "blob" | "blob object" | "quilt patch";
+	/** The bare id: it becomes `NotFoundError.identifier`. */
+	readonly id: string;
+}
+
+/**
+ * Run a Walrus read, mapping its failure onto the SDK taxonomy. Only an
+ * answer that the content is not stored (a storage node's 404, or a quorum
+ * reporting the blob uncertified) is a `NotFoundError`. Getting no answer,
+ * such as `NoBlobMetadataReceivedError` when no node returns metadata, is a
+ * `TransportError`: the blob may be perfectly healthy.
+ */
 async function runWalrusCall<T>(
 	call: () => Promise<T>,
-	operation = "walrus.read",
+	target: ReadTarget,
 ): Promise<T> {
 	try {
 		return await call();
@@ -189,19 +259,55 @@ async function runWalrusCall<T>(
 		}
 		if (
 			cause instanceof WalrusNotFoundError ||
-			cause instanceof NoBlobMetadataReceivedError
+			cause instanceof BlobNotCertifiedError
 		) {
-			throw new NotFoundError("blob", `Walrus blob: ${cause.message}`, {
-				cause,
-			});
+			throw new NotFoundError("blob", target.id, { cause });
 		}
-		throw new TransportError(walrusErrorMessage(cause), { cause, operation });
+		throw new TransportError(
+			`Walrus read of ${target.kind} ${target.id} failed: ${causeMessage(cause)}`,
+			{ cause, operation: target.operation },
+		);
 	}
 }
 
-function walrusErrorMessage(cause: unknown): string {
-	if (cause instanceof Error) {
-		return `Walrus read failed: ${cause.message}`;
+interface BlobLifecycle {
+	readonly blob: WalrusBlobObject;
+	readonly blobId: WalrusBlobId;
+	readonly blobObjectId: BlobObjectId;
+	readonly currentEpoch: number;
+}
+
+/**
+ * Re-classify a failed blob read against the blob's on-chain lifecycle.
+ * Storage nodes that do not answer look the same for a live blob and an
+ * expired one, and nodes that report a blob missing do not say why; the
+ * `Blob` object does.
+ */
+function classifyFailedRead(error: unknown, lifecycle: BlobLifecycle): unknown {
+	if (!(error instanceof NotFoundError || error instanceof TransportError)) {
+		return error;
 	}
-	return "Walrus read failed";
+	const { blob, blobId, blobObjectId, currentEpoch } = lifecycle;
+	const endEpoch = blob.storage.end_epoch;
+	if (endEpoch <= currentEpoch) {
+		return new BlobExpiredError(
+			blobId,
+			{ blobObjectId, endEpoch, currentEpoch },
+			{ cause: error },
+		);
+	}
+	if (blob.certified_epoch === null) {
+		return new NotFoundError("blob", blobId, { cause: error });
+	}
+	return new TransportError(
+		`Walrus storage nodes did not return blob ${blobId}, which is certified and stored until epoch ${endEpoch}: ${causeMessage(error.cause ?? error)}`,
+		{ cause: error, operation: "walrus.readBlob" },
+	);
+}
+
+function causeMessage(cause: unknown): string {
+	if (cause instanceof Error && cause.message.length > 0) {
+		return cause.message;
+	}
+	return "no error detail";
 }

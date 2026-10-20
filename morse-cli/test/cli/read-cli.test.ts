@@ -58,7 +58,11 @@ describe("morse read commands input validation", () => {
 			{ configDir: dir },
 		);
 		expect(res.code).toBe(2);
-		expect(res.stdout).toBe("");
-		expect(res.stderr).toContain("--out");
+		const parsed = JSON.parse(res.stdout) as {
+			error: { description: string; exitCode: number };
+		};
+		expect(parsed.error.exitCode).toBe(2);
+		expect(parsed.error.description).toContain("--out");
+		expect(res.stderr).toBe("");
 	});
 });

@@ -131,7 +131,8 @@ unlocked by a password. Specifics:
 
 - Keys are never accepted as command-line flags (they would leak via `ps`,
   `/proc/<pid>/cmdline`, and shell history). They come from an interactive hidden
-  prompt, the `MORSE_PRIVATE_KEY` env var, or the encrypted keystore.
+  prompt, stdin piped to `account import`, the `MORSE_PRIVATE_KEY` env var, or
+  the encrypted keystore.
 - Keystore files are written `chmod 600`; group- or world-readable key files are
   refused on read.
 - Keys are never printed or logged, including under `--debug`. The sole exception
@@ -184,7 +185,7 @@ and `-C, --collection <name>`, both defaulting to the active context.
 
 | Command | Purpose |
 | --- | --- |
-| `account import` | Import a key into an encrypted keystore (prompts for key + password). |
+| `account import` | Import a key into an encrypted keystore. The key comes from `MORSE_PRIVATE_KEY`, from stdin when piped (`printf '%s\n' "$SUI_KEY" \| morse account import`), or a hidden prompt. A piped import cannot prompt, so it takes the password from `MORSE_KEYSTORE_PASSWORD`. |
 | `account list` | List imported accounts; `*` marks the active one. |
 | `account show` | Print the active account address. |
 | `account use <address>` | Set the active account for the current profile. |
@@ -205,7 +206,7 @@ and `-C, --collection <name>`, both defaulting to the active context.
 | Command | Purpose |
 | --- | --- |
 | `collection list [-P <slug\|id>]` | List collections. |
-| `collection create <name> [--mode blob\|quilt] [-P <slug\|id>]` | Create a collection and select it. |
+| `collection create <name> [--mode blob\|quilt] [-P <slug\|id>]` | Create a collection and select it. `--json` includes its `name` and `entriesTableId`. |
 | `collection delete <name> [-P <slug\|id>] [--publisher-cap <id>]` | Delete an empty collection. |
 
 ### entry
@@ -218,7 +219,7 @@ and `-C, --collection <name>`, both defaulting to the active context.
 | `entry scan [--drafts-only] [-P …] [-C …]` | List every entry (auto-paginated). |
 | `entry add <name> --file <path> [-P …] [-C …]` | Upload content and add a new entry; prints a viewable link. |
 | `entry delete <entryId> [-P …] [-C …]` | Delete an entry. |
-| `entry add-encrypted <name> --file <path> [-P …] [-C …]` | Encrypt, upload, and add a new entry. |
+| `entry add-encrypted <name> --file <path> [-P …] [-C …]` | Encrypt, upload, and add a new entry as a draft: its revision sets `draftHead`, not `publicHead`, so `entry list` marks it `[draft]` and `--drafts-only` includes it. The `revision` commands refuse encrypted entries, so the CLI cannot publish it; `entry decrypt` reads it. |
 | `entry decrypt <entryId> [revisionIndex] [--out <path>] [--via-aggregator] [-P …] [-C …]` | Decrypt an encrypted revision. |
 
 `add`, `add-encrypted`, and the revision commands accept `--file <path>` (or `-`
@@ -244,7 +245,7 @@ commands; pure on-chain commands (publication, collection, cap) have no epochs.
 
 | Command | Purpose |
 | --- | --- |
-| `cap list [address]` | List PublisherCaps held by an address. |
+| `cap list [address]` | List PublisherCaps held by an address. Caps that can no longer write are marked `[revoked]` or `[publication deleted]`; `--json` gives each a `status` of `active`, `revoked` or `publication-deleted`. Costs two reads per cap. |
 | `cap issue <holder> [-P <slug\|id>] [--owner-cap <id>]` | Issue a PublisherCap bound to an address. |
 | `cap revoke <publisherCapId> [-P <slug\|id>] [--owner-cap <id>]` | Revoke a PublisherCap. |
 | `cap destroy <publisherCapId> [-P <slug\|id>]` | Destroy a PublisherCap you hold. |
@@ -290,16 +291,29 @@ endpoint, defaulting to the canonical Mysten one for the network. It used to use
 that remains. Point `--indexer-url <url>` at a different GraphQL endpoint (a
 self-hosted indexer, a third-party endpoint) to stay in control. Results are
 best-effort and eventually consistent (subject to indexer lag and retention). Summary rows omit `blobId`/`blobObjectId`; add `--hydrate`
-to fetch the full record per file (one read each) when you need them.
+to fetch the full record per file (one read each) when you need them. The
+hydrated table gains a `blobId` column, and `--json` returns the full records.
 
 ## Output and scripting
 
-- Human-readable output goes to stdout; progress, warnings, and prompts go to
-  stderr. Redirecting stdout yields only the result.
-- `--json` emits a single JSON document on stdout (nothing else). `bigint` values
-  (e.g. `gasUsedMist`) are encoded as decimal strings and byte arrays (quilt patch
-  ids) as `0x`-hex. Encrypted uploads also return `sealIdPrefix` / `sealNonce` as
-  hex and a `share` string.
+- Human-readable output goes to stdout; progress, warnings, prompts, and error
+  messages go to stderr. Redirecting stdout yields only the result.
+- `--json` emits a single JSON document on stdout (nothing else), when a command
+  fails as well as when it succeeds. A failure prints
+  `{"error": {"title": ..., "description": ..., "exitCode": ...}}` and exits
+  with that `exitCode`, so a script reads one stream and checks `$?`.
+- In `--json` output, `bigint` values (e.g. `gasUsedMist`) are encoded as
+  decimal strings and byte arrays (quilt patch ids) as `0x`-hex. Encrypted
+  uploads also return `sealIdPrefix` / `sealNonce` as hex and a `share` string.
+- `gasUsedMist` is the net gas (computation plus storage, minus the storage
+  rebate) of the one Morse transaction whose `digest` the result reports, not
+  the whole cost of the command. Commands that upload to Walrus send more
+  transactions than that: `entry add`, `entry add-encrypted` and `file upload`
+  register the blob in a transaction of its own first (the Morse transaction
+  then certifies it), and the `revision` commands, when they upload content,
+  register and certify the blob in two Walrus transactions before the Morse
+  one. Their gas, the WAL storage fee and any upload-relay tip are not in
+  `gasUsedMist`.
 - Color is emitted only to a TTY and honors `NO_COLOR` and `FORCE_COLOR`.
 
 ## Exit codes

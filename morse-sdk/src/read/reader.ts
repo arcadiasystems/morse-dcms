@@ -3,6 +3,7 @@
  * implementation. Future indexer implementations satisfy the same interface.
  */
 
+import { bcs } from "@mysten/sui/bcs";
 import type { SuiClientTypes } from "@mysten/sui/client";
 
 import type { ObjectReader } from "../clients.js";
@@ -36,6 +37,9 @@ import type {
 import { EntryBcs, EntryIdBcs } from "./entry-bcs.js";
 
 const DEFAULT_PAGE_LIMIT = 50;
+
+// Key type of `Publication.revoked_publisher_caps: Table<ID, bool>`.
+const REVOKED_CAP_KEY_TYPE = "0x2::object::ID";
 
 /** Lightweight handle returned by `listPublicationsOwnedBy`. */
 export interface OwnedPublication {
@@ -133,6 +137,19 @@ export interface PublicationReader {
 		address: SuiAddress,
 		options?: ListPublisherCapsOptions,
 	): Promise<PublisherCapListPage>;
+
+	/**
+	 * Whether the publication's owner has revoked a PublisherCap. Revocation is
+	 * a denylist on the publication, not a field on the cap, so a revoked cap
+	 * still exists and still lists as owned; it only fails when used.
+	 * @throws {NotFoundError} If the publication does not exist.
+	 * @throws {TransportError} On RPC failure.
+	 */
+	isPublisherCapRevoked(
+		publicationId: PublicationId,
+		publisherCapId: PublisherCapId,
+		signal?: AbortSignal,
+	): Promise<boolean>;
 
 	/**
 	 * Fetch a single entry by collection name and entry id.
@@ -325,6 +342,38 @@ export class RpcPublicationReader implements PublicationReader {
 		);
 		const results = response.objects.map((object) => parsePublisherCap(object));
 		return { results, nextCursor: response.cursor };
+	}
+
+	async isPublisherCapRevoked(
+		publicationId: PublicationId,
+		publisherCapId: PublisherCapId,
+		signal?: AbortSignal,
+	): Promise<boolean> {
+		const capId = toPublisherCapId(publisherCapId);
+		const publication = await this.getPublication(publicationId, signal);
+		try {
+			await this.callClient("getDynamicField", () =>
+				this.client.getDynamicField({
+					parentId: publication.revokedPublisherCapsTableId,
+					name: {
+						type: REVOKED_CAP_KEY_TYPE,
+						bcs: bcs.Address.serialize(capId).toBytes(),
+					},
+					...(signal === undefined ? {} : { signal }),
+				}),
+			);
+		} catch (error) {
+			// The denylist holds only revoked caps, so a missing row is the answer
+			// "not revoked", not a failure.
+			if (
+				error instanceof TransportError &&
+				isDynamicFieldNotFoundError(error.cause)
+			) {
+				return false;
+			}
+			throw error;
+		}
+		return true;
 	}
 
 	async getEntry(

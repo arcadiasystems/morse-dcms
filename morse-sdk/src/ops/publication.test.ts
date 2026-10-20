@@ -106,6 +106,9 @@ function makeReader(publication: Publication): PublicationReader {
 			results: [],
 			nextCursor: null,
 		})),
+		isPublisherCapRevoked: mock(async () => {
+			throw new Error("not used in publication tests");
+		}),
 		getEntry: mock(async () => {
 			throw new Error("not used in publication tests");
 		}),
@@ -287,6 +290,9 @@ describe("deletePublication", () => {
 				results: [],
 				nextCursor: null,
 			})),
+			isPublisherCapRevoked: mock(async () => {
+				throw new Error("not used in publication tests");
+			}),
 			getEntry: mock(async () => {
 				throw new Error("not used in publication tests");
 			}),

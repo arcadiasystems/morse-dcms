@@ -4,12 +4,12 @@ import type {
 	Entry,
 	OwnedPublication,
 	Publication,
-	PublisherCap,
 	RecipientFile,
 } from "@arcadiasystems/morse-sdk";
 
 import { shortId } from "../src/format/ids.ts";
 import {
+	type ListedPublisherCap,
 	renderCollectionList,
 	renderEntry,
 	renderEntryList,
@@ -144,11 +144,27 @@ describe("renderPublisherCapList", () => {
 	test("handles empty and populated lists", () => {
 		expect(renderPublisherCapList([])).toContain("No publisher caps");
 		const caps = [
-			{ id: ADDR, publicationId: ADDR, holder: ADDR },
-		] as unknown as PublisherCap[];
+			{ id: ADDR, publicationId: ADDR, holder: ADDR, status: "active" },
+		] as unknown as ListedPublisherCap[];
 		const out = renderPublisherCapList(caps);
-		expect(out).toContain(ADDR);
-		expect(out).toContain("holder");
+		expect(out).toBe(
+			`${ADDR}  publication ${shortId(ADDR)}  holder ${shortId(ADDR)}`,
+		);
+	});
+
+	test("marks caps that can no longer write", () => {
+		const caps = [
+			{ id: "0x1", publicationId: ADDR, holder: ADDR, status: "revoked" },
+			{
+				id: "0x2",
+				publicationId: ADDR,
+				holder: ADDR,
+				status: "publication-deleted",
+			},
+		] as unknown as ListedPublisherCap[];
+		const [revoked, orphaned] = renderPublisherCapList(caps).split("\n");
+		expect(revoked).toEndWith("  [revoked]");
+		expect(orphaned).toEndWith("  [publication deleted]");
 	});
 });
 
@@ -235,5 +251,38 @@ describe("renderFileList", () => {
 		expect(row).toContain("1024");
 		expect(row).toContain("2"); // recipient count
 		expect(row).toContain("2023-11-14"); // 1_700_000_000_000 ms -> date
+	});
+
+	test("summaries carry no blob id, so the plain table has no blobId column", () => {
+		const out = renderFileList([
+			{
+				...base,
+				id: `0x${"9".repeat(64)}`,
+				name: "doc.pdf",
+				size: 1024,
+				members: [],
+			},
+		] as never);
+		expect(out.split("\n")[0]).toBe("id  name  size  recipients  created");
+		expect(out).not.toContain("blob123");
+	});
+
+	test("hydrated records add the full blob id as the last column", () => {
+		const blobId = "B".repeat(43);
+		const out = renderFileList([
+			{
+				...base,
+				kind: "full",
+				id: `0x${"9".repeat(64)}`,
+				blobId,
+				blobObjectId: null,
+				name: "doc.pdf",
+				size: 1024,
+				members: [],
+			},
+		] as never);
+		const [header, row] = out.split("\n");
+		expect(header).toBe("id  name  size  recipients  created  blobId");
+		expect(row).toEndWith(`  ${blobId}`);
 	});
 });

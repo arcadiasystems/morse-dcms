@@ -1,8 +1,9 @@
 /**
- * Error boundary: map any throw to an exit code and a stderr message. SDK errors
- * are translated through `formatUserMessage`; our own `CliError` carries an
- * explicit code. Commander parse failures are handled separately (it has already
- * written its own message and help to the streams).
+ * Error boundary: map any throw to an exit code and a message. SDK errors are
+ * translated through `formatUserMessage`; our own `CliError` carries an explicit
+ * code. The message goes to stderr, or under `--json` to stdout as the command's
+ * single JSON document. Commander parse failures are handled separately (it has
+ * already written its own message and help to stderr).
  */
 
 import {
@@ -68,6 +69,18 @@ const AUTH_ABORT_REASONS: ReadonlySet<string> = new Set([
 	"EPublisherCapWrongHolder",
 ]);
 
+// Reads that fan out to the storage nodes directly. They fail on a flaky
+// committee (common on Testnet) even for a healthy blob, and every command that
+// reads content can go through an aggregator instead.
+const STORAGE_NODE_READ_OPERATIONS: ReadonlySet<string> = new Set([
+	"walrus.readBlob",
+	"walrus.getFiles",
+	"walrus.readQuiltPatch",
+]);
+
+const VIA_AGGREGATOR_HINT =
+	"Retry, or pass --via-aggregator to read through a Walrus aggregator.";
+
 // Commander throws these after printing help or the version; they are not failures.
 const COMMANDER_SUCCESS_CODES: ReadonlySet<string> = new Set([
 	"commander.helpDisplayed",
@@ -118,7 +131,21 @@ function describe(err: unknown): { title: string; description: string } {
 		return { title: "Error", description: err.message };
 	}
 	const formatted = formatUserMessage(err);
+	if (isStorageNodeReadFailure(err)) {
+		return {
+			title: formatted.title,
+			description: `${formatted.description} ${VIA_AGGREGATOR_HINT}`,
+		};
+	}
 	return { title: formatted.title, description: formatted.description };
+}
+
+function isStorageNodeReadFailure(err: unknown): boolean {
+	return (
+		err instanceof TransportError &&
+		err.operation !== undefined &&
+		STORAGE_NODE_READ_OPERATIONS.has(err.operation)
+	);
 }
 
 export function renderError(
@@ -128,15 +155,25 @@ export function renderError(
 	const { title, description } = describe(err);
 	const exitCode = resolveExitCode(err);
 	if (opts.json) {
-		process.stderr.write(
-			`${toJson({ error: { title, description, exitCode } })}\n`,
-		);
+		writeJsonError({ title, description, exitCode });
 	} else {
 		process.stderr.write(`Error: ${description}\n`);
 	}
 	if (opts.debug) {
 		writeTrace(err);
 	}
+}
+
+/**
+ * Under `--json` a failure is the command's result, so it goes to stdout like a
+ * success would: scripts read one stream and always get one JSON document.
+ */
+function writeJsonError(error: {
+	title: string;
+	description: string;
+	exitCode: ExitCode;
+}): void {
+	process.stdout.write(`${toJson({ error })}\n`);
 }
 
 function writeTrace(err: unknown): void {
@@ -152,16 +189,25 @@ function writeTrace(err: unknown): void {
 /**
  * Resolve the exit code for any throw and render the message. Commander
  * help/version exits map to success; other commander parse failures to a usage
- * error without re-rendering (commander already wrote its own message).
+ * error. Commander has already written those to stderr, so they are not
+ * rendered again there, but `--json` still gets its JSON document on stdout.
  */
 export function handleError(
 	err: unknown,
 	opts: { json: boolean; debug: boolean },
 ): ExitCode {
 	if (err instanceof CommanderError) {
-		return COMMANDER_SUCCESS_CODES.has(err.code)
-			? ExitCode.Success
-			: ExitCode.Usage;
+		if (COMMANDER_SUCCESS_CODES.has(err.code)) {
+			return ExitCode.Success;
+		}
+		if (opts.json) {
+			writeJsonError({
+				title: "Usage error",
+				description: err.message.replace(/^error: /, ""),
+				exitCode: ExitCode.Usage,
+			});
+		}
+		return ExitCode.Usage;
 	}
 	renderError(err, opts);
 	return resolveExitCode(err);
