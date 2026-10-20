@@ -41,7 +41,7 @@ morse-sdk is built and tested against specific minor versions of its Mysten subs
 | morse-sdk | `@mysten/sui` | `@mysten/walrus` | `@mysten/seal` | Sui network | Verified  |
 | --------- | ------------- | ---------------- | -------------- | ----------- | --------- |
 | 0.9.x     | 2.36.0-2.36.x | 1.2.35-1.2.x     | 1.5.0-1.5.x    | testnet     | 2026-10-18 |
-| 0.8.x     | 2.16.2-2.16.x | 1.1.6-1.1.x      | 1.1.3-1.1.x    | testnet     | 2026-09-09 |
+| 0.8.x     | 2.16.2-2.16.x | 1.1.6-1.1.x      | 1.1.3-1.1.x    | testnet     | 2026-10-17 |
 | 0.7.x     | 2.16.2-2.16.x | 1.1.6-1.1.x      | 1.1.3-1.1.x    | testnet     | 2026-09-09 |
 | 0.6.x     | 2.16.2-2.16.x | 1.1.6-1.1.x      | 1.1.3-1.1.x    | testnet     | 2026-09-09 |
 | 0.5.x     | 2.16.2-2.16.x | 1.1.6-1.1.x      | 1.1.3-1.1.x    | testnet     | 2026-06-05 |
