@@ -286,11 +286,16 @@ also returns the raw `sealIdPrefix` and `sealNonce` as hex, usable as `--prefix`
 objects have no on-chain owner index for the shared case, so listing is
 event-derived, not a direct query. The command reads events from a Sui GraphQL
 endpoint, defaulting to the canonical Mysten one for the network. It used to use
-`suix_queryEvents` over JSON-RPC, which public fullnodes have since retired;
-`@mysten/sui`'s gRPC client exposes no event API, so GraphQL is the transport
-that remains. Point `--indexer-url <url>` at a different GraphQL endpoint (a
-self-hosted indexer, a third-party endpoint) to stay in control. Results are
-best-effort and eventually consistent (subject to indexer lag and retention). Summary rows omit `blobId`/`blobObjectId`; add `--hydrate`
+`suix_queryEvents` over JSON-RPC, which public fullnodes have since retired.
+`@mysten/sui`'s gRPC client does have `listEvents`, and public fullnodes answer
+it, but only from the recent history they keep. Tested on 2026-10-20 against
+`https://fullnode.testnet.sui.io:443` and `https://fullnode.mainnet.sui.io:443`,
+it returned only events from roughly the last two weeks, with no error (11 of 41
+`RecipientFileCreated` events on Testnet, none of 6 on Walrus Mainnet), so older
+files would silently drop out of the list. GraphQL returned the full history, so
+it stays the transport. Point `--indexer-url <url>` at a different GraphQL
+endpoint (a self-hosted indexer, a third-party endpoint) to stay in control.
+Results are best-effort and eventually consistent (subject to indexer lag and retention). Summary rows omit `blobId`/`blobObjectId`; add `--hydrate`
 to fetch the full record per file (one read each) when you need them. The
 hydrated table gains a `blobId` column, and `--json` returns the full records.
 
