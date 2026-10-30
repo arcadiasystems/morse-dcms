@@ -57,7 +57,7 @@ When bumping any `@mysten/*` peer dep:
    - `scripts/phase-6-blob.ts` and `scripts/phase-6-quilt.ts` — Entry lifecycle
    - `scripts/phase-7-encrypted.ts` — Seal encrypt + decrypt round-trip
 4. **All smokes must PASS on the new versions.** A failure blocks the bump until either the SDK is patched or the upstream issue is filed and resolved.
-5. **Update the supported range.** Tighten `peerDependencies` to `>=newVersion <nextMinor`. Update the `Compatibility` table in the README and the `TESTED_SUBSTRATE` constant in `src/compatibility.ts`. Update the `verifiedOn` date.
+5. **Update the supported range.** Tighten the `@mysten/sui` peer to `>=newVersion <nextMinor`, and the `@mysten/walrus` and `@mysten/seal` peers to the one patch release you verified (`>=newVersion <nextPatch`). Mysten ships walrus and seal patch releases whose own `@mysten/sui` peer moves to the next sui minor; a wider range lets npm pick one of those, which needs a sui the SDK's range rejects, and the install fails with `ERESOLVE`. That is how 0.9.0 and 0.10.0 broke. Update the `Compatibility` table in the README and the `TESTED_SUBSTRATE` constant in `src/compatibility.ts`. Update the `verifiedOn` date.
 6. **Commit per-concern.** Separate the dependency bump commit from any code changes the bump required (e.g. portability fixes).
 
 Don't ship a substrate bump without smoking it. Mysten ships breaking changes inside major version boundaries; the smoke suite is the only gate that catches them.
