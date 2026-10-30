@@ -19,11 +19,11 @@ Moves the Mysten substrate to `@mysten/sui` 2.38, `@mysten/walrus` 1.2.37 and `@
 
 ### Known gaps
 
-- The smoke suite has not been run on 0.11.x, so the README's 0.11.x compatibility row has no verified date, and `TESTED_SUBSTRATE` still records the 0.9.0 run of 2026-10-18 on sui 2.36.0, walrus 1.2.35 and seal 1.5.0.
+- The smoke suite has not been run on 0.11.x, so the README's 0.11.x compatibility row has no verified date, and `TESTED_SUBSTRATE` still records the 0.10.1 run of 2026-10-31 on sui 2.36.0, walrus 1.2.35 and seal 1.5.0.
 
 ## [0.10.1] - 2026-10-31
 
-Narrows the `@mysten/walrus` and `@mysten/seal` peer ranges so that a plain `npm install @arcadiasystems/morse-sdk` resolves again. The public API and runtime behaviour are the same as 0.10.0's.
+Narrows the `@mysten/walrus` and `@mysten/seal` peer ranges so that a plain `npm install @arcadiasystems/morse-sdk` resolves again. The public API and runtime behaviour are the same as 0.10.0's; the one code change is `TESTED_SUBSTRATE.verifiedOn`, which records the Testnet run below.
 
 ### Fixed
 
@@ -31,9 +31,9 @@ Narrows the `@mysten/walrus` and `@mysten/seal` peer ranges so that a plain `npm
 - **The walrus and seal peer ranges now admit only the releases that work with sui 2.36.** `@mysten/walrus` is `>=1.2.35 <1.2.36` (was `>=1.2.35 <1.3.0`) and `@mysten/seal` is `>=1.5.0 <1.5.1` (was `>=1.5.0 <1.6.0`). `@mysten/sui` stays `>=2.36.0 <2.37.0`. npm now resolves sui 2.36.0, walrus 1.2.35 and seal 1.5.0 on its own, so a plain install of 0.10.1 succeeds without pins.
 - README: the Compatibility table's 0.10.x row lists the narrowed walrus and seal ranges, and a note under the table explains why 0.9.x and 0.10.0 install only with the exact pins.
 
-### Known gaps
+### Verified on testnet
 
-- The smoke suite has not been run on 0.10.x, so the README's 0.10.x compatibility row has no verified date, and `TESTED_SUBSTRATE` still records the 0.9.0 run of 2026-10-18 on sui 2.36.0, walrus 1.2.35 and seal 1.5.0, the versions 0.10.1 resolves to.
+The full smoke suite passes on 0.10.1, on 2026-10-31, against `@mysten/sui` 2.36.0, `@mysten/walrus` 1.2.35 and `@mysten/seal` 1.5.0, over the direct storage-node fanout with no upload relay. That covers phases 2 to 8: the publication lifecycle, publisher caps, blob and quilt collections, Walrus blob and quilt uploads, the entry lifecycle in both collection modes, an encrypted entry and Seal decrypt, and public and encrypted recipient files. The HTTP publisher variants were skipped, as they are whenever `WALRUS_PUBLISHER_URL` is unset. The README's 0.10.x row and `TESTED_SUBSTRATE.verifiedOn` move to 2026-10-31.
 
 ## [0.10.0] - 2026-10-30
 

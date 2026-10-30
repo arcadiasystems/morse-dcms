@@ -41,7 +41,7 @@ morse-sdk is built and tested against specific minor versions of its Mysten subs
 | morse-sdk | `@mysten/sui` | `@mysten/walrus` | `@mysten/seal` | Sui network | Verified  |
 | --------- | ------------- | ---------------- | -------------- | ----------- | --------- |
 | 0.11.x    | 2.38.0-2.38.x | 1.2.37           | 1.5.2          | testnet     | not yet   |
-| 0.10.x    | 2.36.0-2.36.x | 1.2.35           | 1.5.0          | testnet     | not yet   |
+| 0.10.x    | 2.36.0-2.36.x | 1.2.35           | 1.5.0          | testnet     | 2026-10-31 |
 | 0.9.x     | 2.36.0-2.36.x | 1.2.35-1.2.x     | 1.5.0-1.5.x    | testnet     | 2026-10-18 |
 | 0.8.x     | 2.16.2-2.16.x | 1.1.6-1.1.x      | 1.1.3-1.1.x    | testnet     | 2026-10-17 |
 | 0.7.x     | 2.16.2-2.16.x | 1.1.6-1.1.x      | 1.1.3-1.1.x    | testnet     | 2026-09-09 |
@@ -52,9 +52,7 @@ morse-sdk is built and tested against specific minor versions of its Mysten subs
 
 The 0.10.x row shows 0.10.1's peer ranges. 0.9.x and 0.10.0 accept `@mysten/walrus` 1.2.35-1.2.x and `@mysten/seal` 1.5.0-1.5.x, but walrus 1.2.36 and seal 1.5.1 require `@mysten/sui` `^2.37.0`, and walrus 1.2.37 and seal 1.5.2 require `^2.38.0`, outside the SDK's sui range. npm picks the newest walrus and seal the ranges allow and fails with `ERESOLVE`, so 0.9.x and 0.10.0 install only with the exact pins under [Install](#install). 0.10.1 accepts only walrus 1.2.35 and seal 1.5.0, so a plain install resolves.
 
-The 0.10.x row has no verified date because the smoke suite has not been run on 0.10.x yet. `TESTED_SUBSTRATE` records the full Testnet run of 2026-10-18 on 0.9.0, against sui 2.36.0, walrus 1.2.35 and seal 1.5.0, the versions 0.10.1 resolves to.
-
-The 0.11.x row shows 0.11.0's peer ranges. Walrus and seal are again held to one release each, because a later patch of either can require a newer `@mysten/sui` than the SDK accepts, which is how 0.9.x and 0.10.0 broke. The row has no verified date because the smoke suite has not been run on 0.11.x yet, so `TESTED_SUBSTRATE` in 0.11.0 still records that 0.9.0 run, on versions 0.11.x does not accept.
+The 0.11.x row shows 0.11.0's peer ranges. Walrus and seal are again held to one release each, because a later patch of either can require a newer `@mysten/sui` than the SDK accepts, which is how 0.9.x and 0.10.0 broke. The row has no verified date because the smoke suite has not been run on 0.11.x yet, so `TESTED_SUBSTRATE` in 0.11.0 still records the 0.10.1 run of 2026-10-31, on sui 2.36.0, walrus 1.2.35 and seal 1.5.0, versions 0.11.x does not accept.
 
 Mysten ships breaking changes inside major version boundaries. Newer minors (e.g. `@mysten/walrus@1.3.x`, `@mysten/sui@2.39+`) are outside the verified ranges and may produce runtime errors; morse-sdk needs a coordinated bump and re-verification before a new Mysten minor is supported. Pin via `bun add @arcadiasystems/morse-sdk@~0.11.0` if you want patch updates without surprise minors.
 
