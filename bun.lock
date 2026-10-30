@@ -7,7 +7,7 @@
     },
     "morse-cli": {
       "name": "@arcadiasystems/morse-cli",
-      "version": "0.12.0",
+      "version": "0.13.0",
       "bin": {
         "morse": "./dist/index.js",
       },
