@@ -17,19 +17,19 @@ All three Mysten packages are required peer dependencies. Pin the minors the SDK
 Bun:
 
 ```sh
-bun add @arcadiasystems/morse-sdk @mysten/sui@2.36.0 @mysten/walrus@1.2.35 @mysten/seal@1.5.0
+bun add @arcadiasystems/morse-sdk @mysten/sui@2.38.0 @mysten/walrus@1.2.37 @mysten/seal@1.5.2
 ```
 
 npm:
 
 ```sh
-npm install @arcadiasystems/morse-sdk @mysten/sui@2.36.0 @mysten/walrus@1.2.35 @mysten/seal@1.5.0
+npm install @arcadiasystems/morse-sdk @mysten/sui@2.38.0 @mysten/walrus@1.2.37 @mysten/seal@1.5.2
 ```
 
 pnpm:
 
 ```sh
-pnpm add @arcadiasystems/morse-sdk @mysten/sui@2.36.0 @mysten/walrus@1.2.35 @mysten/seal@1.5.0
+pnpm add @arcadiasystems/morse-sdk @mysten/sui@2.38.0 @mysten/walrus@1.2.37 @mysten/seal@1.5.2
 ```
 
 `@mysten/sui` provides the client, keypairs, and transaction types; `@mysten/walrus` backs the default storage adapters (any publish path needs it); `@mysten/seal` backs threshold encryption. All three are imported by the SDK's public surface, so they must be installed even if you only use a subset — npm 7+ installs required peers automatically when you omit them.
@@ -40,6 +40,7 @@ morse-sdk is built and tested against specific minor versions of its Mysten subs
 
 | morse-sdk | `@mysten/sui` | `@mysten/walrus` | `@mysten/seal` | Sui network | Verified  |
 | --------- | ------------- | ---------------- | -------------- | ----------- | --------- |
+| 0.11.x    | 2.38.0-2.38.x | 1.2.37           | 1.5.2          | testnet     | not yet   |
 | 0.10.x    | 2.36.0-2.36.x | 1.2.35           | 1.5.0          | testnet     | not yet   |
 | 0.9.x     | 2.36.0-2.36.x | 1.2.35-1.2.x     | 1.5.0-1.5.x    | testnet     | 2026-10-18 |
 | 0.8.x     | 2.16.2-2.16.x | 1.1.6-1.1.x      | 1.1.3-1.1.x    | testnet     | 2026-10-17 |
@@ -53,11 +54,13 @@ The 0.10.x row shows 0.10.1's peer ranges. 0.9.x and 0.10.0 accept `@mysten/walr
 
 The 0.10.x row has no verified date because the smoke suite has not been run on 0.10.x yet. `TESTED_SUBSTRATE` records the full Testnet run of 2026-10-18 on 0.9.0, against sui 2.36.0, walrus 1.2.35 and seal 1.5.0, the versions 0.10.1 resolves to.
 
-Mysten ships breaking changes inside major version boundaries. Newer minors (e.g. `@mysten/walrus@1.3.x`, `@mysten/sui@2.37+`) are outside the verified ranges and may produce runtime errors; morse-sdk needs a coordinated bump and re-verification before a new Mysten minor is supported. Pin via `bun add @arcadiasystems/morse-sdk@~0.10.0` if you want patch updates without surprise minors.
+The 0.11.x row shows 0.11.0's peer ranges. Walrus and seal are again held to one release each, because a later patch of either can require a newer `@mysten/sui` than the SDK accepts, which is how 0.9.x and 0.10.0 broke. The row has no verified date because the smoke suite has not been run on 0.11.x yet, so `TESTED_SUBSTRATE` in 0.11.0 still records that 0.9.0 run, on versions 0.11.x does not accept.
+
+Mysten ships breaking changes inside major version boundaries. Newer minors (e.g. `@mysten/walrus@1.3.x`, `@mysten/sui@2.39+`) are outside the verified ranges and may produce runtime errors; morse-sdk needs a coordinated bump and re-verification before a new Mysten minor is supported. Pin via `bun add @arcadiasystems/morse-sdk@~0.11.0` if you want patch updates without surprise minors.
 
 The verification protocol is documented in [`CONTRIBUTING.md`](https://github.com/arcadiasystems/morse-dcms/blob/main/morse-sdk/CONTRIBUTING.md): every Mysten dep bump runs the full `scripts/phase-N-*.ts` smoke suite before the bump lands.
 
-The `Sui network` column records where the suite passes **in full**, which is testnet. Most of it also passes on mainnet: publications, publisher caps, collections, Walrus blob and quilt uploads, and the entry lifecycle in both collection modes were all verified against live mainnet on 2026-09-09, on 0.6.0; mainnet has not been rerun on the 0.9.x substrate. A browser round trip was verified separately on 2026-09-11, through [@arcadiasystems/morse-uploader](https://www.npmjs.com/package/@arcadiasystems/morse-uploader): a wallet-signed upload via the Walrus upload relay, then the same blob read back byte for byte from the mainnet aggregator. The two Seal phases cannot run on mainnet, because it has no key servers this SDK can reach without commercial credentials, so mainnet has no fully green run to record. `TESTED_SUBSTRATE.suiNetwork` reports the same thing programmatically.
+The `Sui network` column records where the suite passes **in full**, which is testnet. Most of it also passes on mainnet: publications, publisher caps, collections, Walrus blob and quilt uploads, and the entry lifecycle in both collection modes were all verified against live mainnet on 2026-09-09, on 0.6.0; mainnet has not been rerun on the 0.9.x or 0.11.x substrates. A browser round trip was verified separately on 2026-09-11, through [@arcadiasystems/morse-uploader](https://www.npmjs.com/package/@arcadiasystems/morse-uploader): a wallet-signed upload via the Walrus upload relay, then the same blob read back byte for byte from the mainnet aggregator. The two Seal phases cannot run on mainnet, because it has no key servers this SDK can reach without commercial credentials, so mainnet has no fully green run to record. `TESTED_SUBSTRATE.suiNetwork` reports the same thing programmatically.
 
 ### Runtime requirements
 

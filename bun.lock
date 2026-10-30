@@ -12,7 +12,7 @@
         "morse": "./dist/index.js",
       },
       "dependencies": {
-        "@arcadiasystems/morse-sdk": "^0.10.0",
+        "@arcadiasystems/morse-sdk": "^0.11.0",
         "@mysten/seal": "1.5.2",
         "@mysten/sui": "2.38.0",
         "@mysten/walrus": "1.2.37",
@@ -38,7 +38,7 @@
     },
     "morse-sdk": {
       "name": "@arcadiasystems/morse-sdk",
-      "version": "0.10.1",
+      "version": "0.11.0",
       "devDependencies": {
         "@biomejs/biome": "2.4.7",
         "@mysten/bcs": "2.1.3",

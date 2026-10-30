@@ -22,7 +22,7 @@ morse --help
 
 ```sh
 # TypeScript SDK
-npm install @arcadiasystems/morse-sdk @mysten/sui@2.36.0 @mysten/walrus@1.2.35 @mysten/seal@1.5.0
+npm install @arcadiasystems/morse-sdk @mysten/sui@2.38.0 @mysten/walrus@1.2.37 @mysten/seal@1.5.2
 ```
 
 Follow the guides: [CLI quick start](https://docs.morsecms.xyz/quick-start-cli.html) · [SDK quick start](https://docs.morsecms.xyz/quick-start-sdk.html) · [Raw contracts (PTBs)](https://docs.morsecms.xyz/quick-start-contracts.html)
