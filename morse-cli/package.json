@@ -56,7 +56,7 @@
 		"prepublishOnly": "bun run check && bun run build"
 	},
 	"dependencies": {
-		"@arcadiasystems/morse-sdk": "^0.9.0",
+		"@arcadiasystems/morse-sdk": "^0.10.0",
 		"@mysten/seal": "1.5.0",
 		"@mysten/sui": "2.36.0",
 		"@mysten/walrus": "1.2.35",

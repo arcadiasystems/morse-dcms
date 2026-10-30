@@ -2,6 +2,38 @@
 
 All notable changes to `morse-sdk` will be documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-10-30
+
+Walrus read errors now say what went wrong, and a revoked PublisherCap can be told apart from a live one. The Mysten peer ranges are the same as 0.9.0's. This is a minor bump because two changes break existing code: `PublicationReader` has a new required method, and some failed blob reads throw a different error class than before.
+
+### Breaking changes (pre-1.0)
+
+- **`PublicationReader` has a new required method, `isPublisherCapRevoked`.** A custom `PublicationReader` implementation does not type-check against 0.10.0 until it adds one. `RpcPublicationReader` implements it; see Added.
+- **Failed Walrus reads are classified by cause, so some throw a different class.** Code that treated every failed blob read as "not found" now gets a `TransportError` for reads that can succeed on a retry or through `HttpAggregatorReadAdapter`.
+  - `NoBlobMetadataReceivedError` from `@mysten/walrus`, which means no storage node returned the blob's metadata, is now a `TransportError`. It was a `NotFoundError`, even for a healthy blob. Read failures that were already a `TransportError`, such as `NotEnoughSliversReceivedError`, still are.
+  - `BlobNotCertifiedError`, a quorum of storage nodes reporting the blob uncertified, is now a `NotFoundError`. It was a `TransportError`. A storage node's 404 is still a `NotFoundError`.
+  - When the storage-node read in `DefaultWalrusReadAdapter.readBlobByObjectId` fails with a `NotFoundError` or `TransportError`, the adapter checks the failure against the blob's on-chain `Blob` object: an ended storage lease throws `BlobExpiredError`, a blob that was never certified throws `NotFoundError`, and a certified blob inside its lease throws `TransportError`, naming the epoch it is stored until. `readBlobByObjectId` now reads the current Walrus epoch before the blob, from the same cached system state the read loads, so a successful read makes no extra request. A failure there is a `TransportError` with operation `walrus.systemState`.
+
+### Added
+
+- `BlobExpiredError`, a `NotFoundError` with resource `"blob"` and the blob id as `identifier`, for a blob whose on-chain storage lease has ended. It carries `blobObjectId`, `endEpoch` and `currentEpoch`, and is raised only after the `Blob` object was read, never inferred from a failed read alone. Existing `NotFoundError` handling still matches it. `formatUserMessage` titles it "Content expired" and names both epochs.
+- `RpcPublicationReader.isPublisherCapRevoked(publicationId, publisherCapId, signal?)`. Revoking a cap adds its id to the publication's denylist and leaves the cap object in the holder's account, so `listPublisherCapsOwnedBy` returns revoked caps exactly like live ones; this is how to tell them apart. It reads the publication, then looks the cap up with one dynamic-field read. It throws `NotFoundError` when the publication does not exist and `TransportError` on RPC failure, so a network error is never reported as "not revoked".
+
+### Changed
+
+- `gasUsedMist` is documented as the gas of the one Morse transaction whose `digest` the result reports. On `AddEntryFromBytesResult` and `UploadRecipientFileResult` that leaves out the Walrus `register_blob` transaction, the WAL storage fee and any upload-relay tip; on `AddEntryResult` and `RevisionAppendResult` it leaves out the blob upload. The value itself is unchanged.
+- The README's Examples section explains how the repository examples choose their network: from `MORSE_NETWORK`, defaulting to Testnet, with `MORSE_ALLOW_MAINNET=1` also required when it is `mainnet`. The examples are not part of the npm package.
+
+### Fixed
+
+- **Blob `NotFoundError.identifier` is the bare id that was read**: the blob id, blob object id or quilt patch id. `DefaultWalrusReadAdapter` put `Walrus blob: ` and the underlying error message there, and `HttpAggregatorReadAdapter` put prose, which `formatUserMessage` then printed in its "(id: ...)" slot. When `readBlobByObjectId` classifies a failed read, the identifier is the blob id. Code that parsed the old string should read the error's `cause` instead.
+- **`formatUserMessage` no longer blames expiry for a missing blob.** It said "The Walrus blob is not retrievable. The storage operator may be having issues, or the blob expired." A blob `NotFoundError` now reads "Walrus has no stored copy of this content. (id: ...)", since a missing blob may have expired, been deleted or never been certified. Only `BlobExpiredError`, which checked, says the content expired.
+- README: the Compatibility table's 0.8.x row is dated 2026-10-17, its Testnet check, instead of 2026-09-09, a day before 0.8.0 existed. The note on the Walrus Mainnet run of 2026-09-09 names 0.6.0, the version it used, instead of 0.8.x. Known limitations no longer promises a JSON-RPC fallback: the SDK talks to Sui over gRPC only, makes no JSON-RPC calls and does not query events itself.
+
+### Known gaps
+
+- The smoke suite has not been run on 0.10.x, so the README's 0.10.x compatibility row has no verified date, and `TESTED_SUBSTRATE` still records the 0.9.0 run of 2026-10-18 on the same Mysten versions. Before merging, `BlobExpiredError` on blobs whose lease had ended, the new not-found wording, a `readBlobByObjectId` read of a live certified blob and `isPublisherCapRevoked` (through the CLI's `cap list`) were checked read-only on Testnet, with no transactions sent. No write path was rerun.
+
 ## [0.9.0] - 2026-10-17
 
 Moves the Mysten substrate to the current lines. The public API is unchanged; this is a minor bump because the new peer ranges exclude every version 0.8.x accepted, so upgrading means upgrading all three Mysten packages with it.
