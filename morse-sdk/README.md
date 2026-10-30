@@ -40,6 +40,7 @@ morse-sdk is built and tested against specific minor versions of its Mysten subs
 
 | morse-sdk | `@mysten/sui` | `@mysten/walrus` | `@mysten/seal` | Sui network | Verified  |
 | --------- | ------------- | ---------------- | -------------- | ----------- | --------- |
+| 0.10.x    | 2.36.0-2.36.x | 1.2.35-1.2.x     | 1.5.0-1.5.x    | testnet     | not yet   |
 | 0.9.x     | 2.36.0-2.36.x | 1.2.35-1.2.x     | 1.5.0-1.5.x    | testnet     | 2026-10-18 |
 | 0.8.x     | 2.16.2-2.16.x | 1.1.6-1.1.x      | 1.1.3-1.1.x    | testnet     | 2026-10-17 |
 | 0.7.x     | 2.16.2-2.16.x | 1.1.6-1.1.x      | 1.1.3-1.1.x    | testnet     | 2026-09-09 |
@@ -48,7 +49,9 @@ morse-sdk is built and tested against specific minor versions of its Mysten subs
 | 0.4.x     | 2.16.2-2.16.x | 1.1.6-1.1.x      | 1.1.3-1.1.x    | testnet     | 2026-06-05 |
 | 0.1.x     | 2.16.2-2.16.x | 1.1.6-1.1.x      | 1.1.3-1.1.x    | testnet     | 2026-05-10 |
 
-Mysten ships breaking changes inside major version boundaries. Newer minors (e.g. `@mysten/walrus@1.3.x`, `@mysten/sui@2.37+`) are outside the verified ranges and may produce runtime errors; morse-sdk needs a coordinated bump and re-verification before a new Mysten minor is supported. Pin via `bun add @arcadiasystems/morse-sdk@~0.9.0` if you want patch updates without surprise minors.
+The 0.10.x row has no verified date because the smoke suite has not been run on 0.10.x yet. Its peer ranges are the same as 0.9.x's, whose full Testnet run on 2026-10-18 is the one `TESTED_SUBSTRATE` records.
+
+Mysten ships breaking changes inside major version boundaries. Newer minors (e.g. `@mysten/walrus@1.3.x`, `@mysten/sui@2.37+`) are outside the verified ranges and may produce runtime errors; morse-sdk needs a coordinated bump and re-verification before a new Mysten minor is supported. Pin via `bun add @arcadiasystems/morse-sdk@~0.10.0` if you want patch updates without surprise minors.
 
 The verification protocol is documented in [`CONTRIBUTING.md`](https://github.com/arcadiasystems/morse-dcms/blob/main/morse-sdk/CONTRIBUTING.md): every Mysten dep bump runs the full `scripts/phase-N-*.ts` smoke suite before the bump lands.
 
