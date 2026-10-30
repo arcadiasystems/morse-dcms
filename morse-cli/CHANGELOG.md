@@ -4,6 +4,24 @@ All notable changes to `@arcadiasystems/morse-cli` are documented here. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-10-30
+
+Closes the gaps found in the 2026-10-17 Testnet run, on `@arcadiasystems/morse-sdk` 0.10. A minor rather than a patch: `--json` failures move from stderr to stdout, and some read failures now exit 5 instead of 3.
+
+### Changed
+
+- **`--json` errors go to stdout**, as the README always said. A failure prints `{"error": {"title", "description", "exitCode"}}` on stdout and exits with that code, so a script reads one stream and checks `$?`. Under `--json`, commander usage errors (exit 2) now print that document on stdout too, alongside commander's own message on stderr. Plain-mode errors and `--debug` traces stay on stderr.
+- **Dependencies.** `@arcadiasystems/morse-sdk` `^0.10.0` (was `^0.9.0`), for `isPublisherCapRevoked` and the reclassified Walrus read errors. The Mysten packages are unchanged.
+
+### Fixed
+
+- **A blob the storage nodes did not return exited 3 and blamed expiry.** `entry read`, `entry decrypt` and `file download` printed "The Walrus blob is not retrievable. The storage operator may be having issues, or the blob expired." with Walrus's error text where the id belonged, and exited 3 (not found), even for a healthy blob. A storage-node read that gets no answer now exits 5 (network), names the id it read, and adds "Retry, or pass --via-aggregator to read through a Walrus aggregator." For a blob-mode entry it also gives the epoch the blob is stored until. A blob-mode entry whose storage really ended exits 3 as "Content expired", with the end and current epochs, and content Walrus does not store exits 3 with "Walrus has no stored copy of this content." and its id.
+- **`cap list` showed revoked caps as usable.** Revoking a cap leaves it in the holder's account, so it listed like a live one until a write failed. Revoked caps are now marked `[revoked]` and caps of deleted publications `[publication deleted]`, and `--json` gives each result a `status` of `active`, `revoked` or `publication-deleted`. The check costs two reads per cap.
+- **`collection create --json` omitted the collection.** It now includes `name` and `entriesTableId`, read back from the publication after the create. If that read fails, the error says the collection was created and gives the transaction digest, so a script does not retry into `ECollectionAlreadyExists`.
+- **`file list --hydrate` printed the same table as without the flag.** The hydrated table adds a `blobId` column with the full id.
+- `file list --indexer-url` help described the flag as a `suix_queryEvents` source defaulting to the RPC. It now says the flag takes a Sui GraphQL endpoint, defaults to Mysten's endpoint for the network, and is required on localnet.
+- README: documents that `gasUsedMist` is the gas of the one Morse transaction whose `digest` is reported, not the Walrus register transaction (or, for the `revision` commands, register and certify), the WAL storage fee or an upload-relay tip; that `entry add-encrypted` creates a draft the CLI cannot publish; and that `account import` reads a piped key and then takes the password from `MORSE_KEYSTORE_PASSWORD`. The `file list` section no longer says `@mysten/sui`'s gRPC client has no event API: it has `listEvents`, but public fullnodes answer it only from recent history, so GraphQL stays the transport.
+
 ## [0.11.0] - 2026-10-17
 
 Moves to `@arcadiasystems/morse-sdk` 0.9 and the current Mysten packages. Commands, flags, output and exit codes are unchanged.
