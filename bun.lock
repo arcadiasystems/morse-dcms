@@ -7,15 +7,15 @@
     },
     "morse-cli": {
       "name": "@arcadiasystems/morse-cli",
-      "version": "0.12.0",
+      "version": "0.13.0",
       "bin": {
         "morse": "./dist/index.js",
       },
       "dependencies": {
-        "@arcadiasystems/morse-sdk": "^0.10.0",
-        "@mysten/seal": "1.5.0",
-        "@mysten/sui": "2.36.0",
-        "@mysten/walrus": "1.2.35",
+        "@arcadiasystems/morse-sdk": "^0.11.0",
+        "@mysten/seal": "1.5.2",
+        "@mysten/sui": "2.38.0",
+        "@mysten/walrus": "1.2.37",
         "commander": "^14.0.3",
       },
       "devDependencies": {
@@ -38,20 +38,20 @@
     },
     "morse-sdk": {
       "name": "@arcadiasystems/morse-sdk",
-      "version": "0.10.1",
+      "version": "0.11.0",
       "devDependencies": {
         "@biomejs/biome": "2.4.7",
-        "@mysten/bcs": "2.1.2",
-        "@mysten/seal": "1.5.0",
-        "@mysten/sui": "2.36.0",
-        "@mysten/walrus": "1.2.35",
+        "@mysten/bcs": "2.1.3",
+        "@mysten/seal": "1.5.2",
+        "@mysten/sui": "2.38.0",
+        "@mysten/walrus": "1.2.37",
         "@types/bun": "latest",
         "typescript": "^5.6.0",
       },
       "peerDependencies": {
-        "@mysten/seal": ">=1.5.0 <1.5.1",
-        "@mysten/sui": ">=2.36.0 <2.37.0",
-        "@mysten/walrus": ">=1.2.35 <1.2.36",
+        "@mysten/seal": ">=1.5.2 <1.5.3",
+        "@mysten/sui": ">=2.38.0 <2.39.0",
+        "@mysten/walrus": ">=1.2.37 <1.2.38",
       },
     },
   },
@@ -88,15 +88,15 @@
 
     "@graphql-typed-document-node/core": ["@graphql-typed-document-node/core@3.2.0", "", { "peerDependencies": { "graphql": "^0.8.0 || ^0.9.0 || ^0.10.0 || ^0.11.0 || ^0.12.0 || ^0.13.0 || ^14.0.0 || ^15.0.0 || ^16.0.0 || ^17.0.0" } }, "sha512-mB9oAsNCm9aM3/SOv4YtBMqZbYj10R7dkq8byBqxGY/ncFwhf2oQzMV+LCRlWoDSEBJ3COiR1yeDvMtsoOsuFQ=="],
 
-    "@mysten/bcs": ["@mysten/bcs@2.1.2", "", { "dependencies": { "@mysten/utils": "^0.4.1", "@scure/base": "^2.3.0" } }, "sha512-fv6lyuZMTHN0xRlu4GYiV/UXUrdJDOHbXm1KfZYEU0sy/t+22yTrTVtWnAQv1Km7eyB3qHhwIrAG2aem4JMocw=="],
+    "@mysten/bcs": ["@mysten/bcs@2.1.3", "", { "dependencies": { "@mysten/utils": "^0.4.2", "@scure/base": "^2.3.0" } }, "sha512-sg3hstwDLQQmQTpiX8Vzs13bEEGTqnhp1gUzBLlVQ493xyTTCDwB/jXGzT0g2I/GXd2o1B3s7Bd67Ua3VZo+Jw=="],
 
-    "@mysten/seal": ["@mysten/seal@1.5.0", "", { "dependencies": { "@mysten/bcs": "^2.1.2", "@noble/curves": "^2.3.0", "@noble/hashes": "^2.3.0" }, "peerDependencies": { "@mysten/sui": "^2.36.0" } }, "sha512-yXKBV2zncPxBqeeAamDMwNMrIbO7oQP4b1L5+hlyJUUKeRALes45UZN2JkqA3CZweAoR7ly5wJnuL2gBMfED6Q=="],
+    "@mysten/seal": ["@mysten/seal@1.5.2", "", { "dependencies": { "@mysten/bcs": "^2.1.3", "@noble/curves": "^2.3.0", "@noble/hashes": "^2.3.0" }, "peerDependencies": { "@mysten/sui": "^2.38.0" } }, "sha512-8pbihzdkAYt8r+G9sewkrfqLZ/aAObJnKUDxcDYVJXAvZrL2GOaM8tQBMdN8zzIQ9Mw3oc3j8LmdccjmPi+Erw=="],
 
-    "@mysten/sui": ["@mysten/sui@2.36.0", "", { "dependencies": { "@graphql-typed-document-node/core": "^3.2.0", "@mysten/bcs": "^2.1.2", "@mysten/utils": "^0.4.1", "@noble/curves": "^2.3.0", "@noble/hashes": "^2.3.0", "@noble/post-quantum": "^0.7.1", "@protobuf-ts/grpcweb-transport": "^2.11.1", "@protobuf-ts/runtime": "^2.11.1", "@protobuf-ts/runtime-rpc": "^2.11.1", "@scure/base": "^2.3.0", "@scure/bip32": "^2.3.0", "@scure/bip39": "^2.3.0", "gql.tada": "^1.11.3", "graphql": "^17.0.2", "poseidon-lite": "0.3.0", "valibot": "^1.4.2" } }, "sha512-caOeKw7Cml0ligqLv7977keIq7EZJQuAbHjL5lCeUP71l5hKZT20xKRgXNAQb8mIHsVXq8YscbXvhqJdyo9ebQ=="],
+    "@mysten/sui": ["@mysten/sui@2.38.0", "", { "dependencies": { "@graphql-typed-document-node/core": "^3.2.0", "@mysten/bcs": "^2.1.3", "@mysten/utils": "^0.4.2", "@noble/curves": "^2.3.0", "@noble/hashes": "^2.3.0", "@noble/post-quantum": "^0.7.1", "@protobuf-ts/grpcweb-transport": "^2.11.1", "@protobuf-ts/runtime": "^2.11.1", "@protobuf-ts/runtime-rpc": "^2.11.1", "@scure/base": "^2.3.0", "@scure/bip32": "^2.3.0", "@scure/bip39": "^2.3.0", "gql.tada": "^1.11.3", "graphql": "^17.0.2", "poseidon-lite": "0.3.0", "valibot": "^1.4.2" } }, "sha512-j/uG+waSo62eWH0c3+a/3V8tnsAUTKfe7OIXtIDmhPLQcWnPCchf0R5WjxMx904Vh61qfYmrySFYoAau2+7bwA=="],
 
-    "@mysten/utils": ["@mysten/utils@0.4.1", "", { "dependencies": { "@scure/base": "^2.3.0" } }, "sha512-gffLJ84CbqG/CcOPuVlwXIRu37tFn0BtUx7CQtbLwJzWjUE7FU2Gq8BXWjzxImnvufcyLTaNWtCPG6wq22Zhog=="],
+    "@mysten/utils": ["@mysten/utils@0.4.2", "", {}, "sha512-K/5eBuYKxUFCrYcic1lvYvWE9OVSH581cjVjwsSJGUqPit91nZq2acUwes+B4lo98VE/CILIUeBcyEIvuNxMhA=="],
 
-    "@mysten/walrus": ["@mysten/walrus@1.2.35", "", { "dependencies": { "@mysten/bcs": "^2.1.2", "@mysten/utils": "^0.4.1", "@mysten/walrus-wasm": "^0.3.1", "dataloader": "^2.2.3" }, "peerDependencies": { "@mysten/sui": "^2.36.0" } }, "sha512-NWXob7KpS4aAJKQ8cuMHxLTzKndUOR6ujQyLD/wQ8bGLaUVhzuXmF+UI5tIrDQS4tPIw2HDcc3PYfvWn4W5n4w=="],
+    "@mysten/walrus": ["@mysten/walrus@1.2.37", "", { "dependencies": { "@mysten/bcs": "^2.1.3", "@mysten/utils": "^0.4.2", "@mysten/walrus-wasm": "^0.3.1", "dataloader": "^2.2.3" }, "peerDependencies": { "@mysten/sui": "^2.38.0" } }, "sha512-NS/kmctPqz0DJFmxIh1GHrz32AvhcK/3yPlkTT9Nzuk/TpKwaXSPi2FEI4xiGk93WRVt9HO9Qg+ifIGcoNTmWA=="],
 
     "@mysten/walrus-wasm": ["@mysten/walrus-wasm@0.3.1", "", {}, "sha512-d+6M4xuZnkhOmLCinpe8F21pxpZ9QDZzw/QWXa9R1h0DM2iqfovfhLeT4ZaUj1pbp5mQ5C/3LJtfppjKhvynig=="],
 

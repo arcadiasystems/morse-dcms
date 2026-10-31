@@ -4,6 +4,14 @@ All notable changes to `@arcadiasystems/morse-cli` are documented here. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2026-10-31
+
+Moves to `@arcadiasystems/morse-sdk` 0.11 and the current Mysten packages. Commands, flags, output and exit codes are unchanged.
+
+### Changed
+
+- **Dependencies.** `@arcadiasystems/morse-sdk` `^0.11.0` (was `^0.10.0`), `@mysten/sui` 2.38.0 (was 2.36.0), `@mysten/walrus` 1.2.37 (was 1.2.35), `@mysten/seal` 1.5.2 (was 1.5.0). Walrus 1.2.37 and seal 1.5.2 change no code beyond the version Seal reports to key servers. The one sui 2.37 change that reaches the SDK, for an entry page whose bytes end early, is described in morse-sdk's 0.11.0 entry.
+
 ## [0.12.0] - 2026-10-30
 
 Closes the gaps found in the 2026-10-17 Testnet run, on `@arcadiasystems/morse-sdk` 0.10. A minor rather than a patch: `--json` failures move from stderr to stdout, and some read failures now exit 5 instead of 3.

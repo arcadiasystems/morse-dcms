@@ -2,6 +2,25 @@
 
 All notable changes to `morse-sdk` will be documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-10-31
+
+Moves the Mysten substrate to `@mysten/sui` 2.38, `@mysten/walrus` 1.2.37 and `@mysten/seal` 1.5.2. The public API is unchanged. This is a minor bump because the new peer ranges share no version with 0.10.1's, so upgrading means upgrading all three Mysten packages with it.
+
+### Changed
+
+- **Peer dependencies.** `@mysten/sui` `>=2.38.0 <2.39.0` (was `>=2.36.0 <2.37.0`), `@mysten/walrus` `>=1.2.37 <1.2.38` (was `>=1.2.35 <1.2.36`), `@mysten/seal` `>=1.5.2 <1.5.3` (was `>=1.5.0 <1.5.1`). Walrus 1.2.37 and seal 1.5.2 both require `@mysten/sui` `^2.38.0`. As in 0.10.1, walrus and seal are held to one release: a later patch of either can require the next sui minor, and a range that admitted it would make a plain install fail with `ERESOLVE`, as 0.9.0 and 0.10.0 do. `TESTED_SUBSTRATE` records the new versions.
+- README: the install lines pin sui 2.38.0, walrus 1.2.37 and seal 1.5.2, and the Compatibility table has a 0.11.x row.
+
+### Upstream behaviour changes
+
+- `@mysten/walrus` 1.2.36 and 1.2.37 change no code. `@mysten/seal` 1.5.1 and 1.5.2 change only the version Seal sends to key servers in its `Client-Sdk-Version` header.
+- `@mysten/sui` 2.37, through `@mysten/bcs` 2.1.3, stops BCS decoding from reading past the end of its input. With sui 2.36, an entry in a `listEntries` or `scanEntries` page whose bytes ended early could decode by reading the bytes that followed it in the gRPC response. It now fails to decode, and the SDK throws `ValidationError` (field `entry.bcs`), as for any `Entry` that does not decode.
+- No other change in sui 2.37 and 2.38 alters what the SDK gets back. The faster BCS code encodes and decodes the SDK's types to the same values, an `Address` still decoding to `0x` and 64 lowercase hex digits. The multisig zkLogin verification fix and the ML-DSA-65 and Ed25519 mnemonic derivation changes are in APIs the SDK does not call.
+
+### Verified on testnet
+
+The full smoke suite passes on 0.11.0, on 2026-10-31, against `@mysten/sui` 2.38.0, `@mysten/walrus` 1.2.37 and `@mysten/seal` 1.5.2, over the direct storage-node fanout with no upload relay. That covers phases 2 to 8: the publication lifecycle, publisher caps, blob and quilt collections, Walrus blob and quilt uploads, the entry lifecycle in both collection modes, an encrypted entry and Seal decrypt, and public and encrypted recipient files, with both decrypts matching the plaintext. The HTTP publisher variants were skipped, as they are whenever `WALRUS_PUBLISHER_URL` is unset. The README's 0.11.x row and `TESTED_SUBSTRATE.verifiedOn` record 2026-10-31.
+
 ## [0.10.1] - 2026-10-31
 
 Narrows the `@mysten/walrus` and `@mysten/seal` peer ranges so that a plain `npm install @arcadiasystems/morse-sdk` resolves again. The public API and runtime behaviour are the same as 0.10.0's; the one code change is `TESTED_SUBSTRATE.verifiedOn`, which records the Testnet run below.
