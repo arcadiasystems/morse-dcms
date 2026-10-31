@@ -29,6 +29,6 @@ export const TESTED_SUBSTRATE: {
 	"@mysten/sui": "2.36.0",
 	"@mysten/seal": "1.5.0",
 	"@mysten/walrus": "1.2.35",
-	verifiedOn: "2026-10-18",
+	verifiedOn: "2026-10-31",
 	suiNetwork: "testnet",
 };

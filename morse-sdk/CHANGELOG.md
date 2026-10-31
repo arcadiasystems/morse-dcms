@@ -2,6 +2,20 @@
 
 All notable changes to `morse-sdk` will be documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.1] - 2026-10-31
+
+Narrows the `@mysten/walrus` and `@mysten/seal` peer ranges so that a plain `npm install @arcadiasystems/morse-sdk` resolves again. The public API and runtime behaviour are the same as 0.10.0's; the one code change is `TESTED_SUBSTRATE.verifiedOn`, which records the Testnet run below.
+
+### Fixed
+
+- **The published 0.10.0 cannot be installed with npm unless all three Mysten packages are pinned exactly.** Its peer ranges are `@mysten/sui` `>=2.36.0 <2.37.0`, `@mysten/walrus` `>=1.2.35 <1.3.0` and `@mysten/seal` `>=1.5.0 <1.6.0`. Mysten has since published walrus 1.2.36 and seal 1.5.1, which require `@mysten/sui` `^2.37.0`, and walrus 1.2.37 and seal 1.5.2, which require `^2.38.0`. npm picks the newest walrus and seal those ranges allow, which pulls in a sui the SDK's own range rejects, so `npm install @arcadiasystems/morse-sdk@0.10.0` fails with `ERESOLVE`. It installs only with `@mysten/sui@2.36.0 @mysten/walrus@1.2.35 @mysten/seal@1.5.0` on the command line, as in the README's install lines; pinning seal alone still fails, on walrus 1.2.37. 0.9.0 declares the same ranges and fails the same way.
+- **The walrus and seal peer ranges now admit only the releases that work with sui 2.36.** `@mysten/walrus` is `>=1.2.35 <1.2.36` (was `>=1.2.35 <1.3.0`) and `@mysten/seal` is `>=1.5.0 <1.5.1` (was `>=1.5.0 <1.6.0`). `@mysten/sui` stays `>=2.36.0 <2.37.0`. npm now resolves sui 2.36.0, walrus 1.2.35 and seal 1.5.0 on its own, so a plain install of 0.10.1 succeeds without pins.
+- README: the Compatibility table's 0.10.x row lists the narrowed walrus and seal ranges, and a note under the table explains why 0.9.x and 0.10.0 install only with the exact pins.
+
+### Verified on testnet
+
+The full smoke suite passes on 0.10.1, on 2026-10-31, against `@mysten/sui` 2.36.0, `@mysten/walrus` 1.2.35 and `@mysten/seal` 1.5.0, over the direct storage-node fanout with no upload relay. That covers phases 2 to 8: the publication lifecycle, publisher caps, blob and quilt collections, Walrus blob and quilt uploads, the entry lifecycle in both collection modes, an encrypted entry and Seal decrypt, and public and encrypted recipient files. The HTTP publisher variants were skipped, as they are whenever `WALRUS_PUBLISHER_URL` is unset. The README's 0.10.x row and `TESTED_SUBSTRATE.verifiedOn` move to 2026-10-31.
+
 ## [0.10.0] - 2026-10-30
 
 Walrus read errors now say what went wrong, and a revoked PublisherCap can be told apart from a live one. The Mysten peer ranges are the same as 0.9.0's. This is a minor bump because two changes break existing code: `PublicationReader` has a new required method, and some failed blob reads throw a different error class than before.
