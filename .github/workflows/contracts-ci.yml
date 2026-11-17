@@ -1,15 +1,9 @@
 name: contracts-ci
 
 on:
-  pull_request:
-    paths:
-      - "morse-contracts/**"
-      - ".github/workflows/contracts-ci.yml"
-  push:
-    branches: [main]
-    paths:
-      - "morse-contracts/**"
-      - ".github/workflows/contracts-ci.yml"
+  # Called by ci.yml, which decides from the changed paths whether this suite
+  # runs: morse-contracts/**, this file, or ci.yml itself.
+  workflow_call:
 
 permissions:
   contents: read
