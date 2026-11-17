@@ -311,6 +311,10 @@ hydrated table gains a `blobId` column, and `--json` returns the full records.
 - In `--json` output, `bigint` values (e.g. `gasUsedMist`) are encoded as
   decimal strings and byte arrays (quilt patch ids) as `0x`-hex. Encrypted
   uploads also return `sealIdPrefix` / `sealNonce` as hex and a `share` string.
+- `entry read --out` and `entry decrypt --out` report the revision they read as
+  `revisionId`, next to `entryId`, `bytes`, `contentType` and `out`. With no
+  revision index that is the entry's `publicHead` for `entry read`, and its
+  latest encrypted revision for `entry decrypt`.
 - `gasUsedMist` is the net gas (computation plus storage, minus the storage
   rebate) of the one Morse transaction whose `digest` the result reports, not
   the whole cost of the command. Commands that upload to Walrus send more

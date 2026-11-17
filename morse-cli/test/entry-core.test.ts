@@ -462,6 +462,67 @@ describe("runEntryRead", () => {
 		expect(await readFile(out, "utf8")).toBe("public body");
 	});
 
+	test("--json names the revision it read: the public head by default, the index when given", async () => {
+		const publishedBlob = `0x${"1".repeat(64)}`;
+		const draftBlob = `0x${"2".repeat(64)}`;
+		const read = async (revisionIndex: string | undefined) => {
+			const out = files.path("body.txt");
+			const { ctx, captured } = readContentContext({
+				json: true,
+				reader: {
+					getEntry: () =>
+						Promise.resolve({
+							...entry([
+								revision({
+									blobRef: { kind: "blob", blobObjectId: publishedBlob },
+								}),
+								revision({
+									id: 1,
+									contentType: "text/markdown",
+									blobRef: { kind: "blob", blobObjectId: draftBlob },
+								}),
+							]),
+							publicHead: 0,
+							draftHead: 1,
+						}),
+				} as never,
+				walrusRead: {
+					readBlobRef: (ref: { blobObjectId: string }) =>
+						Promise.resolve(
+							new TextEncoder().encode(
+								ref.blobObjectId === draftBlob
+									? "unpublished draft"
+									: "published",
+							),
+						),
+				},
+			});
+			await runEntryRead(ctx, "0", revisionIndex, {
+				publication: ID,
+				collection: "posts",
+				out,
+			});
+			return { doc: captured.json(), body: await readFile(out, "utf8") };
+		};
+
+		const byDefault = await read(undefined);
+		expect(byDefault.body).toBe("published");
+		expect(byDefault.doc).toMatchObject({
+			entryId: 0,
+			revisionId: 0,
+			bytes: 9,
+			contentType: "text/plain",
+		});
+
+		const byIndex = await read("1");
+		expect(byIndex.body).toBe("unpublished draft");
+		expect(byIndex.doc).toMatchObject({
+			entryId: 0,
+			revisionId: 1,
+			contentType: "text/markdown",
+		});
+	});
+
 	test("serves the public head when an earlier revision is encrypted", async () => {
 		const secretBlob = `0x${"2".repeat(64)}`;
 		const publicBlob = `0x${"3".repeat(64)}`;
