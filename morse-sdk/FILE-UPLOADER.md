@@ -211,7 +211,7 @@ await deleteRecipientFile(adapter, config, { fileId });
 
 ## 6. Listing files via your indexer
 
-The SDK does not ship event fetching. Sui v2 gRPC has no historical event query, and Mysten is sunsetting `suix_queryEvents` on the JSON-RPC side. The SDK gives you the parsing + reconciliation logic; you pick the indexer.
+The SDK does not ship event fetching. Public Sui fullnodes have retired JSON-RPC, and with it `suix_queryEvents`. `SuiGrpcClient` does have `listEvents`, but public fullnodes answer it only from the recent history they keep, with no error for what is missing, and its events carry a checkpoint and no timestamp. A Sui GraphQL endpoint or your own indexer returns the full history. The SDK gives you the parsing + reconciliation logic; you pick the source.
 
 ```ts
 import {
