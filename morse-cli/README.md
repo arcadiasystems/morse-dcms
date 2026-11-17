@@ -478,10 +478,12 @@ with a `#!/usr/bin/env node` shebang and external dependencies, so installs run
 under Node or Bun. `prepublishOnly` runs typecheck, lint, tests, and the build,
 so the published `dist/` is always fresh.
 
-Release steps: bump the version in `package.json`, stamp the CHANGELOG date,
-then `npm publish` (the package is `publishConfig.access: public`). `npm publish`
-ships `dist`, `docs`, `README.md`, `LICENSE`, and `CHANGELOG.md` (see the `files`
-allowlist). Publish the SDK first; the CLI depends on `@arcadiasystems/morse-sdk`.
+Releases are published by CI, not by hand: bump the version in `package.json`
+and add the CHANGELOG entry in a pull request, merge it, then push a
+`morse-cli-v<version>` tag. [RELEASING.md](../RELEASING.md) has the full
+procedure. The package ships `dist`, `docs`, `README.md`, `LICENSE`, and
+`CHANGELOG.md` (see the `files` allowlist). Release the SDK first when the CLI
+needs a new one; the CLI depends on `@arcadiasystems/morse-sdk`.
 
 ## Development
 
