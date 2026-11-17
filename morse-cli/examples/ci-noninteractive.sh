@@ -23,8 +23,8 @@ echo "created: $pub"
 count=$(morse --json publication list | jq '.results | length')
 echo "owned publications: $count"
 
-# Tear down without prompts (--yes is a global flag, before the subcommand).
-morse --yes publication delete "$pub"
+# Tear down without prompts. --yes works before or after the subcommand.
+morse publication delete "$pub" --yes
 
 # Exit codes are scriptable. A missing object returns 3 (not found). Capture the
 # code with `|| code=$?` so `set -e` does not abort on the expected failure.

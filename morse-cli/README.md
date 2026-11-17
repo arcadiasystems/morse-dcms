@@ -149,7 +149,9 @@ unlocked by a password. Specifics:
 ## Command reference
 
 Global options apply to every command and must appear before the subcommand
-(e.g. `morse --json publication list`).
+(e.g. `morse --json publication list`). The one exception is `-y, --yes`: every
+command that asks for confirmation also accepts it after the subcommand
+(`morse entry delete 0 --yes`), and lists it in its own `--help`.
 
 | Global option | Purpose |
 | --- | --- |
@@ -160,7 +162,7 @@ Global options apply to every command and must appear before the subcommand
 | `--max-tip <mist>` | Cap the relay's per-upload tip, in MIST (default: 10000000). |
 | `--json` | Machine-readable JSON on stdout. |
 | `-q, --quiet` | Suppress progress and informational output. |
-| `-y, --yes` | Assume yes for confirmation prompts. |
+| `-y, --yes` | Assume yes for confirmation prompts. Also accepted after the subcommand. |
 | `--debug` | Print stack traces on error. |
 | `-V, --version` | Print the version. |
 | `-h, --help` | Show help for any command. |
@@ -258,7 +260,8 @@ commands; pure on-chain commands (publication, collection, cap) have no epochs.
 
 OwnerCap and PublisherCap IDs are auto-resolved from the active account when the
 `--owner-cap` / `--publisher-cap` override is omitted. Destructive operations
-(`delete`, `revoke`, `destroy`, `transfer`) confirm interactively unless `--yes`.
+(`delete`, `revoke`, `destroy`, `transfer`) confirm interactively unless `--yes`
+(or `-y`), given before or after the subcommand.
 
 ### file
 
