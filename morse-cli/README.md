@@ -29,8 +29,12 @@ with [Seal](https://github.com/MystenLabs/seal).
 ## Requirements
 
 - [Node.js](https://nodejs.org) >= 22.12, or [Bun](https://bun.sh) >= 1.2. The
-  published CLI runs under either. It is developed and tested on Node 26, the
-  current LTS, and on Node 22.12, the minimum.
+  published CLI runs under either. It is tested on Node 22 and Node 24.
+  **Node 26 is not yet recommended:** its fetch can end the process with an
+  uncaught `socket idle timeout` after a request is aborted
+  ([nodejs/undici#6143](https://github.com/nodejs/undici/issues/6143)), which Walrus and
+  Seal requests do routinely. The CLI ignores that error in its own process,
+  but the fault is still open upstream.
 - A funded Sui address for gas, and WAL for Walrus storage when adding content.
   On testnet, get SUI from the [Sui faucet](https://faucet.sui.io/) and swap some
   for WAL at [stake-wal.wal.app](https://stake-wal.wal.app/?network=testnet). On

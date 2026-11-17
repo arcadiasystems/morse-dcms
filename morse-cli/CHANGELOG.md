@@ -10,7 +10,7 @@ These changes are not in 0.14.0. They ship as 0.15.0; `package.json` stays on 0.
 
 ### Breaking
 
-- **Node.js 22.12 is the minimum** (was 18). `engines.node` is now `>=22.12`, because commander 15 requires it. Node 18 and 20 are past end of life. The CLI is developed and tested on Node 26, the current LTS, and on the 22.12 minimum. Bun (>= 1.2) is unaffected.
+- **Node.js 22.12 is the minimum** (was 18). `engines.node` is now `>=22.12`, because commander 15 requires it. Node 18 and 20 are past end of life. The CLI is tested on Node 22 and Node 24. Node 26 is not yet recommended, see Fixed below. Bun (>= 1.2) is unaffected.
 
 ### Changed
 
@@ -18,7 +18,7 @@ These changes are not in 0.14.0. They ship as 0.15.0; `package.json` stays on 0.
 
 ### Fixed
 
-- **On Node 26, a command that read from Walrus storage nodes exited 1 after it had succeeded.** `entry read`, `entry decrypt` and `file download` printed their result and then crashed about four seconds later with `InformationalError: socket idle timeout`. Node 26's fetch speaks HTTP/2, and it raises that error with no handler when an idle socket closes on a session where a request was aborted ([nodejs/undici#6143](https://github.com/nodejs/undici/issues/6143)), which Walrus reads do once enough slivers have arrived. The CLI now ignores that one error, and every other uncaught exception still ends the process with its trace and exit 1.
+- **On Node 26, a command that read from Walrus storage nodes exited 1 after it had succeeded.** `entry read`, `entry decrypt` and `file download` printed their result and then crashed about four seconds later with `InformationalError: socket idle timeout`. Node 26's fetch speaks HTTP/2, and it raises that error with no handler when an idle socket closes on a session where a request was aborted ([nodejs/undici#6143](https://github.com/nodejs/undici/issues/6143)), which Walrus reads do once enough slivers have arrived. The CLI now ignores that one error, and every other uncaught exception still ends the process with its trace and exit 1. This keeps the CLI's own commands working on Node 26, but the fault is in Node 26 itself and is still open upstream, so **Node 26 is not yet recommended**; use Node 22 or 24.
 - **A finished command no longer waits for idle sockets to close.** The Sui and Walrus clients keep connections alive, so a command that had printed its result stayed running for several seconds on Node 22, and for about two minutes on Node 26 once the crash above was out of the way. The CLI now flushes stdout and stderr and exits as soon as the command is done, with the same exit code.
 
 ## [0.14.0] - 2026-11-17
