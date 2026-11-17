@@ -77,9 +77,10 @@ jobs:
             echo "::error::Tag $GITHUB_REF_NAME says $VERSION, but $PACKAGE_DIR/package.json says $manifest_version."
             exit 1
           fi
+      # The Node that sdk-ci.yml and cli-ci.yml run the same gate on.
       - uses: actions/setup-node@v7
         with:
-          node-version: "24"
+          node-version: "26"
       - name: Version is not on npm yet
         env:
           PACKAGE_NAME: ${{ steps.package.outputs.name }}
@@ -163,9 +164,11 @@ jobs:
       id-token: write
     steps:
       # Trusted publishing needs Node 22.14.0 or later and npm 11.5.1 or later.
+      # Node 26 ships npm 11.20 or later; the next step checks the npm that
+      # is actually on the runner.
       - uses: actions/setup-node@v7
         with:
-          node-version: "24"
+          node-version: "26"
           registry-url: "https://registry.npmjs.org"
       # Without this, an older npm fails the publish with an authentication
       # error that says nothing about the version.

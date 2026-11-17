@@ -15,6 +15,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      # Bun runs the tests, but `bun run` hands tsc and biome to the Node on
+      # PATH, so the Node they run on is chosen here and not left to the
+      # runner image. Keep this in step with sdk-ci.yml and release.yml.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
       # Pinned: bun.lock is lockfileVersion 2, which bun 1.3.x rejects. Keep
       # this in step with sdk-ci.yml.
       - uses: oven-sh/setup-bun@v2

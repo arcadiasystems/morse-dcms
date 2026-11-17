@@ -14,6 +14,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      # Bun runs the tests, but `bun run` hands tsc and biome to the Node on
+      # PATH, so the Node they run on is chosen here and not left to the
+      # runner image. Keep this in step with cli-ci.yml and release.yml.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
       # Pinned: bun.lock is lockfileVersion 2, which bun 1.3.x rejects. Keep
       # this in step with cli-ci.yml.
       - uses: oven-sh/setup-bun@v2
@@ -38,3 +44,31 @@ jobs:
       - name: Build
         working-directory: morse-sdk
         run: bun run build
+
+  # The package says which Node it supports in `engines.node`. This builds it
+  # and imports the built entry point on the oldest Node line that range
+  # admits and on the Node the rest of CI uses, so the claim is tested. When
+  # `engines.node` in morse-sdk/package.json moves, move the first entry.
+  node-import:
+    name: morse-sdk on Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["22", "26"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.3"
+      - name: Install (workspace root)
+        run: bun install --frozen-lockfile
+      - name: Build
+        working-directory: morse-sdk
+        run: bun run build
+      - name: Import the built package on Node
+        working-directory: morse-sdk
+        run: bun run test:node-import

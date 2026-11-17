@@ -14,12 +14,15 @@ For security-related reports, see [`SECURITY.md`](./SECURITY.md). Don't open pub
 
 ## Development setup
 
+Use [Bun](https://bun.sh) 1.4.3, the version CI pins, and Node 26, the current LTS. Bun runs the tests and the scripts; `bun run` hands `tsc` and `biome` to the Node on your `PATH`. The published package supports Node 22 and later (`engines.node`), and CI imports the built package on both Node 22 and Node 26.
+
 ```sh
 bun install
 bun run typecheck   # tsc --noEmit
 bun run lint        # biome check .
 bun test            # bun's test runner across src/**/*.test.ts
 bun run build       # tsc -p tsconfig.build.json (emits dist/)
+bun run test:node-import   # after a build: imports dist/ on the Node on PATH
 ```
 
 All four gates must pass on every PR. The repository uses [biome](https://biomejs.dev/) for formatting and lint; `bun run lint:fix` applies the safe autofixes.

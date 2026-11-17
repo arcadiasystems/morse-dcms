@@ -48,6 +48,7 @@
 		"lint": "biome check .",
 		"lint:fix": "biome check --write .",
 		"test": "bun test",
+		"test:node-import": "node scripts/node-import-check.mjs",
 		"test:coverage": "bun test --coverage"
 	},
 	"engines": {
