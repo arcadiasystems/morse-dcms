@@ -13,7 +13,7 @@ jobs:
     name: morse-sdk
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Pinned: bun.lock is lockfileVersion 2, which bun 1.3.x rejects. Keep
       # this in step with cli-ci.yml.
       - uses: oven-sh/setup-bun@v2

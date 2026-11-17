@@ -25,7 +25,7 @@ jobs:
     steps:
       # Full history: the comparison below needs the base commit and, for a
       # pull request, the merge base.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       # Same comparisons GitHub's own `paths` filter makes: base...head (from
