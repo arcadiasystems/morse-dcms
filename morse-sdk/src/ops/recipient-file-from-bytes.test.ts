@@ -286,8 +286,11 @@ describe("uploadEncryptedRecipientFileFromBytes", () => {
 		expect([...result.sealNonce]).toEqual([...nonce]);
 
 		expect(seal.encrypt).toHaveBeenCalledTimes(1);
-		const encryptArgs = (seal.encrypt as ReturnType<typeof mock>).mock.calls[0];
-		const sealId = (encryptArgs?.[1] as { sealId: Uint8Array }).sealId;
+		const encryptCall = (seal.encrypt as ReturnType<typeof mock>).mock.calls[0];
+		if (encryptCall === undefined) {
+			throw new Error("seal.encrypt recorded no call");
+		}
+		const { sealId } = encryptCall[1] as { sealId: Uint8Array };
 		expect([...sealId.slice(0, prefix.length)]).toEqual([...prefix]);
 		expect(sealId[prefix.length]).toBe(SealPolicyTag.RecipientFile);
 	});

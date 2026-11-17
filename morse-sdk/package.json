@@ -60,7 +60,7 @@
 		"@mysten/walrus": ">=1.2.39 <1.2.40"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "2.4.7",
+		"@biomejs/biome": "2.6.8",
 		"@mysten/bcs": "2.1.4",
 		"@mysten/seal": "1.5.4",
 		"@mysten/sui": "2.39.1",
