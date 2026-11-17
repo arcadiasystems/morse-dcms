@@ -1,0 +1,46 @@
+# Dependabot version updates for the bun workspace and the workflow actions.
+# Options: https://docs.github.com/en/code-security/reference/supply-chain-security/dependabot-options-reference
+
+version: 2
+
+updates:
+  # The root holds bun.lock, the one lockfile for every workspace package.
+  - package-ecosystem: "bun"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      # One pull request for the whole Mysten substrate. The SDK pins sui,
+      # walrus, seal and bcs to exact versions that work together: a walrus
+      # or seal patch can require the next sui minor, so moving one of them
+      # alone gives a set that does not install. That pull request is where
+      # a substrate bump starts, not all of it: morse-sdk/CONTRIBUTING.md
+      # lists the steps that still have to be done by hand.
+      mysten:
+        patterns:
+          - "@mysten/*"
+      # The development tooling, named one by one: Dependabot does not
+      # document the `dependency-type` group filter for bun. Add a new
+      # devDependency here to keep it in this group.
+      dev-tooling:
+        patterns:
+          - "@biomejs/biome"
+          - "@types/*"
+          - "typescript"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "ci(deps)"
+    groups:
+      actions:
+        patterns:
+          - "*"
