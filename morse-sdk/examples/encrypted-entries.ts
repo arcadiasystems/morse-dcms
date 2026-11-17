@@ -45,10 +45,9 @@ import type { ExampleContext } from "./setup.js";
  *
  * `crypto.getRandomValues(new Uint8Array(16))` is a sensible default.
  *
- * Node compatibility: `crypto` is a global on Node 19+ and in browsers. On
- * Node 18 (still common), `import { webcrypto as crypto } from "node:crypto"`
- * exposes the same API. The Move layer requires nonce length >= 1 byte; the
- * SDK requires the same.
+ * `crypto` is a global in browsers, in Bun and on every Node the SDK supports
+ * (22 and later). The Move layer requires nonce length >= 1 byte; the SDK
+ * requires the same.
  */
 export function newSealIdFor(publicationId: PublicationId): SealId {
 	const nonce = crypto.getRandomValues(new Uint8Array(16));

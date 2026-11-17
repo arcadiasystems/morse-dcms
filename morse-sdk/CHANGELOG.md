@@ -2,6 +2,22 @@
 
 All notable changes to `morse-sdk` will be documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **`engines.node` is `>=22`** (was `>=18.0.0`). The old value was never true for a working install: `@mysten/sui` 2.x, a required peer, declares `node >=22` itself. No SDK code changed. npm warns about an unsupported Node and stops the install only where `engine-strict` is set, so a project that sets it on Node 18 or 20 now gets the refusal from the SDK as well as from `@mysten/sui`.
+- README: the runtime requirements table states Node 22 or later.
+
+### Verified
+
+- CI imports the built package through its `exports` map on Node 22 and on Node 26 (`bun run test:node-import`), and runs lint, typecheck, tests and the build with Node 26 on `PATH`.
+- The Testnet smoke suite was run on Node for the first time, on 2026-11-17 with Node 26.13.1, against the built `dist/` (it normally runs on Bun against `src/`). Phases 2 to 7 passed. Phase 8 passed its upload, read-back and decrypt steps, and the process then died with an uncaught `InformationalError: socket idle timeout` while waiting on its last step, the delete of the encrypted file. The delete itself landed on chain.
+
+### Known issue on Node 26
+
+- That crash is [nodejs/undici#6143](https://github.com/nodejs/undici/issues/6143), open at the time of writing, in the undici that Node 26.13.1 bundles (8.12.4). Node 26 uses HTTP/2 in `fetch` by default; after an aborted `fetch` on an HTTP/2 connection, the process exits when the connection's idle timer fires. `@mysten/walrus` and `@mysten/seal` abort the requests they no longer need on every read and decrypt. Node 22.23.5 (undici 6) and Node 24.22.3 (undici 7) are not affected. The README's Known limitations carries the same note. No SDK code changes for this.
+
 ## [0.12.0] - 2026-11-17
 
 Moves the Mysten substrate to `@mysten/sui` 2.39, `@mysten/walrus` 1.2.39 and `@mysten/seal` 1.5.4. The public API is unchanged. This is a minor bump because the new peer ranges share no version with 0.11.0's, so upgrading means upgrading all three Mysten packages with it.
