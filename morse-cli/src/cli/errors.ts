@@ -118,17 +118,42 @@ export function resolveExitCode(err: unknown): ExitCode {
 	if (err instanceof ValidationError) {
 		return ExitCode.Usage;
 	}
-	// Partial success: blob uploaded but the on-chain attach failed. Generic, but
-	// mapped explicitly so the recoverable-failure contract is visible and tested.
+	// Partial success: blob uploaded but the on-chain attach failed. A retry can
+	// attach it, unless the attach was refused for the cap, which no retry fixes.
 	if (err instanceof UncertifiedBlobError) {
-		return ExitCode.Generic;
+		return authAbortBehind(err) === undefined
+			? ExitCode.Generic
+			: ExitCode.Auth;
 	}
 	return ExitCode.Generic;
+}
+
+// The SDK wraps whatever failed after the upload, so a cap revoked between the
+// pre-upload check and the transaction (or one held by another wallet) arrives
+// inside an UncertifiedBlobError.
+function authAbortBehind(
+	err: UncertifiedBlobError,
+): ContractAbortError | undefined {
+	const cause = err.cause;
+	return cause instanceof ContractAbortError &&
+		AUTH_ABORT_REASONS.has(cause.reason)
+		? cause
+		: undefined;
 }
 
 function describe(err: unknown): { title: string; description: string } {
 	if (err instanceof CliError) {
 		return { title: "Error", description: err.message };
+	}
+	if (err instanceof UncertifiedBlobError) {
+		const abort = authAbortBehind(err);
+		if (abort !== undefined) {
+			const formatted = formatUserMessage(abort);
+			return {
+				title: formatted.title,
+				description: `${formatted.description} The content was already uploaded to Walrus (blob ${err.blobId}, object ${err.blobObjectId}) and cannot be attached with this PublisherCap.`,
+			};
+		}
 	}
 	const formatted = formatUserMessage(err);
 	if (isStorageNodeReadFailure(err)) {

@@ -97,6 +97,43 @@ describe("resolveExitCode", () => {
 		);
 	});
 
+	test("an upload stranded by a revoked or wrong-holder cap maps to 4 and drops the retry advice", () => {
+		for (const reason of ["EPublisherCapRevoked", "EPublisherCapWrongHolder"]) {
+			const stranded = new UncertifiedBlobError("0xobj", "blobid", {
+				cause: new ContractAbortError("publication", 1, reason, reason),
+			});
+			expect(resolveExitCode(stranded)).toBe(ExitCode.Auth);
+			const { value, stdout } = captureStreams(() =>
+				handleError(stranded, { json: true, debug: false }),
+			);
+			expect(value).toBe(ExitCode.Auth);
+			const { error } = JSON.parse(stdout) as {
+				error: { description: string; exitCode: number };
+			};
+			expect(error.exitCode).toBe(ExitCode.Auth);
+			expect(error.description).toContain(
+				"already uploaded to Walrus (blob blobid, object 0xobj)",
+			);
+			expect(error.description).not.toContain("Retry");
+		}
+	});
+
+	test("an upload stranded by any other abort stays 1 and keeps the retry advice", () => {
+		const stranded = new UncertifiedBlobError("0xobj", "blobid", {
+			cause: new ContractAbortError(
+				"publication",
+				1,
+				"ECollectionNotFound",
+				"missing",
+			),
+		});
+		expect(resolveExitCode(stranded)).toBe(ExitCode.Generic);
+		const { stderr } = captureStreams(() =>
+			handleError(stranded, { json: false, debug: false }),
+		);
+		expect(stderr).toContain("Retry the operation");
+	});
+
 	test("an expired blob is a not-found (3); a live blob the nodes did not return is a network failure (5)", () => {
 		const expired = new BlobExpiredError("blobid", {
 			blobObjectId: "0xobj",
