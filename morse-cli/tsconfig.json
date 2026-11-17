@@ -5,6 +5,9 @@
 		"target": "ESNext",
 		"module": "Preserve",
 		"moduleDetection": "force",
+		// TypeScript 7 no longer loads every @types package by default, so the
+		// Bun globals the tests and scripts use have to be named.
+		"types": ["bun"],
 
 		// Bundler mode
 		"moduleResolution": "bundler",
