@@ -1,5 +1,11 @@
 # Dependabot version updates for the bun workspace and the workflow actions.
 # Options: https://docs.github.com/en/code-security/reference/supply-chain-security/dependabot-options-reference
+#
+# Majors never arrive bundled. Every group below takes minor and patch
+# updates only, so a major update matches no group and Dependabot opens a
+# pull request for that one dependency. A major is a migration (TypeScript 7
+# removed tsconfig options, Biome 2.6 started checking Markdown), and two of
+# them in one pull request cannot be merged or reverted one at a time.
 
 version: 2
 
@@ -14,15 +20,14 @@ updates:
     commit-message:
       prefix: "chore(deps)"
     groups:
-      # One pull request for the whole Mysten substrate. The SDK pins sui,
-      # walrus, seal and bcs to exact versions that work together: a walrus
-      # or seal patch can require the next sui minor, so moving one of them
-      # alone gives a set that does not install. That pull request is where
-      # a substrate bump starts, not all of it: morse-sdk/CONTRIBUTING.md
-      # lists the steps that still have to be done by hand.
+      # One pull request for what is left of the Mysten substrate after the
+      # `ignore` rules below: patch releases of sui and bcs.
       mysten:
         patterns:
           - "@mysten/*"
+        update-types:
+          - "minor"
+          - "patch"
       # The development tooling, named one by one: Dependabot does not
       # document the `dependency-type` group filter for bun. Add a new
       # devDependency here to keep it in this group.
@@ -31,6 +36,45 @@ updates:
           - "@biomejs/biome"
           - "@types/*"
           - "typescript"
+        update-types:
+          - "minor"
+          - "patch"
+    # Dependabot may only propose Mysten versions that morse-sdk's peer
+    # ranges accept. It updates the pinned versions in package.json and
+    # bun.lock and nothing else: not the peer ranges, the README
+    # compatibility row or TESTED_SUBSTRATE, and it cannot run the Testnet
+    # smoke suite. A proposal outside the ranges would be a pull request that
+    # passes CI and must not be merged. A substrate bump is done by hand, per
+    # release, following morse-sdk/CONTRIBUTING.md.
+    #
+    # `update-types` is used throughout, and not a bare `dependency-name`,
+    # because it limits version updates only: security updates for these
+    # packages still arrive.
+    ignore:
+      # The SDK accepts one sui minor (`>=2.39.1 <2.40.0`), so a patch is in
+      # range and a new minor or major is not. bcs moves with sui, which
+      # depends on it.
+      - dependency-name: "@mysten/sui"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-major"
+      - dependency-name: "@mysten/bcs"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-major"
+      # The SDK accepts exactly one release of walrus and of seal, because a
+      # later patch of either can require the next sui minor. Every newer
+      # version is out of range.
+      - dependency-name: "@mysten/walrus"
+        update-types:
+          - "version-update:semver-patch"
+          - "version-update:semver-minor"
+          - "version-update:semver-major"
+      - dependency-name: "@mysten/seal"
+        update-types:
+          - "version-update:semver-patch"
+          - "version-update:semver-minor"
+          - "version-update:semver-major"
 
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -44,3 +88,6 @@ updates:
       actions:
         patterns:
           - "*"
+        update-types:
+          - "minor"
+          - "patch"
