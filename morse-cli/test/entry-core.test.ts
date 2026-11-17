@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
+import { CliError } from "../src/cli/errors.ts";
+import { ExitCode } from "../src/cli/exit-codes.ts";
 import {
 	runEntryAdd,
 	runEntryDelete,
@@ -61,6 +63,7 @@ function publisherCapReader(
 				nextCursor: null,
 			}),
 		getPublication: () => Promise.resolve(publicationWith(collections)),
+		isPublisherCapRevoked: () => Promise.resolve(false),
 	} as never;
 }
 
@@ -266,6 +269,56 @@ describe("runEntryAdd", () => {
 				file,
 			}),
 		).rejects.toThrow(/quilt/);
+		expect(ops.addEntryFromBytes).not.toHaveBeenCalled();
+	});
+
+	test("refuses a revoked PublisherCap with exit 4 and never reaches the upload", async () => {
+		const file = await files.write("post.md", "# hello");
+		const { ctx } = contentContext({
+			reader: {
+				...(publisherCapReader() as object),
+				isPublisherCapRevoked: () => Promise.resolve(true),
+			} as never,
+		});
+		const error = await runEntryAdd(ctx, "post", {
+			publication: ID,
+			collection: "posts",
+			epochs: "3",
+			file,
+		}).catch((err: unknown) => err);
+		expect(error).toBeInstanceOf(CliError);
+		expect((error as CliError).exitCode).toBe(ExitCode.Auth);
+		expect((error as CliError).message).toBe(
+			"The PublisherCap has been revoked and can no longer be used.",
+		);
+		// addEntryFromBytes is the op that uploads, so not calling it means no
+		// Walrus storage was paid for.
+		expect(ops.addEntryFromBytes).not.toHaveBeenCalled();
+	});
+
+	test("checks the cap given with --publisher-cap, not the account's own", async () => {
+		const file = await files.write("post.md", "# hello");
+		const given = `0x${"e".repeat(64)}`;
+		const checked: string[] = [];
+		const { ctx } = contentContext({
+			reader: {
+				...(publisherCapReader() as object),
+				isPublisherCapRevoked: (_publication: string, cap: string) => {
+					checked.push(cap);
+					return Promise.resolve(true);
+				},
+			} as never,
+		});
+		await expect(
+			runEntryAdd(ctx, "post", {
+				publication: ID,
+				collection: "posts",
+				epochs: "3",
+				file,
+				publisherCap: given,
+			}),
+		).rejects.toThrow(/revoked/);
+		expect(checked).toEqual([given]);
 		expect(ops.addEntryFromBytes).not.toHaveBeenCalled();
 	});
 });

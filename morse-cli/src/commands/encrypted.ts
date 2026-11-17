@@ -30,6 +30,7 @@ import {
 	type TargetOptions,
 	viaAggregatorOption,
 } from "./options.ts";
+import { authorizeContentWrite } from "./preflight.ts";
 import { resolvePublisherCap } from "./resolve.ts";
 import { freshPublisherSealId } from "./seal.ts";
 import { parseId, parsePositiveInt } from "./shared.ts";
@@ -56,13 +57,12 @@ export async function runEntryAddEncrypted(
 		options.contentType,
 		options.stdin ? undefined : options.file,
 	);
-	const publisherCapId = await resolvePublisherCap(
-		ctx.reader,
-		ctx.address,
-		id,
-		options.publisherCap,
-		ctx.signal,
-	);
+	const publisherCapId = await authorizeContentWrite(ctx, {
+		publicationId: id,
+		collection,
+		publisherCap: options.publisherCap,
+		command: "entry add-encrypted",
+	});
 	const sealId = freshPublisherSealId(id);
 	ctx.output.info(`Encrypting and uploading ${plaintext.length} bytes...`);
 	const result = await addEncryptedEntryFromBytes(ctx.adapter, ctx.config, {

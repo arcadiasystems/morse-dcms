@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, test } from "bun:test";
+import { CliError } from "../src/cli/errors.ts";
+import { ExitCode } from "../src/cli/exit-codes.ts";
 import {
 	runEntryAddEncrypted,
 	runEntryDecrypt,
@@ -13,13 +15,27 @@ const files = useTempFiles();
 const ID = `0x${"1".repeat(64)}`;
 const AUTHOR = `0x${"a".repeat(64)}`;
 
-function publisherCapReader() {
+function publisherCapReader(
+	over: { storageMode?: string; revoked?: boolean } = {},
+) {
 	return {
 		listPublisherCapsOwnedBy: () =>
 			Promise.resolve({
 				results: [{ id: `0x${"d".repeat(64)}`, publicationId: ID }],
 				nextCursor: null,
 			}),
+		getPublication: () =>
+			Promise.resolve({
+				id: ID,
+				collections: [
+					{
+						name: "vault",
+						storageMode: over.storageMode ?? "blob",
+						nextEntryId: 0,
+					},
+				],
+			}),
+		isPublisherCapRevoked: () => Promise.resolve(over.revoked === true),
 	} as never;
 }
 
@@ -51,6 +67,45 @@ describe("runEntryAddEncrypted", () => {
 		expect(args.name).toBe("secret");
 		expect(args.sealId).toBeDefined();
 		expect(captured.stdout()).toContain('Added encrypted entry #0 "secret"');
+	});
+
+	test("refuses a revoked PublisherCap with exit 4 before encrypting or uploading", async () => {
+		const file = await files.write("secret.txt", "classified");
+		const { ctx } = encryptContext({
+			reader: publisherCapReader({ revoked: true }),
+		});
+		const error = await runEntryAddEncrypted(ctx, "secret", {
+			publication: ID,
+			collection: "vault",
+			epochs: "3",
+			file,
+		}).catch((err: unknown) => err);
+		expect(error).toBeInstanceOf(CliError);
+		expect((error as CliError).exitCode).toBe(ExitCode.Auth);
+		expect((error as CliError).message).toBe(
+			"The PublisherCap has been revoked and can no longer be used.",
+		);
+		// addEncryptedEntryFromBytes is the op that encrypts and uploads.
+		expect(ops.addEncryptedEntryFromBytes).not.toHaveBeenCalled();
+	});
+
+	test("refuses a quilt collection with exit 2 before encrypting or uploading", async () => {
+		const file = await files.write("secret.txt", "classified");
+		const { ctx } = encryptContext({
+			reader: publisherCapReader({ storageMode: "quilt" }),
+		});
+		const error = await runEntryAddEncrypted(ctx, "secret", {
+			publication: ID,
+			collection: "vault",
+			epochs: "3",
+			file,
+		}).catch((err: unknown) => err);
+		expect(error).toBeInstanceOf(CliError);
+		expect((error as CliError).exitCode).toBe(ExitCode.Usage);
+		expect((error as CliError).message).toContain(
+			"`entry add-encrypted` does not support yet",
+		);
+		expect(ops.addEncryptedEntryFromBytes).not.toHaveBeenCalled();
 	});
 });
 

@@ -4,8 +4,6 @@ import {
 	addEntryFromBytes,
 	deleteEntry,
 	type Entry,
-	type PublicationId,
-	StorageMode,
 } from "@arcadiasystems/morse-sdk";
 import type { Command } from "commander";
 
@@ -42,6 +40,7 @@ import {
 	type TargetOptions,
 	viaAggregatorOption,
 } from "./options.ts";
+import { authorizeContentWrite } from "./preflight.ts";
 import { resolvePublisherCap } from "./resolve.ts";
 import { parseId, parseLimit, parsePositiveInt } from "./shared.ts";
 
@@ -54,31 +53,6 @@ type ListOptions = TargetOptions & {
 type ScanOptions = TargetOptions & { draftsOnly?: boolean };
 type DeleteOptions = TargetOptions & { publisherCap?: string };
 type ReadOptions = TargetOptions & { out?: string; viaAggregator?: boolean };
-
-// Verify the collection exists (and is a kind `entry add` can populate) before
-// any Walrus upload, so a missing or quilt collection fails fast instead of
-// after the user has already paid for storage on a doomed transaction.
-async function assertEntryAddCollection(
-	ctx: ReadContext,
-	publicationId: PublicationId,
-	collection: string,
-): Promise<void> {
-	const publication = await ctx.reader.getPublication(
-		publicationId,
-		ctx.signal,
-	);
-	const found = publication.collections.find((c) => c.name === collection);
-	if (found === undefined) {
-		throw new UsageError(
-			`Publication ${shortId(publicationId)} has no collection "${collection}".`,
-		);
-	}
-	if (found.storageMode === StorageMode.Quilt) {
-		throw new UsageError(
-			`Collection "${collection}" uses quilt storage, which \`entry add\` does not support yet. Use a blob-mode collection.`,
-		);
-	}
-}
 
 export async function runEntryGet(
 	ctx: ReadContext,
@@ -161,17 +135,14 @@ export async function runEntryAdd(
 		options.contentType,
 		options.stdin ? undefined : options.file,
 	);
-	// Check the collection before the cap lookup and the upload, so a missing or
-	// quilt collection fails on the cheapest network call and never burns Walrus
-	// storage on a doomed transaction.
-	await assertEntryAddCollection(ctx, id, collection);
-	const publisherCapId = await resolvePublisherCap(
-		ctx.reader,
-		ctx.address,
-		id,
-		options.publisherCap,
-		ctx.signal,
-	);
+	// A missing or quilt collection and a revoked cap all abort the attach, so
+	// refuse them on reads before the upload is paid for.
+	const publisherCapId = await authorizeContentWrite(ctx, {
+		publicationId: id,
+		collection,
+		publisherCap: options.publisherCap,
+		command: "entry add",
+	});
 	ctx.output.info(`Uploading ${bytes.length} bytes to Walrus...`);
 	const result = await addEntryFromBytes(ctx.adapter, ctx.config, {
 		walrus: ctx.walrus,
