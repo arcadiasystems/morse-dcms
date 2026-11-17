@@ -22,6 +22,7 @@ const files = useTempFiles();
 const ID = `0x${"1".repeat(64)}`;
 const BLOB = `0x${"7".repeat(64)}`;
 const DRAFT_BLOB = `0x${"5".repeat(64)}`;
+const CAP = `0x${"d".repeat(64)}`;
 
 function revision(over: Record<string, unknown> = {}) {
 	return {
@@ -54,7 +55,7 @@ function readerFor(
 	return {
 		listPublisherCapsOwnedBy: () =>
 			Promise.resolve({
-				results: [{ id: `0x${"d".repeat(64)}`, publicationId: ID }],
+				results: [{ id: CAP, publicationId: ID }],
 				nextCursor: null,
 			}),
 		getEntry: () => Promise.resolve(entry(entryRevisions, over) as never),
@@ -148,12 +149,24 @@ describe("runRevisionPublishDirect", () => {
 });
 
 describe("runRevisionAppendDraft", () => {
-	test("appends a draft revision", async () => {
-		const file = await files.write("draft.txt", "draft");
-		const { ctx, captured } = fixture();
+	test("uploads the file and appends it as a draft with the resolved cap", async () => {
+		const file = await files.write("draft.md", "draft");
+		const uploaded: Uint8Array[] = [];
+		const base = fixture();
+		const ctx = { ...base.ctx, walrus: trackingWalrus(uploaded) };
 		await runRevisionAppendDraft(ctx, "0", { ...baseOptions, file });
-		expect(ops.appendDraftRevision).toHaveBeenCalledTimes(1);
-		expect(captured.stdout()).toContain("Appended draft revision #1");
+		expect(uploaded).toEqual([new TextEncoder().encode("draft")]);
+		expect(ops.appendDraftRevision.mock.calls[0]?.[2]).toMatchObject({
+			publicationId: ID,
+			publisherCapId: CAP,
+			collectionName: "posts",
+			entryId: 0,
+			blobObjectId: BLOB,
+			contentType: "text/markdown",
+		});
+		expect(base.captured.stdout()).toContain(
+			"Appended draft revision #1 on entry #0",
+		);
 	});
 });
 
@@ -266,7 +279,10 @@ describe("mixed entries", () => {
 		const ctx = { ...base.ctx, walrus: trackingWalrus(uploaded) };
 		await runRevisionAppendDraft(ctx, "0", { ...baseOptions, file });
 		expect(uploaded).toEqual([new TextEncoder().encode("soon")]);
-		expect(ops.appendDraftRevision).toHaveBeenCalledTimes(1);
+		expect(ops.appendDraftRevision.mock.calls[0]?.[2]).toMatchObject({
+			entryId: 0,
+			blobObjectId: BLOB,
+		});
 	});
 
 	test("publish-from-draft with --file uploads that plaintext", async () => {
@@ -331,18 +347,97 @@ describe("mixed entries", () => {
 	});
 });
 
+describe("pre-upload checks on the plaintext commands", () => {
+	const commands: readonly {
+		name: string;
+		run: (ctx: ContentContext, file: string) => Promise<void>;
+		op: { mock: { calls: unknown[] } };
+	}[] = [
+		{
+			name: "publish-direct",
+			run: (ctx, file) =>
+				runRevisionPublishDirect(ctx, "0", { ...baseOptions, file }),
+			op: ops.publishDirect,
+		},
+		{
+			name: "append-draft",
+			run: (ctx, file) =>
+				runRevisionAppendDraft(ctx, "0", { ...baseOptions, file }),
+			op: ops.appendDraftRevision,
+		},
+		{
+			name: "publish-from-draft",
+			run: (ctx, file) =>
+				runRevisionPublishFromDraft(ctx, "0", "0", { ...baseOptions, file }),
+			op: ops.publishFromDraft,
+		},
+	];
+
+	for (const command of commands) {
+		test(`${command.name} refuses a revoked cap with exit 4 before uploading`, async () => {
+			const file = await files.write("v.txt", "content");
+			const uploaded: Uint8Array[] = [];
+			const base = fixture(
+				[revision()],
+				{},
+				{
+					isPublisherCapRevoked: () => Promise.resolve(true),
+				},
+			);
+			const ctx = { ...base.ctx, walrus: trackingWalrus(uploaded) };
+			const error = await command.run(ctx, file).catch((err: unknown) => err);
+			expect(error).toBeInstanceOf(CliError);
+			expect((error as CliError).exitCode).toBe(ExitCode.Auth);
+			expect((error as CliError).message).toBe(
+				"The PublisherCap has been revoked and can no longer be used.",
+			);
+			expect(uploaded).toHaveLength(0);
+			expect(command.op.mock.calls).toHaveLength(0);
+		});
+
+		test(`${command.name} refuses a quilt collection by name before uploading`, async () => {
+			const file = await files.write("v.txt", "content");
+			const uploaded: Uint8Array[] = [];
+			const base = fixture(
+				[revision()],
+				{},
+				{
+					getPublication: () =>
+						Promise.resolve({
+							id: ID,
+							collections: [
+								{ name: "posts", storageMode: "quilt", nextEntryId: 0 },
+							],
+						} as never),
+				},
+			);
+			const ctx = { ...base.ctx, walrus: trackingWalrus(uploaded) };
+			const error = await command.run(ctx, file).catch((err: unknown) => err);
+			expect(error).toBeInstanceOf(CliError);
+			expect((error as CliError).exitCode).toBe(ExitCode.Usage);
+			expect((error as CliError).message).toContain(
+				`\`revision ${command.name}\` does not support yet`,
+			);
+			expect(uploaded).toHaveLength(0);
+			expect(command.op.mock.calls).toHaveLength(0);
+		});
+	}
+});
+
 describe("runRevisionAppendEncryptedDraft", () => {
 	test("sends one seal id to Seal and the chain, and uploads the ciphertext", async () => {
 		const file = await files.write("secret.txt", "plaintext");
 		const uploaded: Uint8Array[] = [];
 		let encryptedWith: Uint8Array | undefined;
+		let encryptedBytes: Uint8Array | undefined;
 		const plaintext = new TextEncoder().encode("plaintext");
 		const { ctx, captured } = encryptContext({
 			json: true,
 			reader: fixture().ctx.reader,
 			walrus: trackingWalrus(uploaded),
 			seal: {
-				encrypt: (_bytes: Uint8Array, options: { sealId: Uint8Array }) => {
+				encrypt: (bytes: Uint8Array, options: { sealId: Uint8Array }) => {
+					encryptedBytes = bytes;
 					encryptedWith = options.sealId;
 					return Promise.resolve({
 						ciphertext: Uint8Array.from(plaintext, (byte) => byte ^ 0xff),
@@ -364,6 +459,7 @@ describe("runRevisionAppendEncryptedDraft", () => {
 			throw new Error("encrypt was not called");
 		}
 		expect(args.sealId).toBe(encryptedWith);
+		expect(encryptedBytes).toEqual(plaintext);
 		expect(uploaded).toEqual([
 			Uint8Array.from(plaintext, (byte) => byte ^ 0xff),
 		]);
