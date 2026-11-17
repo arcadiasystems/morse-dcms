@@ -1,0 +1,12 @@
+# Code owners for arcadiasystems/morse-dcms. The ruleset on main requires a
+# code-owner review, so every pull request needs an approval from the owner of
+# each path it touches. The last matching pattern wins.
+
+# Default owner for everything in the repository.
+* @MandaWeb3
+
+# Listed on their own so the intent survives any later change to the default:
+# the Move contracts and the CI and release configuration always need this
+# review.
+/morse-contracts/ @MandaWeb3
+/.github/ @MandaWeb3

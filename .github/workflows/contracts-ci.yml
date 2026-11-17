@@ -1,15 +1,9 @@
 name: contracts-ci
 
 on:
-  pull_request:
-    paths:
-      - "morse-contracts/**"
-      - ".github/workflows/contracts-ci.yml"
-  push:
-    branches: [main]
-    paths:
-      - "morse-contracts/**"
-      - ".github/workflows/contracts-ci.yml"
+  # Called by ci.yml, which decides from the changed paths whether this suite
+  # runs: morse-contracts/**, this file, or ci.yml itself.
+  workflow_call:
 
 permissions:
   contents: read
@@ -28,12 +22,12 @@ jobs:
     name: morse-contracts
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # The release archive is about 1 GiB and holds every Sui binary. Only
       # `sui` is kept, cached per release.
       - name: Cache Sui CLI
         id: sui-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.sui-cli
           key: sui-cli-${{ runner.os }}-${{ runner.arch }}-${{ env.SUI_RELEASE }}

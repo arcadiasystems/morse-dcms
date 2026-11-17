@@ -1,15 +1,9 @@
 name: sdk-ci
 
 on:
-  pull_request:
-    paths:
-      - "morse-sdk/**"
-      - ".github/workflows/sdk-ci.yml"
-  push:
-    branches: [main]
-    paths:
-      - "morse-sdk/**"
-      - ".github/workflows/sdk-ci.yml"
+  # Called by ci.yml, which decides from the changed paths whether this suite
+  # runs: morse-sdk/**, this file, or ci.yml itself.
+  workflow_call:
 
 permissions:
   contents: read
@@ -19,7 +13,7 @@ jobs:
     name: morse-sdk
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Pinned: bun.lock is lockfileVersion 2, which bun 1.3.x rejects. Keep
       # this in step with cli-ci.yml.
       - uses: oven-sh/setup-bun@v2
