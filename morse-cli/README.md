@@ -334,7 +334,7 @@ hydrated table gains a `blobId` column, and `--json` returns the full records.
 | 1 | Generic error (contract abort, uncategorized) |
 | 2 | Usage error (bad or missing flags/arguments, invalid id/slug/address, declined confirmation) |
 | 3 | Not found |
-| 4 | Auth or permission failure (keystore unlock, unauthorized, no-access) |
+| 4 | Auth or permission failure (keystore unlock, unauthorized, no-access, revoked PublisherCap) |
 | 5 | Network or transport failure |
 
 ## Examples
@@ -379,9 +379,11 @@ hydrated table gains a `blobId` column, and `--json` returns the full records.
   revisions are never encrypted: the chain hardcodes `encrypted=false` on
   `publish_direct` and `publish_from_draft`. `entry decrypt` with no index
   selects the latest encrypted revision.
-- `entry add` and the `revision` commands support blob-mode collections only.
-  Quilt collections can be created but not yet populated through the CLI; those
-  commands refuse them before uploading.
+- `entry add`, `entry add-encrypted` and the `revision` commands support
+  blob-mode collections only. Quilt collections can be created but not yet
+  populated through the CLI; those commands refuse them before uploading. They
+  also check the PublisherCap first: a revoked cap exits 4 before anything is
+  encrypted or uploaded, so no WAL is spent.
 - There is no command to query Walrus blob storage expiry; `--epochs` sets the
   lease at upload time, but remaining lease time is not exposed by the SDK.
 - Encrypted commands do not work on mainnet, per the status note above. There

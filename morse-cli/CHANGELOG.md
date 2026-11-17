@@ -26,6 +26,8 @@ These changes are not in 0.14.0. They ship as 0.15.0; `package.json` stays on 0.
 
 ### Fixed
 
+- **`entry add` and `entry add-encrypted` with a revoked PublisherCap paid for the upload, then exited 1** with "Retry the operation to attach it", where the documented code is 4 and no retry can succeed ([#7](https://github.com/arcadiasystems/morse-dcms/issues/7)). Both now check the cap before encrypting or uploading, exit 4 with "The PublisherCap has been revoked and can no longer be used.", and spend no WAL. `entry add-encrypted` also refuses a missing or quilt collection before uploading (exit 2), as `entry add` already did.
+- An upload that was stranded because the transaction aborted on the cap (revoked in the moment between the check and the transaction, or a `--publisher-cap` held by another wallet) exits 4 and gives the reason and the blob id, instead of exit 1 and advice to retry.
 - `revision publish-from-draft` without `--file`/`--stdin` refuses when the draft revision is encrypted, instead of publishing that ciphertext as the public revision. Pass the plaintext with `--file` or `--stdin`.
 
 ## [0.14.0] - 2026-11-17
