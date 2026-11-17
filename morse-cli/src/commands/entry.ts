@@ -41,6 +41,7 @@ import {
 	publisherCapOption,
 	type TargetOptions,
 	viaAggregatorOption,
+	yesOption,
 } from "./options.ts";
 import { resolvePublisherCap } from "./resolve.ts";
 import { parseId, parseLimit, parsePositiveInt } from "./shared.ts";
@@ -345,7 +346,8 @@ export function registerEntryCommands(program: Command): void {
 
 	const remove = entry
 		.command("delete <entryId>")
-		.description("Delete an entry and its revisions");
+		.description("Delete an entry and its revisions")
+		.addOption(yesOption());
 	collectionOption(publicationOption(publisherCapOption(remove))).action(
 		async (entryId: string, options: DeleteOptions, command: Command) => {
 			await runEntryDelete(

@@ -38,6 +38,19 @@ describe("morse write commands (offline guards)", () => {
 		expect(res.stderr).toContain("--yes");
 	});
 
+	test("the bin accepts --yes after the subcommand and lists it in that command's help", async () => {
+		await run(["config", "add", "staging", "--network", "testnet"]);
+		const refused = await run(["config", "remove", "staging"]);
+		expect(refused.code).toBe(2);
+		expect(refused.stderr).toContain("pass --yes");
+		const removed = await run(["config", "remove", "staging", "--yes"]);
+		expect(removed.code).toBe(0);
+		expect(removed.stdout).toContain('Removed profile "staging".');
+		const help = await run(["entry", "delete", "--help"]);
+		expect(help.code).toBe(0);
+		expect(help.stdout).toContain("-y, --yes");
+	});
+
 	test("publication delete with a malformed --owner-cap exits 2", async () => {
 		const res = await run([
 			"-y",

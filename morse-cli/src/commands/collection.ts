@@ -33,6 +33,7 @@ import {
 	publicationOption,
 	publisherCapOption,
 	type TargetOptions,
+	yesOption,
 } from "./options.ts";
 import { resolvePublisherCap } from "./resolve.ts";
 import { coerceStorageMode } from "./shared.ts";
@@ -215,7 +216,8 @@ export function registerCollectionCommands(program: Command): void {
 
 	const remove = collection
 		.command("delete <name>")
-		.description("Delete an empty collection");
+		.description("Delete an empty collection")
+		.addOption(yesOption());
 	publicationOption(publisherCapOption(remove)).action(
 		async (name: string, options: DeleteOptions, command: Command) => {
 			await runCollectionDelete(

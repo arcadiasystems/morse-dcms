@@ -11,6 +11,7 @@ import { configFilePath } from "../config/paths.ts";
 import { resolveUploadRelay } from "../config/profile.ts";
 import { type Config, coerceNetwork } from "../config/schema.ts";
 import { loadConfig, saveConfig } from "../config/store.ts";
+import { yesOption } from "./options.ts";
 
 export function runConfigPath(output: Output): void {
 	const path = configFilePath();
@@ -159,6 +160,7 @@ export function registerConfigCommands(program: Command): void {
 		.command("remove <name>")
 		.alias("delete")
 		.description("Delete a profile")
+		.addOption(yesOption())
 		.action(async (name: string, _options, command: Command) => {
 			await runConfigRemove(
 				outputFor(command),

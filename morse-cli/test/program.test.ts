@@ -121,27 +121,44 @@ describe("--yes position", () => {
 	for (const argv of CONFIRMING_COMMANDS) {
 		const label = argv.slice(0, 2).join(" ");
 
-		test(`${label}: --yes and -y before the subcommand are accepted`, async () => {
+		test(`${label}: --yes and -y are accepted before the subcommand`, async () => {
 			expect((await parsedOptions(["--yes", ...argv])).yes).toBe(true);
 			expect((await parsedOptions(["-y", ...argv])).yes).toBe(true);
-			expect((await parsedOptions([...argv])).yes).toBeUndefined();
 		});
 
-		// Issue #9: the confirmation error says "pass --yes", but the root runs
-		// with enablePositionalOptions, so a global flag after the subcommand is
-		// an unknown option. This pins that behaviour on commander 15.
-		test(`${label}: --yes and -y after the subcommand are rejected`, async () => {
-			for (const flag of ["--yes", "-y"]) {
-				const failure = await parsedOptions([...argv, flag]).catch(
-					(err: unknown) => err,
-				);
-				expect(failure).toBeInstanceOf(CommanderError);
-				expect((failure as CommanderError).code).toBe(
-					"commander.unknownOption",
-				);
-			}
+		// Issue #9: the confirmation error says "pass --yes", so the flag has
+		// to work where a reader would add it, at the end of the command.
+		test(`${label}: --yes and -y are accepted after the subcommand`, async () => {
+			expect((await parsedOptions([...argv, "--yes"])).yes).toBe(true);
+			expect((await parsedOptions([...argv, "-y"])).yes).toBe(true);
+		});
+
+		test(`${label}: without the flag, yes stays unset`, async () => {
+			expect((await parsedOptions([...argv])).yes).toBeUndefined();
 		});
 	}
+
+	test("a command that does not confirm still rejects --yes after it", async () => {
+		const failure = await parsedOptions([
+			"publication",
+			"get",
+			ID,
+			"--yes",
+		]).catch((err: unknown) => err);
+		expect(failure).toBeInstanceOf(CommanderError);
+		expect((failure as CommanderError).code).toBe("commander.unknownOption");
+	});
+
+	test("account export does not take --yes after the subcommand", async () => {
+		const failure = await parsedOptions([
+			"account",
+			"export",
+			RECIPIENT,
+			"--yes",
+		]).catch((err: unknown) => err);
+		expect(failure).toBeInstanceOf(CommanderError);
+		expect((failure as CommanderError).code).toBe("commander.unknownOption");
+	});
 });
 
 describe("registration", () => {

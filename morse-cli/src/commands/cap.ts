@@ -32,6 +32,7 @@ import {
 	ownerCapOption,
 	publicationOption,
 	type TargetOptions,
+	yesOption,
 } from "./options.ts";
 import { resolveOwnerCap } from "./resolve.ts";
 import { parseLimit } from "./shared.ts";
@@ -244,7 +245,8 @@ export function registerCapCommands(program: Command): void {
 
 	const revoke = cap
 		.command("revoke <publisherCapId>")
-		.description("Revoke a PublisherCap so it can no longer write");
+		.description("Revoke a PublisherCap so it can no longer write")
+		.addOption(yesOption());
 	publicationOption(ownerCapOption(revoke)).action(
 		async (
 			publisherCapId: string,
@@ -262,7 +264,8 @@ export function registerCapCommands(program: Command): void {
 
 	const destroy = cap
 		.command("destroy <publisherCapId>")
-		.description("Destroy a PublisherCap held by the active account");
+		.description("Destroy a PublisherCap held by the active account")
+		.addOption(yesOption());
 	publicationOption(destroy).action(
 		async (
 			publisherCapId: string,
@@ -282,6 +285,7 @@ export function registerCapCommands(program: Command): void {
 		.command("transfer <publisherCapId> <recipient>")
 		.alias("transfer-ownership")
 		.description("Transfer a PublisherCap object to another address")
+		.addOption(yesOption())
 		.action(
 			async (
 				publisherCapId: string,

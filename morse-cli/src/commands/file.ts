@@ -48,7 +48,7 @@ import { decodeHex, encodeHex } from "../format/hex.ts";
 import { shortId } from "../format/ids.ts";
 import { renderFileList, renderRecipientFile } from "../format/render.ts";
 import { decodeShare, encodeShare } from "../format/share.ts";
-import { recipientOption, viaAggregatorOption } from "./options.ts";
+import { recipientOption, viaAggregatorOption, yesOption } from "./options.ts";
 import { parseByteSize, parseLimit, parsePositiveInt } from "./shared.ts";
 
 // SessionKey lifetime; long enough for one decrypt, short enough to limit reuse.
@@ -718,6 +718,7 @@ export function registerFileCommands(program: Command): void {
 	file
 		.command("transfer-ownership <file> <newOwner>")
 		.description("Transfer a file's ownership (not recipient access)")
+		.addOption(yesOption())
 		.action(
 			async (target: string, newOwner: string, _options, command: Command) => {
 				await runFileTransferOwnership(
@@ -732,6 +733,7 @@ export function registerFileCommands(program: Command): void {
 	file
 		.command("delete <file>")
 		.description("Delete a file's metadata record (does not delete the blob)")
+		.addOption(yesOption())
 		.action(async (target: string, _options, command: Command) => {
 			await runFileDelete(
 				await buildWriteContext(command),

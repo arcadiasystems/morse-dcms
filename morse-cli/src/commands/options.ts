@@ -1,6 +1,6 @@
 /** Reusable commander option groups for target context and content input. */
 
-import type { Command } from "commander";
+import { type Command, Option } from "commander";
 
 export function publicationOption(command: Command): Command {
 	return command.option(
@@ -28,6 +28,17 @@ export function ownerCapOption(command: Command): Command {
 		"--owner-cap <id>",
 		"OwnerCap ID (auto-resolved if omitted)",
 	);
+}
+
+/**
+ * `-y, --yes` on a command that confirms. The root declares the same flag, but
+ * with positional options a root flag is only read before the subcommand; this
+ * local copy is what makes `morse entry delete 0 --yes` work, and what lists the
+ * flag in the command's own `--help`. Either position sets `yes` in
+ * `optsWithGlobals()`.
+ */
+export function yesOption(): Option {
+	return new Option("-y, --yes", "Assume yes for the confirmation prompt");
 }
 
 function collect(value: string, previous: string[]): string[] {

@@ -27,7 +27,7 @@ import {
 	renderPublication,
 	renderPublicationList,
 } from "../format/render.ts";
-import { ownerCapOption, publicationOption } from "./options.ts";
+import { ownerCapOption, publicationOption, yesOption } from "./options.ts";
 import { resolveOwnerCap } from "./resolve.ts";
 import { parseLimit } from "./shared.ts";
 
@@ -257,6 +257,7 @@ export function registerPublicationCommands(program: Command): void {
 		.description(
 			"Delete an empty publication (default: the active publication)",
 		)
+		.addOption(yesOption())
 		.option("--owner-cap <id>", "OwnerCap ID (auto-resolved if omitted)")
 		.action(
 			async (
@@ -275,7 +276,8 @@ export function registerPublicationCommands(program: Command): void {
 
 	const transfer = publication
 		.command("transfer-ownership <recipient>")
-		.description("Transfer a publication's OwnerCap to another address");
+		.description("Transfer a publication's OwnerCap to another address")
+		.addOption(yesOption());
 	publicationOption(ownerCapOption(transfer)).action(
 		async (
 			recipient: string,
