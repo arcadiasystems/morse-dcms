@@ -8,7 +8,7 @@ Moves the Mysten substrate to `@mysten/sui` 2.39, `@mysten/walrus` 1.2.39 and `@
 
 ### Changed
 
-- **Peer dependencies.** `@mysten/sui` `>=2.39.1 <2.40.0` (was `>=2.38.0 <2.39.0`), `@mysten/walrus` `>=1.2.39 <1.2.40` (was `>=1.2.37 <1.2.38`), `@mysten/seal` `>=1.5.4 <1.5.5` (was `>=1.5.2 <1.5.3`). Walrus 1.2.39 and seal 1.5.4 both require `@mysten/sui` `^2.39.1`, which is why the sui range starts at 2.39.1 and not 2.39.0. As since 0.10.1, walrus and seal are held to one release: a later patch of either can require the next sui minor, and a range that admitted it would make a plain install fail with `ERESOLVE`, as 0.9.0 and 0.10.0 do.
+- **Peer dependencies.** `@mysten/sui` `>=2.39.1 <2.40.0` (was `>=2.38.0 <2.39.0`), `@mysten/walrus` `>=1.2.39 <1.2.40` (was `>=1.2.37 <1.2.38`), `@mysten/seal` `>=1.5.4 <1.5.5` (was `>=1.5.2 <1.5.3`). Walrus 1.2.39 and seal 1.5.4 both require `@mysten/sui` `^2.39.1`, which is why the sui range starts at 2.39.1 and not 2.39.0. As since 0.10.1, walrus and seal are held to one release: a later patch of either can require the next sui minor, and a range that admitted it would make a plain install fail with `ERESOLVE`, as 0.9.0 and 0.10.0 do. `TESTED_SUBSTRATE` records the new versions.
 - README: the install lines pin sui 2.39.1, walrus 1.2.39 and seal 1.5.4, and the Compatibility table has a 0.12.x row.
 
 ### Upstream behaviour changes
@@ -17,9 +17,9 @@ Moves the Mysten substrate to `@mysten/sui` 2.39, `@mysten/walrus` 1.2.39 and `@
 - `@mysten/sui` 2.39.0 raises the protocol version it reports to 141 (was 138), which its gRPC transport sends with every request in the `x-sui-client-protocol-version` header, and adds the `TransactionExpired` execution error, for a transaction whose consensus commit timestamp is outside its `ValidDuring` or `Validity` timestamp window. The SDK builds no transaction with a timestamp window. 2.39.1 changes no runtime code beyond its version and its `@mysten/bcs` dependency.
 - `@mysten/bcs` 2.1.4, which sui 2.39.1 requires, rejects `NaN` and non-integer values for `u8`, `u16` and `u32`, and negative ULEB128 values, where 2.1.3 wrote 0 or a truncated integer. Every `u8` the SDK serializes comes from a `Uint8Array` or from `storageModeToU8` and `accessPolicyToU8`, which return integer constants, so no SDK call that worked on 0.11.0 throws for this reason.
 
-### Known gaps
+### Verified on testnet
 
-- The smoke suite has not been run on 0.12.x, so the README's 0.12.x compatibility row has no verified date, and `TESTED_SUBSTRATE` still records the 0.11.0 run of 2026-10-31 on sui 2.38.0, walrus 1.2.37 and seal 1.5.2.
+The full smoke suite passes on 0.12.0, on 2026-11-17, against `@mysten/sui` 2.39.1, `@mysten/walrus` 1.2.39 and `@mysten/seal` 1.5.4, over the direct storage-node fanout with no upload relay. That covers phases 2 to 8: the publication lifecycle, publisher caps, blob and quilt collections, Walrus blob and quilt uploads, the entry lifecycle in both collection modes, an encrypted entry and Seal decrypt, and public and encrypted recipient files, with both decrypts matching the plaintext. The HTTP publisher variants were not run, as `WALRUS_PUBLISHER_URL` was unset. The README's 0.12.x row and `TESTED_SUBSTRATE.verifiedOn` record 2026-11-17.
 
 ## [0.11.0] - 2026-10-31
 
