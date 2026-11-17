@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
-import type { Command } from "commander";
+import { type Command, CommanderError } from "commander";
 import {
 	buildContentContext,
 	buildDecryptContext,
@@ -21,7 +21,7 @@ import {
 	buildReadContext,
 	buildWriteContext,
 } from "../src/cli/context.ts";
-import { buildProgram } from "../src/cli/program.ts";
+import { buildProgram, type GlobalOptions } from "../src/cli/program.ts";
 import { registerCommands } from "../src/commands/index.ts";
 import { useTempConfigHome } from "./support/config-home.ts";
 
@@ -73,6 +73,76 @@ async function dispatch(args: string[]): Promise<void> {
 		(process.stderr as { write: unknown }).write = errWrite;
 	}
 }
+
+// Parses a real argv through the assembled program and returns the options the
+// routed command would see, stopping before its action runs (so nothing here
+// builds a context or reaches the network).
+async function parsedOptions(args: string[]): Promise<GlobalOptions> {
+	const program = buildProgram();
+	registerCommands(program);
+	const stop = new Error("stop before the action");
+	let seen: GlobalOptions | undefined;
+	program.hook("preAction", (_root, actionCommand) => {
+		seen = actionCommand.optsWithGlobals<GlobalOptions>();
+		throw stop;
+	});
+	const errWrite = process.stderr.write.bind(process.stderr);
+	(process.stderr as { write: unknown }).write = (): boolean => true;
+	try {
+		await program.parseAsync(args, { from: "user" });
+	} catch (err) {
+		if (err !== stop) {
+			throw err;
+		}
+	} finally {
+		(process.stderr as { write: unknown }).write = errWrite;
+	}
+	if (seen === undefined) {
+		throw new Error("no command action was routed");
+	}
+	return seen;
+}
+
+// Every command that confirms before a destructive write.
+const CONFIRMING_COMMANDS: readonly (readonly string[])[] = [
+	["publication", "delete", ID],
+	["publication", "transfer-ownership", RECIPIENT, "-P", ID],
+	["collection", "delete", "blog", "-P", ID],
+	["entry", "delete", "0", "-P", ID, "-C", "blog"],
+	["cap", "revoke", CAP, "-P", ID],
+	["cap", "destroy", CAP, "-P", ID],
+	["cap", "transfer", CAP, RECIPIENT],
+	["file", "transfer-ownership", ID, RECIPIENT],
+	["file", "delete", ID],
+	["config", "remove", "staging"],
+];
+
+describe("--yes position", () => {
+	for (const argv of CONFIRMING_COMMANDS) {
+		const label = argv.slice(0, 2).join(" ");
+
+		test(`${label}: --yes and -y before the subcommand are accepted`, async () => {
+			expect((await parsedOptions(["--yes", ...argv])).yes).toBe(true);
+			expect((await parsedOptions(["-y", ...argv])).yes).toBe(true);
+			expect((await parsedOptions([...argv])).yes).toBeUndefined();
+		});
+
+		// Issue #9: the confirmation error says "pass --yes", but the root runs
+		// with enablePositionalOptions, so a global flag after the subcommand is
+		// an unknown option. This pins that behaviour on commander 15.
+		test(`${label}: --yes and -y after the subcommand are rejected`, async () => {
+			for (const flag of ["--yes", "-y"]) {
+				const failure = await parsedOptions([...argv, flag]).catch(
+					(err: unknown) => err,
+				);
+				expect(failure).toBeInstanceOf(CommanderError);
+				expect((failure as CommanderError).code).toBe(
+					"commander.unknownOption",
+				);
+			}
+		});
+	}
+});
 
 describe("registration", () => {
 	test("every command group is registered on the program", () => {
