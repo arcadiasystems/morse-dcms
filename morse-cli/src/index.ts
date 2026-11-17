@@ -1,8 +1,11 @@
 #!/usr/bin/env node
 
 import { handleError } from "./cli/errors.ts";
+import { exitWhenFlushed, ignoreIdleSocketTimeouts } from "./cli/lifecycle.ts";
 import { buildProgram, type GlobalOptions } from "./cli/program.ts";
 import { registerCommands } from "./commands/index.ts";
+
+ignoreIdleSocketTimeouts();
 
 const program = buildProgram();
 registerCommands(program);
@@ -22,3 +25,5 @@ if (process.argv.length <= 2) {
 		});
 	}
 }
+
+await exitWhenFlushed();

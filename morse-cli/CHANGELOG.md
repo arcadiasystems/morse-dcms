@@ -16,6 +16,11 @@ These changes are not in 0.14.0. They ship as 0.15.0; `package.json` stays on 0.
 
 - **Dependencies.** `commander` `^15.1.0` (was `^14.0.3`). Commander 15 is ESM-only, which the CLI already is. Its other breaking changes do not reach the CLI: no option is declared with a `--no-` form, and nothing imports `commander/esm.mjs`. A command given too many arguments now names the extra ones in its error; the exit code stays 2.
 
+### Fixed
+
+- **On Node 26, a command that read from Walrus storage nodes exited 1 after it had succeeded.** `entry read`, `entry decrypt` and `file download` printed their result and then crashed about four seconds later with `InformationalError: socket idle timeout`. Node 26's fetch speaks HTTP/2, and it raises that error with no handler when an idle socket closes on a session where a request was aborted ([nodejs/undici#6143](https://github.com/nodejs/undici/issues/6143)), which Walrus reads do once enough slivers have arrived. The CLI now ignores that one error, and every other uncaught exception still ends the process with its trace and exit 1.
+- **A finished command no longer waits for idle sockets to close.** The Sui and Walrus clients keep connections alive, so a command that had printed its result stayed running for several seconds on Node 22, and for about two minutes on Node 26 once the crash above was out of the way. The CLI now flushes stdout and stderr and exits as soon as the command is done, with the same exit code.
+
 ## [0.14.0] - 2026-11-17
 
 Moves to `@arcadiasystems/morse-sdk` 0.12 and the current Mysten packages. Commands, flags, output and exit codes are unchanged.
