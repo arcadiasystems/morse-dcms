@@ -1,15 +1,9 @@
 name: sdk-ci
 
 on:
-  pull_request:
-    paths:
-      - "morse-sdk/**"
-      - ".github/workflows/sdk-ci.yml"
-  push:
-    branches: [main]
-    paths:
-      - "morse-sdk/**"
-      - ".github/workflows/sdk-ci.yml"
+  # Called by ci.yml, which decides from the changed paths whether this suite
+  # runs: morse-sdk/**, this file, or ci.yml itself.
+  workflow_call:
 
 permissions:
   contents: read

@@ -1,0 +1,118 @@
+name: ci
+
+# The one workflow that runs on every pull request. It works out which areas
+# a change touches, calls the matching suites, and reports a single `ci-ok`
+# check. `ci-ok` is the check to mark as required on main: a path filter on
+# the trigger would leave a pull request outside the filter with no check at
+# all, and a required check that never reports blocks the merge forever.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    outputs:
+      sdk: ${{ steps.areas.outputs.sdk }}
+      cli: ${{ steps.areas.outputs.cli }}
+      contracts: ${{ steps.areas.outputs.contracts }}
+    steps:
+      # Full history: the comparison below needs the base commit and, for a
+      # pull request, the merge base.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # Same comparisons GitHub's own `paths` filter makes: base...head (from
+      # the merge base) for a pull request, before..after for a push.
+      - name: List changed files
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          PUSH_AFTER_SHA: ${{ github.sha }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            git diff --name-only "${PR_BASE_SHA}...${PR_HEAD_SHA}" > "$RUNNER_TEMP/changed-files"
+          else
+            git diff --name-only "${PUSH_BEFORE_SHA}..${PUSH_AFTER_SHA}" > "$RUNNER_TEMP/changed-files"
+          fi
+          cat "$RUNNER_TEMP/changed-files"
+      # Each suite runs for its package, its own workflow file and this file.
+      - name: Decide which suites run
+        id: areas
+        run: |
+          touches() {
+            if grep -qE "$1" "$RUNNER_TEMP/changed-files"; then
+              echo true
+            else
+              echo false
+            fi
+          }
+          {
+            echo "sdk=$(touches '^(morse-sdk/|\.github/workflows/(sdk-ci|ci)\.yml$)')"
+            # The CLI builds against the workspace SDK, so SDK changes can break it.
+            echo "cli=$(touches '^(morse-cli/|morse-sdk/|\.github/workflows/(cli-ci|ci)\.yml$)')"
+            echo "contracts=$(touches '^(morse-contracts/|\.github/workflows/(contracts-ci|ci)\.yml$)')"
+          } | tee -a "$GITHUB_OUTPUT"
+
+  sdk-ci:
+    needs: changes
+    if: needs.changes.outputs.sdk == 'true'
+    uses: ./.github/workflows/sdk-ci.yml
+
+  cli-ci:
+    needs: changes
+    if: needs.changes.outputs.cli == 'true'
+    uses: ./.github/workflows/cli-ci.yml
+
+  contracts-ci:
+    needs: changes
+    if: needs.changes.outputs.contracts == 'true'
+    uses: ./.github/workflows/contracts-ci.yml
+
+  # Always reports, including when a job above failed or was cancelled, where
+  # GitHub would otherwise skip it. A suite passes the gate if it succeeded,
+  # or if it was skipped because `changes` found nothing in its paths.
+  ci-ok:
+    name: ci-ok
+    needs: [changes, sdk-ci, cli-ci, contracts-ci]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check every suite passed or had nothing to run
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          SDK_CHANGED: ${{ needs.changes.outputs.sdk }}
+          SDK_RESULT: ${{ needs.sdk-ci.result }}
+          CLI_CHANGED: ${{ needs.changes.outputs.cli }}
+          CLI_RESULT: ${{ needs.cli-ci.result }}
+          CONTRACTS_CHANGED: ${{ needs.changes.outputs.contracts }}
+          CONTRACTS_RESULT: ${{ needs.contracts-ci.result }}
+        run: |
+          failed=0
+          if [ "$CHANGES_RESULT" != "success" ]; then
+            echo "::error::changes: $CHANGES_RESULT, so the suites to run are unknown"
+            failed=1
+          fi
+          check() {
+            suite="$1" changed="$2" result="$3"
+            if [ "$result" = "success" ]; then
+              echo "$suite: success"
+            elif [ "$result" = "skipped" ] && [ "$changed" = "false" ]; then
+              echo "$suite: skipped, its paths did not change"
+            else
+              echo "::error::$suite: $result (paths changed: ${changed:-unknown})"
+              failed=1
+            fi
+          }
+          check sdk-ci "$SDK_CHANGED" "$SDK_RESULT"
+          check cli-ci "$CLI_CHANGED" "$CLI_RESULT"
+          check contracts-ci "$CONTRACTS_CHANGED" "$CONTRACTS_RESULT"
+          exit "$failed"
