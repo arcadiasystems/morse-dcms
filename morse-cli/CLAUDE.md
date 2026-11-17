@@ -10,7 +10,7 @@ as a stable public contract.
 
 ## Runtime
 
-The shipped CLI runs under both Node (>= 18) and Bun: `bun run build` bundles
+The shipped CLI runs under both Node (>= 22.12) and Bun: `bun run build` bundles
 `src/` to `dist/index.js` (Node-targeted, `#!/usr/bin/env node`, deps external),
 which is the published `bin`. Development runs the source directly with Bun
 (`bun src/index.ts`), and `bun test` is the test runner.
