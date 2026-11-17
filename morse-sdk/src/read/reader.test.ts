@@ -8,7 +8,8 @@ import {
 	toSuiAddress,
 } from "../codecs.js";
 import { NotFoundError, TransportError, ValidationError } from "../errors.js";
-import { StorageMode } from "../types.js";
+import { buildPublisherSealId } from "../seal/identity.js";
+import { AccessPolicy, StorageMode } from "../types.js";
 import { RpcPublicationReader } from "./reader.js";
 
 const PACKAGE_ID = toPackageId(
@@ -574,6 +575,79 @@ describe("RpcPublicationReader.getEntry", () => {
 		expect(entry.revisions[0]?.blobRef.kind).toBe("blob");
 		expect(entry.draftHead).toBeNull();
 		expect(entry.publicHead).toBe(0);
+	});
+
+	test("decodes a mixed entry with publicHead on the unencrypted revision", async () => {
+		const { EntryBcs } =
+			require("./entry-bcs.js") as typeof import("./entry-bcs.js");
+		const sealId = buildPublisherSealId(
+			PUBLICATION_ID,
+			new Uint8Array(16).fill(7),
+		);
+		const publicBlob =
+			"0x000000000000000000000000000000000000000000000000000000000000cafe";
+		const entryBytes = EntryBcs.serialize({
+			name: "q4-plan",
+			revisions: [
+				{
+					blob_ref: { Blob: BLOB_OBJECT_ID },
+					content_type: "text/markdown",
+					encrypted: true,
+					access_policy: 1,
+					seal_id: Array.from(sealId),
+					author: AUTHOR,
+				},
+				{
+					blob_ref: { Blob: publicBlob },
+					content_type: "text/markdown",
+					encrypted: false,
+					access_policy: 0,
+					seal_id: null,
+					author: AUTHOR,
+				},
+			],
+			draft_head: 0,
+			public_head: 1,
+		}).toBytes();
+		const reader = new RpcPublicationReader(
+			makeReader({
+				getObject: mock(async () =>
+					publicationObject(happyPathPublicationJson()),
+				),
+				getDynamicField: mock(async () => ({
+					dynamicField: {
+						fieldId: "0xfield",
+						type: "...::dynamic_field::Field",
+						name: buildEntryIdName(0),
+						valueType: "...::entry::Entry",
+						value: { type: "...::entry::Entry", bcs: entryBytes },
+						version: "1",
+						digest: "abc",
+						previousTransaction: null,
+						$kind: "DynamicField",
+					},
+				})),
+			}),
+			PACKAGE_ID,
+		);
+		const entry = await reader.getEntry(PUBLICATION_ID, "blog", 0);
+		expect(entry.publicHead).toBe(1);
+		expect(entry.draftHead).toBe(0);
+		expect(entry.revisions[0]?.encrypted).toBe(true);
+		expect(entry.revisions[0]?.accessPolicy).toBe(AccessPolicy.Publisher);
+		expect(Array.from(entry.revisions[0]?.sealId ?? [])).toEqual(
+			Array.from(sealId),
+		);
+		expect(entry.revisions[1]?.encrypted).toBe(false);
+		expect(entry.revisions[1]?.sealId).toBeNull();
+		expect(entry.revisions[1]?.accessPolicy).toBe(AccessPolicy.Public);
+		const published = entry.revisions[1]?.blobRef;
+		const draft = entry.revisions[0]?.blobRef;
+		if (published?.kind !== "blob" || draft?.kind !== "blob") {
+			throw new Error("expected blob refs on both revisions");
+		}
+		expect(published.blobObjectId as string).toBe(publicBlob);
+		expect(draft.blobObjectId).not.toBe(published.blobObjectId);
 	});
 
 	test("throws NotFoundError when collection name is missing", async () => {

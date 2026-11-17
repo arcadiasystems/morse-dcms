@@ -8,7 +8,7 @@ multi-party and scripted scenarios.
 | --- | --- |
 | [`lifecycle.sh`](./lifecycle.sh) | Full solo flow: create publication, collection, entry, read, revision, teardown. |
 | [`content.sh`](./content.sh) | Upload an image and a post, publish a revision, fetch content back, get a link, remove a collection. |
-| [`encrypt-decrypt.sh`](./encrypt-decrypt.sh) | Encrypt content with Seal and decrypt it back. |
+| [`encrypt-decrypt.sh`](./encrypt-decrypt.sh) | Encrypt content with Seal, decrypt it, then release the plaintext on the same entry and append another encrypted draft. |
 | [`delegation.sh`](./delegation.sh) | Owner issues a PublisherCap to a delegate, then revokes it (the sub-owner model). |
 | [`ci-noninteractive.sh`](./ci-noninteractive.sh) | Env-var auth, `--yes`, and parsing `--json` output. No prompts. |
 | [`files.sh`](./files.sh) | RecipientFile round-trip: upload an encrypted file, download/decrypt via its share string, manage recipients, plus a public file; teardown. |

@@ -214,13 +214,13 @@ and `-C, --collection <name>`, both defaulting to the active context.
 | Command | Purpose |
 | --- | --- |
 | `entry get <entryId> [-P …] [-C …]` | Fetch a single entry's metadata. |
-| `entry read <entryId> [revisionIndex] [--out <path>] [--via-aggregator] [-P …] [-C …]` | Fetch a public entry's content to stdout or a file. |
+| `entry read <entryId> [revisionIndex] [--out <path>] [--via-aggregator] [-P …] [-C …]` | Fetch public content to stdout or a file. With no index, reads `publicHead`, so a later draft is not served. An encrypted index is refused. |
 | `entry list [--drafts-only] [-P …] [-C …]` | List entries (paginated); `--drafts-only` shows just entries with a pending draft. |
 | `entry scan [--drafts-only] [-P …] [-C …]` | List every entry (auto-paginated). |
 | `entry add <name> --file <path> [-P …] [-C …]` | Upload content and add a new entry; prints a viewable link. |
 | `entry delete <entryId> [-P …] [-C …]` | Delete an entry. |
-| `entry add-encrypted <name> --file <path> [-P …] [-C …]` | Encrypt, upload, and add a new entry as a draft: its revision sets `draftHead`, not `publicHead`, so `entry list` marks it `[draft]` and `--drafts-only` includes it. The `revision` commands refuse encrypted entries, so the CLI cannot publish it; `entry decrypt` reads it. |
-| `entry decrypt <entryId> [revisionIndex] [--out <path>] [--via-aggregator] [-P …] [-C …]` | Decrypt an encrypted revision. |
+| `entry add-encrypted <name> --file <path> [-P …] [-C …]` | Encrypt, upload, and add a new entry as a draft: its revision sets `draftHead`, not `publicHead`, so `entry list` marks it `[draft]` and `--drafts-only` includes it. `entry decrypt` reads it. A later public revision can be added on the same entry (see `revision`). |
+| `entry decrypt <entryId> [revisionIndex] [--out <path>] [--via-aggregator] [-P …] [-C …]` | Decrypt an encrypted revision by index (default: the latest revision). After a public release, pass the encrypted revision's index. |
 
 `add`, `add-encrypted`, and the revision commands accept `--file <path>` (or `-`
 for stdin), `--stdin`, and `--content-type <type>` (inferred from the file
@@ -237,9 +237,10 @@ commands; pure on-chain commands (publication, collection, cap) have no epochs.
 
 | Command | Purpose |
 | --- | --- |
-| `revision publish-direct <entryId> --file <path> [-P …] [-C …]` | Upload content and append a public revision. |
-| `revision append-draft <entryId> --file <path> [-P …] [-C …]` | Upload content and append a draft revision. |
-| `revision publish-from-draft <entryId> <draftRevisionId> [--file <path>] [-P …] [-C …]` | Publish a draft as a new revision. Reuses the draft's content by default; pass `--file`/`--stdin` to publish replacement content. |
+| `revision publish-direct <entryId> --file <path> [-P …] [-C …]` | Upload plaintext and append a public revision. Works on an entry that already has encrypted revisions. |
+| `revision append-draft <entryId> --file <path> [-P …] [-C …]` | Upload plaintext and append an unencrypted draft revision. |
+| `revision append-encrypted-draft <entryId> --file <path> [-P …] [-C …]` | Encrypt plaintext with Seal and append an encrypted draft revision on an existing entry (public or already encrypted). Prints the generated `sealId`. |
+| `revision publish-from-draft <entryId> <draftRevisionId> [--file <path>] [-P …] [-C …]` | Publish a draft as a new public revision. Reuses an unencrypted draft's blob by default. Pass `--file`/`--stdin` to publish replacement plaintext. Required when the draft is encrypted: reusing that blob would publish the ciphertext. |
 
 ### cap
 
@@ -338,7 +339,7 @@ hydrated table gains a `blobId` column, and `--json` returns the full records.
 - Runnable shell recipes in [examples/](https://github.com/arcadiasystems/morse-dcms/tree/main/morse-cli/examples):
   - [`lifecycle.sh`](https://github.com/arcadiasystems/morse-dcms/blob/main/morse-cli/examples/lifecycle.sh): create, add an entry, read, revise, tear down.
   - [`content.sh`](https://github.com/arcadiasystems/morse-dcms/blob/main/morse-cli/examples/content.sh): upload an image and a post, publish a revision, fetch content back, get a link, remove a collection.
-  - [`encrypt-decrypt.sh`](https://github.com/arcadiasystems/morse-dcms/blob/main/morse-cli/examples/encrypt-decrypt.sh): encrypt with Seal and decrypt back.
+  - [`encrypt-decrypt.sh`](https://github.com/arcadiasystems/morse-dcms/blob/main/morse-cli/examples/encrypt-decrypt.sh): encrypt with Seal, decrypt, then release the plaintext on the same entry.
   - [`delegation.sh`](https://github.com/arcadiasystems/morse-dcms/blob/main/morse-cli/examples/delegation.sh): issue a PublisherCap to a delegate, then revoke it.
   - [`ci-noninteractive.sh`](https://github.com/arcadiasystems/morse-dcms/blob/main/morse-cli/examples/ci-noninteractive.sh): env-var auth, `--yes`, and `--json` parsing.
   - [`files.sh`](https://github.com/arcadiasystems/morse-dcms/blob/main/morse-cli/examples/files.sh): RecipientFile round-trip (upload an encrypted file, download/decrypt via its share string, manage recipients, plus a public file).
@@ -347,19 +348,28 @@ hydrated table gains a `blobId` column, and `--json` returns the full records.
 
 - A publication's `name` and `slug` are immutable on-chain (the slug is the
   registry's unique key), so there is no rename command.
-- `entry read` serves public content to stdout or a file; encrypted entries are
-  retrieved with `entry decrypt`, not `entry read`. A shareable Walrus link is
-  printed by `entry add` (the `viewUrl` field), since the content id is known at
-  upload time.
+- `entry read` serves public content to stdout or a file. With no revision
+  index it follows `publicHead`, including on a mixed entry, and it refuses an
+  encrypted revision instead of printing ciphertext. Encrypted revisions are
+  retrieved with `entry decrypt`. A shareable Walrus link is printed by
+  `entry add` (the `viewUrl` field), since the content id is known at upload
+  time. `entry add-encrypted` and `revision append-encrypted-draft` do not print
+  a public view link: the uploaded blob is ciphertext.
 - `entry read` and `entry decrypt` default to reading from Walrus storage nodes,
   which verifies the bytes against the on-chain blob id. Pass `--via-aggregator`
   to read through the Walrus aggregator HTTP service instead: more reliable when
   storage nodes are flaky (common on testnet), at the cost of trusting the
   aggregator's bytes (no client-side verification).
-- Encrypted entries cannot be revised. The `revision` commands and `entry add`
-  only produce unencrypted content, so the CLI refuses to append to an entry that
-  already has encrypted revisions (to avoid a mixed-encryption entry). Use
-  `entry add-encrypted` for new encrypted entries.
+- An entry may mix encrypted drafts and public revisions. Encryption is stored
+  per revision. `revision publish-direct` and `revision publish-from-draft`
+  with `--file` or `--stdin` append a public, unencrypted revision on an entry
+  that already has encrypted drafts. `revision append-encrypted-draft` appends
+  an encrypted draft on a public or encrypted entry. `publish-from-draft`
+  without `--file`/`--stdin` reuses the draft blob, and refuses when that draft
+  is encrypted so ciphertext is not published as the public revision. Pass the
+  plaintext with `--file` or `--stdin`. Public revisions are never encrypted:
+  the chain hardcodes `encrypted=false` on `publish_direct` and
+  `publish_from_draft`.
 - `entry add` supports blob-mode collections only. Quilt collections can be
   created but not yet populated through the CLI; `entry add` refuses them.
 - There is no command to query Walrus blob storage expiry; `--epochs` sets the

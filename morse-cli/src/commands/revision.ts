@@ -2,7 +2,9 @@
 
 import {
 	appendDraftRevision,
+	appendEncryptedDraftRevision,
 	type BlobObjectId,
+	buildPublisherSealId,
 	type Entry,
 	type PublicationId,
 	type PublisherCapId,
@@ -11,7 +13,12 @@ import {
 } from "@arcadiasystems/morse-sdk";
 import type { Command } from "commander";
 
-import { buildContentContext, type ContentContext } from "../cli/context.ts";
+import {
+	buildContentContext,
+	buildEncryptContext,
+	type ContentContext,
+	type EncryptContext,
+} from "../cli/context.ts";
 import { UsageError } from "../cli/errors.ts";
 import { readContentBytes, resolveContentType } from "../cli/input.ts";
 import { resolveCollection, resolvePublication } from "../cli/target.ts";
@@ -50,28 +57,19 @@ async function resolveTarget(
 	return { publicationId, collection };
 }
 
-// Read the entry and refuse if it holds any encrypted revision. The revision
-// commands only produce unencrypted revisions, so appending to an encrypted
-// entry would leave it in a mixed state; reading first also fails fast before
-// any Walrus upload when the entry id is wrong.
-async function loadWritableEntry(
+// 16 random bytes is the typical Seal nonce length; the Move layer requires >= 1.
+const SEAL_NONCE_BYTES = 16;
+
+// Read the entry before any Walrus upload so a bad id fails on the cheap read.
+// Encryption is per revision, so an entry may hold both encrypted drafts and
+// public revisions. Callers decide which kind they append.
+async function loadEntry(
 	ctx: ContentContext,
 	publicationId: PublicationId,
 	collection: string,
 	entryId: number,
 ): Promise<Entry> {
-	const entry = await ctx.reader.getEntry(
-		publicationId,
-		collection,
-		entryId,
-		ctx.signal,
-	);
-	if (entry.revisions.some((revision) => revision.encrypted)) {
-		throw new UsageError(
-			`Entry #${entryId} has encrypted revisions; the CLI cannot append an unencrypted revision to it. Encrypted revisions are not yet supported.`,
-		);
-	}
-	return entry;
+	return ctx.reader.getEntry(publicationId, collection, entryId, ctx.signal);
 }
 
 interface LocalContent {
@@ -133,7 +131,7 @@ export async function runRevisionPublishDirect(
 	const { publicationId, collection } = await resolveTarget(ctx, options);
 	const numericEntryId = parseId(entryId, "entryId");
 	const local = await readLocalContent(options);
-	await loadWritableEntry(ctx, publicationId, collection, numericEntryId);
+	await loadEntry(ctx, publicationId, collection, numericEntryId);
 	const publisherCapId = await capFor(ctx, publicationId, options);
 	const prepared = await uploadLocal(ctx, local);
 	const result = await publishDirect(ctx.adapter, ctx.config, {
@@ -159,7 +157,7 @@ export async function runRevisionAppendDraft(
 	const { publicationId, collection } = await resolveTarget(ctx, options);
 	const numericEntryId = parseId(entryId, "entryId");
 	const local = await readLocalContent(options);
-	await loadWritableEntry(ctx, publicationId, collection, numericEntryId);
+	await loadEntry(ctx, publicationId, collection, numericEntryId);
 	const publisherCapId = await capFor(ctx, publicationId, options);
 	const prepared = await uploadLocal(ctx, local);
 	const result = await appendDraftRevision(ctx.adapter, ctx.config, {
@@ -187,6 +185,11 @@ function reuseDraftBlob(
 	if (draft === undefined) {
 		throw new UsageError(
 			`Entry #${entry.id} has no revision #${draftRevisionId} to publish.`,
+		);
+	}
+	if (draft.encrypted) {
+		throw new UsageError(
+			`Draft #${draftRevisionId} of entry #${entry.id} is encrypted. Reusing its blob would publish the ciphertext as the public revision. Pass the plaintext with --file or --stdin.`,
 		);
 	}
 	if (draft.blobRef.kind !== "blob") {
@@ -217,12 +220,7 @@ export async function runRevisionPublishFromDraft(
 	const local = providedNewContent
 		? await readLocalContent(options)
 		: undefined;
-	const entry = await loadWritableEntry(
-		ctx,
-		publicationId,
-		collection,
-		numericEntryId,
-	);
+	const entry = await loadEntry(ctx, publicationId, collection, numericEntryId);
 	const publisherCapId = await capFor(ctx, publicationId, options);
 	const prepared =
 		local === undefined
@@ -241,6 +239,46 @@ export async function runRevisionPublishFromDraft(
 	ctx.output.result(
 		`Published revision #${result.revisionId} from draft #${draftId} on entry #${numericEntryId}. (tx: ${result.digest})`,
 		result,
+	);
+}
+
+export async function runRevisionAppendEncryptedDraft(
+	ctx: EncryptContext,
+	entryId: string,
+	options: ContentOptions,
+): Promise<void> {
+	const { publicationId, collection } = await resolveTarget(ctx, options);
+	const numericEntryId = parseId(entryId, "entryId");
+	const local = await readLocalContent(options);
+	await loadEntry(ctx, publicationId, collection, numericEntryId);
+	const publisherCapId = await capFor(ctx, publicationId, options);
+	const sealId = buildPublisherSealId(
+		publicationId,
+		crypto.getRandomValues(new Uint8Array(SEAL_NONCE_BYTES)),
+	);
+	ctx.output.info(`Encrypting ${local.bytes.length} bytes...`);
+	const { ciphertext } = await ctx.seal().encrypt(local.bytes, { sealId });
+	ctx.output.info(`Uploading ${ciphertext.length} bytes to Walrus...`);
+	const upload = await ctx.walrus.uploadBlob(ciphertext, {
+		epochs: local.epochs,
+		deletable: true,
+	});
+	ctx.output.info(
+		`Blob uploaded (${upload.blobObjectId}). Submitting transaction...`,
+	);
+	const result = await appendEncryptedDraftRevision(ctx.adapter, ctx.config, {
+		publicationId,
+		publisherCapId,
+		collectionName: collection,
+		entryId: numericEntryId,
+		blobObjectId: upload.blobObjectId,
+		contentType: local.contentType,
+		sealId,
+		signal: ctx.signal,
+	});
+	ctx.output.result(
+		`Appended encrypted draft revision #${result.revisionId} on entry #${numericEntryId}. (tx: ${result.digest})`,
+		{ ...result, sealId },
 	);
 }
 
@@ -281,7 +319,7 @@ export function registerRevisionCommands(program: Command): void {
 		revision
 			.command("publish-from-draft <entryId> <draftRevisionId>")
 			.description(
-				"Publish a draft as a new revision (reuses the draft's content; pass --file/--stdin to publish replacement content)",
+				"Publish a draft as a new public revision (reuses an unencrypted draft blob; pass --file/--stdin to publish replacement plaintext, required when the draft is encrypted)",
 			),
 	).action(
 		async (
@@ -294,6 +332,22 @@ export function registerRevisionCommands(program: Command): void {
 				await buildContentContext(command),
 				entryId,
 				draftRevisionId,
+				options,
+			);
+		},
+	);
+
+	revisionOptions(
+		revision
+			.command("append-encrypted-draft <entryId>")
+			.description(
+				"Encrypt content with Seal and append it as a draft revision on an existing entry",
+			),
+	).action(
+		async (entryId: string, options: ContentOptions, command: Command) => {
+			await runRevisionAppendEncryptedDraft(
+				await buildEncryptContext(command),
+				entryId,
 				options,
 			);
 		},

@@ -524,7 +524,7 @@ const config = morseConfig({
 
 ## Known limitations
 
-- **No encrypted publish path**. The Move contract hardcodes `encrypted=false` on `publish_from_draft` and `publish_direct`. Encrypted content stays as drafts.
+- **Public revisions are never encrypted**. The Move contract hardcodes `encrypted=false` on `publish_from_draft` and `publish_direct`. Encrypted revisions stay drafts (`appendEncryptedDraftRevision`). An entry may hold both: publishing appends a new public revision and does not reuse or decrypt an encrypted draft's blob. Pass plaintext bytes, never the ciphertext blob.
 - **`Subscription` access policy is reserved**, not enforced.
 - **`listEntries` ordering is dynamic-field object-store order**, not chronological. Sort by `entry.id` for insertion order.
 - **Walrus flakiness**. `NotEnoughBlobConfirmationsError` from the underlying client is environmental; rerun. The SDK preserves the original error as the `cause` (use `instanceof` for narrowing - Walrus error classes don't set `.name`). Browser consumers may additionally see `NoBlobMetadataReceivedError` (surfaced as a `TransportError` with it in the `cause` chain) on reads from testnet due to CORS gaps on a subset of Walrus storage nodes; `HttpAggregatorReadAdapter` exists to route around that. Mainnet node CORS coverage has not been measured by this project, so browser *fanout* reads there are unproven rather than known-good; the aggregator read path is the one verified on mainnet.

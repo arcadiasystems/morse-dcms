@@ -50,6 +50,7 @@ export const ops = {
 	addEncryptedEntryFromBytes: mock(canned({ entryId: 0, digest: DIGEST })),
 	publishDirect: mock(canned({ revisionId: 1, digest: DIGEST })),
 	appendDraftRevision: mock(canned({ revisionId: 1, digest: DIGEST })),
+	appendEncryptedDraftRevision: mock(canned({ revisionId: 1, digest: DIGEST })),
 	publishFromDraft: mock(canned({ revisionId: 2, digest: DIGEST })),
 	issuePublisherCap: mock(
 		canned({ publisherCapId: `0x${"e".repeat(64)}`, digest: DIGEST }),

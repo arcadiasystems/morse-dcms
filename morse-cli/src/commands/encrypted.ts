@@ -7,6 +7,7 @@
 import {
 	addEncryptedEntryFromBytes,
 	buildPublisherSealId,
+	type Entry,
 } from "@arcadiasystems/morse-sdk";
 import { SessionKey } from "@mysten/seal";
 import type { Command } from "commander";
@@ -125,7 +126,7 @@ export async function runEntryDecrypt(
 	}
 	if (!revision.encrypted || revision.sealId === null) {
 		throw new UsageError(
-			`Revision #${revisionIndex} of entry #${numericEntryId} is not encrypted.`,
+			notEncryptedMessage(entryData, numericEntryId, revisionIndex),
 		);
 	}
 	const publisherCapId = await resolvePublisherCap(
@@ -164,6 +165,20 @@ export async function runEntryDecrypt(
 		return;
 	}
 	process.stdout.write(plaintext);
+}
+
+function notEncryptedMessage(
+	entryData: Entry,
+	numericEntryId: number,
+	revisionIndex: number,
+): string {
+	const encrypted = entryData.revisions
+		.filter((revision) => revision.encrypted && revision.sealId !== null)
+		.map((revision) => String(revision.id));
+	if (encrypted.length === 0) {
+		return `Revision #${revisionIndex} of entry #${numericEntryId} is not encrypted.`;
+	}
+	return `Revision #${revisionIndex} of entry #${numericEntryId} is not encrypted. Encrypted revision indexes: ${encrypted.join(", ")}.`;
 }
 
 export function registerEncryptedEntryCommands(entry: Command): void {

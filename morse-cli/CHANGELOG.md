@@ -4,6 +4,21 @@ All notable changes to `@arcadiasystems/morse-cli` are documented here. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `revision append-encrypted-draft <entryId>` encrypts plaintext with Seal and appends an encrypted draft revision on an existing entry, whether that entry is public or already encrypted.
+
+### Changed
+
+- Mixed entries are supported. `revision publish-direct` and `revision publish-from-draft --file`/`--stdin` append a public revision on an entry that already has encrypted revisions. `entry read` with no revision index follows `publicHead`, so a later draft is not served as the public body, and an encrypted revision index is refused before any Walrus read.
+- `entry decrypt` with no index still uses the latest revision. When that revision is the public release, the error names the encrypted revision indexes.
+
+### Fixed
+
+- `revision publish-from-draft` without `--file`/`--stdin` refuses when the draft revision is encrypted, instead of publishing that ciphertext as the public revision. Pass the plaintext with `--file` or `--stdin`.
+
 ## [0.13.0] - 2026-10-31
 
 Moves to `@arcadiasystems/morse-sdk` 0.11 and the current Mysten packages. Commands, flags, output and exit codes are unchanged.

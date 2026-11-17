@@ -102,4 +102,46 @@ describe("runEntryDecrypt guards", () => {
 			}),
 		).rejects.toThrow(/not encrypted/);
 	});
+
+	test("names encrypted indexes when the latest revision is public", async () => {
+		const { ctx } = decryptContext({
+			reader: {
+				getEntry: () =>
+					Promise.resolve({
+						...encryptedEntry([
+							{
+								id: 0,
+								contentType: "text/plain",
+								blobRef: {
+									kind: "blob",
+									blobObjectId: `0x${"9".repeat(64)}`,
+								},
+								author: AUTHOR,
+								encrypted: true,
+								sealId: new Uint8Array([1, 2, 3]),
+							},
+							{
+								id: 1,
+								contentType: "text/plain",
+								blobRef: {
+									kind: "blob",
+									blobObjectId: `0x${"8".repeat(64)}`,
+								},
+								author: AUTHOR,
+								encrypted: false,
+								sealId: null,
+							},
+						]),
+						publicHead: 1,
+						draftHead: 0,
+					}),
+			} as never,
+		});
+		await expect(
+			runEntryDecrypt(ctx, "0", undefined, {
+				publication: ID,
+				collection: "vault",
+			}),
+		).rejects.toThrow(/Encrypted revision indexes: 0/);
+	});
 });

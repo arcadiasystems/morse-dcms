@@ -252,24 +252,19 @@ export async function runEntryRead(
 		numericEntryId,
 		ctx.signal,
 	);
-	if (revisionId === undefined && entryData.revisions.length === 0) {
-		throw new UsageError(`Entry #${numericEntryId} has no revisions.`);
-	}
-	const revisionIndex =
-		revisionId === undefined
-			? entryData.revisions.length - 1
-			: parseId(revisionId, "revision");
-	const revision = entryData.revisions[revisionIndex];
-	if (revision === undefined) {
-		throw new UsageError(
-			`Entry #${numericEntryId} has no revision at index ${revisionIndex}.`,
-		);
-	}
+	const { revision, revisionIndex } = selectPublicRevision(
+		entryData,
+		numericEntryId,
+		revisionId,
+	);
 	if (revision.encrypted) {
 		throw new UsageError(
 			`Revision #${revisionIndex} of entry #${numericEntryId} is encrypted; use \`morse entry decrypt\`.`,
 		);
 	}
+	// Storage-node and aggregator readers both fetch whatever blob ref they
+	// are given. Selection happens here, and an encrypted revision is refused
+	// first, so neither path is asked for ciphertext on a public read.
 	ctx.output.info("Fetching content from Walrus...");
 	const bytes = await ctx.walrusRead.readBlobRef(revision.blobRef, {
 		signal: ctx.signal,
@@ -286,6 +281,41 @@ export async function runEntryRead(
 		return;
 	}
 	process.stdout.write(bytes);
+}
+
+// Default reads follow publicHead, not the latest revision. A newer draft
+// (encrypted or not) must not be served as the public body. An explicit index
+// still addresses that revision, and the caller refuses encrypted ones.
+function selectPublicRevision(
+	entryData: Entry,
+	numericEntryId: number,
+	revisionId: string | undefined,
+): { revision: Entry["revisions"][number]; revisionIndex: number } {
+	if (revisionId !== undefined) {
+		const revisionIndex = parseId(revisionId, "revision");
+		const revision = entryData.revisions[revisionIndex];
+		if (revision === undefined) {
+			throw new UsageError(
+				`Entry #${numericEntryId} has no revision at index ${revisionIndex}.`,
+			);
+		}
+		return { revision, revisionIndex };
+	}
+	if (entryData.revisions.length === 0) {
+		throw new UsageError(`Entry #${numericEntryId} has no revisions.`);
+	}
+	if (entryData.publicHead === null) {
+		throw new UsageError(
+			`Entry #${numericEntryId} has no public revision. Use \`morse entry decrypt\` to read an encrypted revision.`,
+		);
+	}
+	const revision = entryData.revisions[entryData.publicHead];
+	if (revision === undefined) {
+		throw new UsageError(
+			`Entry #${numericEntryId} public head #${entryData.publicHead} does not match a revision.`,
+		);
+	}
+	return { revision, revisionIndex: entryData.publicHead };
 }
 
 export function registerEntryCommands(program: Command): void {
@@ -360,7 +390,9 @@ export function registerEntryCommands(program: Command): void {
 	const read = entry
 		.command("read <entryId> [revisionIndex]")
 		.alias("download")
-		.description("Fetch a public entry's content to stdout or a file")
+		.description(
+			"Fetch the public head (or an explicit unencrypted revision) to stdout or a file",
+		)
 		.option("--out <path>", "Write content to a file instead of stdout");
 	collectionOption(publicationOption(viaAggregatorOption(read))).action(
 		async (

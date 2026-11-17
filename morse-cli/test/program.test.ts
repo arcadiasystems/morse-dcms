@@ -268,6 +268,20 @@ describe("content/encrypt contexts build offline and guard", () => {
 		).rejects.toThrow(/--file|content/);
 	});
 
+	test("revision append-encrypted-draft with no content source", async () => {
+		await expect(
+			dispatch([
+				"revision",
+				"append-encrypted-draft",
+				"0",
+				"-P",
+				ID,
+				"-C",
+				"blog",
+			]),
+		).rejects.toThrow(/--file|content/);
+	});
+
 	test("entry add-encrypted with no content source", async () => {
 		await expect(
 			dispatch(["entry", "add-encrypted", "post", "-P", ID, "-C", "blog"]),

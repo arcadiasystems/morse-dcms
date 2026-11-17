@@ -189,6 +189,21 @@ Wrote 21 bytes to recovered.txt.
 for subscribers only
 ```
 
+Release that plaintext on the same entry. `publish-direct` appends a public
+revision beside the encrypted draft. Do not reuse the draft blob: it is
+ciphertext. `entry read` follows the public head, so it returns the plaintext
+even after a later encrypted draft.
+
+```sh
+morse revision publish-direct 1 --file secret.txt
+morse entry read 1 --out released.txt
+
+echo "updated internal note" > note.txt
+morse revision append-encrypted-draft 1 --file note.txt
+morse entry read 1 --out still-public.txt
+morse entry decrypt 1 2 --out note.recovered.txt
+```
+
 ## 9. Tear down
 
 Delete in reverse order: entries, then the collection, then the publication. A
