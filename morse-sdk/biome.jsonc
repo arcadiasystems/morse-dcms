@@ -1,5 +1,5 @@
 {
-	"$schema": "https://biomejs.dev/schemas/2.4.7/schema.json",
+	"$schema": "https://biomejs.dev/schemas/2.6.8/schema.json",
 	"vcs": {
 		"enabled": true,
 		"clientKind": "git",
@@ -15,7 +15,7 @@
 	"linter": {
 		"enabled": true,
 		"rules": {
-			"recommended": true,
+			"preset": "recommended",
 			"suspicious": {
 				"noExplicitAny": "error"
 			},
@@ -27,6 +27,18 @@
 	"javascript": {
 		"formatter": {
 			"quoteStyle": "double"
+		}
+	},
+	// Markdown is deliberately not formatted. Biome formats it from 2.6 on,
+	// and on these files that means padding every table column to its widest
+	// cell (the README's API tables would get lines of about 700 characters,
+	// and one edited cell would rewrite a whole table) and re-indenting the
+	// TypeScript samples with tabs, which npmjs.com and GitHub render eight
+	// columns wide. The docs gate and the release notes step read README.md
+	// and CHANGELOG.md as they are.
+	"markdown": {
+		"formatter": {
+			"enabled": false
 		}
 	},
 	"assist": {
