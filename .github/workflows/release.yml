@@ -30,7 +30,7 @@ jobs:
       tarball: ${{ steps.pack.outputs.tarball }}
     steps:
       # Full history, so the tagged commit can be compared with main.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Resolve the package from the tag
@@ -77,7 +77,7 @@ jobs:
             echo "::error::Tag $GITHUB_REF_NAME says $VERSION, but $PACKAGE_DIR/package.json says $manifest_version."
             exit 1
           fi
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
       - name: Version is not on npm yet
@@ -144,7 +144,7 @@ jobs:
             echo "::error::The packed package.json depends on $leaked. Replace it with a published version range."
             exit 1
           fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: npm-tarball
           path: ${{ runner.temp }}/tarball/${{ steps.pack.outputs.tarball }}
@@ -163,7 +163,7 @@ jobs:
       id-token: write
     steps:
       # Trusted publishing needs Node 22.14.0 or later and npm 11.5.1 or later.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
@@ -177,7 +177,7 @@ jobs:
             echo "::error::npm $current is older than $required, the first release with trusted publishing."
             exit 1
           fi
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: npm-tarball
           path: ${{ runner.temp }}/tarball
@@ -195,7 +195,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # The notes are the version's own CHANGELOG section, heading included,
       # as in the releases made by hand before this workflow.
       - name: Extract release notes from the CHANGELOG
