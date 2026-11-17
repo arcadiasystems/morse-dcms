@@ -254,7 +254,8 @@ export interface RecipientFileSummary {
 	readonly members: readonly SuiAddress[];
 	/**
 	 * Transaction timestamp of the `RecipientFileCreated` event, in
-	 * milliseconds since unix epoch. Sourced from the Sui event envelope.
+	 * milliseconds since unix epoch: the `timestampMs` the caller supplied
+	 * with the event.
 	 */
 	readonly createdAtMs: number;
 }

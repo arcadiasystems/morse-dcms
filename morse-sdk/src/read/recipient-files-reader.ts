@@ -257,15 +257,15 @@ function parseByteVector(value: unknown, field: string): Uint8Array {
 }
 
 /**
- * Sui transports disagree on how to encode `Option<ID>` in object JSON:
+ * `Option<ID>` in object JSON. The reader gets its objects from
+ * `SuiGrpcClient`, which encodes None as `null` (or an absent key) and Some
+ * as a bare hex string. Any RecipientFile created via the upload helpers
+ * carries a Some blob_object_id; rejecting the bare-string shape broke every
+ * download path in 0.4.0 / 0.4.1.
  *
- *   - JSON-RPC HTTP: `{ vec: [] }` for None, `{ vec: ["0x..."] }` for Some.
- *   - gRPC (SuiGrpcClient): `null` (or absent key) for None, bare hex string
- *     for Some.
- *
- * Accept both shapes so the reader is transport-agnostic. Any RecipientFile
- * created via the upload helpers carries a Some blob_object_id; rejecting
- * the bare-string shape broke every gRPC download path in 0.4.0 / 0.4.1.
+ * The `{ vec: [] }` / `{ vec: ["0x..."] }` shape is how Sui JSON-RPC encoded
+ * the same field. The SDK makes no JSON-RPC calls; the shape is still
+ * accepted for a caller-supplied `ObjectReader` that returns it.
  */
 function parseOptionalBlobObjectId(value: unknown): BlobObjectId | null {
 	if (value === null || value === undefined) return null;

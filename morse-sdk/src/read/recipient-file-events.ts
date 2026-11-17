@@ -60,8 +60,10 @@ export interface RecipientFileEventInput {
 	/** Move event payload, decoded as JSON. */
 	readonly json: Record<string, unknown>;
 	/**
-	 * Transaction timestamp in milliseconds. Sourced from the Sui event
-	 * envelope; used only for `createdAtMs` on summaries.
+	 * Transaction timestamp in milliseconds, from whichever source the
+	 * events were fetched from; used only for `createdAtMs` on summaries.
+	 * Sui GraphQL returns a timestamp with each event. gRPC `listEvents`
+	 * returns the checkpoint and no timestamp.
 	 */
 	readonly timestampMs: number;
 }
