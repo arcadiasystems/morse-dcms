@@ -4,12 +4,12 @@ import {
 	appendDraftRevision,
 	appendEncryptedDraftRevision,
 	type BlobObjectId,
-	buildPublisherSealId,
 	type Entry,
 	type PublicationId,
 	type PublisherCapId,
 	publishDirect,
 	publishFromDraft,
+	StorageMode,
 } from "@arcadiasystems/morse-sdk";
 import type { Command } from "commander";
 
@@ -19,9 +19,11 @@ import {
 	type ContentContext,
 	type EncryptContext,
 } from "../cli/context.ts";
-import { UsageError } from "../cli/errors.ts";
+import { CliError, UsageError } from "../cli/errors.ts";
+import { ExitCode } from "../cli/exit-codes.ts";
 import { readContentBytes, resolveContentType } from "../cli/input.ts";
 import { resolveCollection, resolvePublication } from "../cli/target.ts";
+import { shortId } from "../format/ids.ts";
 import {
 	type ContentOptions,
 	collectionOption,
@@ -30,6 +32,7 @@ import {
 	publisherCapOption,
 } from "./options.ts";
 import { resolvePublisherCap } from "./resolve.ts";
+import { freshPublisherSealId } from "./seal.ts";
 import { parseId, parsePositiveInt } from "./shared.ts";
 
 interface ResolvedTarget {
@@ -56,9 +59,6 @@ async function resolveTarget(
 	const collection = resolveCollection(ctx, options.collection);
 	return { publicationId, collection };
 }
-
-// 16 random bytes is the typical Seal nonce length; the Move layer requires >= 1.
-const SEAL_NONCE_BYTES = 16;
 
 // Read the entry before any Walrus upload so a bad id fails on the cheap read.
 // Encryption is per revision, so an entry may hold both encrypted drafts and
@@ -109,6 +109,16 @@ async function uploadLocal(
 	return { blobObjectId: upload.blobObjectId, contentType: local.contentType };
 }
 
+function uploadReplacement(
+	ctx: ContentContext,
+	local: LocalContent | undefined,
+): Promise<PreparedContent> {
+	if (local === undefined) {
+		throw new Error("publish-from-draft: replacement content was not read");
+	}
+	return uploadLocal(ctx, local);
+}
+
 function capFor(
 	ctx: ContentContext,
 	publicationId: PublicationId,
@@ -123,6 +133,65 @@ function capFor(
 	);
 }
 
+// A quilt collection rejects a blob object id on chain, and a revoked cap aborts
+// the same way. Both are knowable from reads, so check them before paying for
+// an upload (or an encrypt) that the transaction cannot attach.
+async function authorizeRevision(
+	ctx: ContentContext,
+	publicationId: PublicationId,
+	collection: string,
+	options: ContentOptions,
+): Promise<PublisherCapId> {
+	const publication = await ctx.reader.getPublication(
+		publicationId,
+		ctx.signal,
+	);
+	const found = publication.collections.find(
+		(item) => item.name === collection,
+	);
+	if (found === undefined) {
+		throw new UsageError(
+			`Publication ${shortId(publicationId)} has no collection "${collection}".`,
+		);
+	}
+	if (found.storageMode === StorageMode.Quilt) {
+		throw new UsageError(
+			`Collection "${collection}" uses quilt storage, which the revision commands do not support yet. Use a blob-mode collection.`,
+		);
+	}
+	const publisherCapId = await capFor(ctx, publicationId, options);
+	const revoked = await ctx.reader.isPublisherCapRevoked(
+		publicationId,
+		publisherCapId,
+		ctx.signal,
+	);
+	if (revoked) {
+		throw new CliError(
+			"The PublisherCap has been revoked and can no longer be used.",
+			ExitCode.Auth,
+		);
+	}
+	return publisherCapId;
+}
+
+// A draft revision is not a private copy. Walrus stores the blob where anyone
+// with the id can read it. On an entry that has never been published, that
+// upload discloses plaintext the encrypted revisions were keeping team-only.
+function assertPlaintextDraftAllowed(
+	entry: Entry,
+	allowPublicBlob: boolean,
+): void {
+	const teamOnly =
+		entry.publicHead === null &&
+		entry.revisions.some((revision) => revision.encrypted);
+	if (!teamOnly || allowPublicBlob) {
+		return;
+	}
+	throw new UsageError(
+		`Entry #${entry.id} has encrypted revisions and no public revision. An unencrypted draft is stored as a public Walrus blob, so anyone with the blob id can read it. Pass --allow-public-blob to upload plaintext anyway, or use \`morse revision append-encrypted-draft ${entry.id}\` to keep the draft encrypted.`,
+	);
+}
+
 export async function runRevisionPublishDirect(
 	ctx: ContentContext,
 	entryId: string,
@@ -132,7 +201,12 @@ export async function runRevisionPublishDirect(
 	const numericEntryId = parseId(entryId, "entryId");
 	const local = await readLocalContent(options);
 	await loadEntry(ctx, publicationId, collection, numericEntryId);
-	const publisherCapId = await capFor(ctx, publicationId, options);
+	const publisherCapId = await authorizeRevision(
+		ctx,
+		publicationId,
+		collection,
+		options,
+	);
 	const prepared = await uploadLocal(ctx, local);
 	const result = await publishDirect(ctx.adapter, ctx.config, {
 		publicationId,
@@ -152,13 +226,19 @@ export async function runRevisionPublishDirect(
 export async function runRevisionAppendDraft(
 	ctx: ContentContext,
 	entryId: string,
-	options: ContentOptions,
+	options: ContentOptions & { allowPublicBlob?: boolean },
 ): Promise<void> {
 	const { publicationId, collection } = await resolveTarget(ctx, options);
 	const numericEntryId = parseId(entryId, "entryId");
 	const local = await readLocalContent(options);
-	await loadEntry(ctx, publicationId, collection, numericEntryId);
-	const publisherCapId = await capFor(ctx, publicationId, options);
+	const entry = await loadEntry(ctx, publicationId, collection, numericEntryId);
+	assertPlaintextDraftAllowed(entry, options.allowPublicBlob === true);
+	const publisherCapId = await authorizeRevision(
+		ctx,
+		publicationId,
+		collection,
+		options,
+	);
 	const prepared = await uploadLocal(ctx, local);
 	const result = await appendDraftRevision(ctx.adapter, ctx.config, {
 		publicationId,
@@ -221,11 +301,18 @@ export async function runRevisionPublishFromDraft(
 		? await readLocalContent(options)
 		: undefined;
 	const entry = await loadEntry(ctx, publicationId, collection, numericEntryId);
-	const publisherCapId = await capFor(ctx, publicationId, options);
+	// Refuse an encrypted draft before the cap and collection reads. Reusing
+	// it would publish ciphertext, and that decision needs only the entry.
+	const reused =
+		local === undefined ? reuseDraftBlob(entry, draftId) : undefined;
+	const publisherCapId = await authorizeRevision(
+		ctx,
+		publicationId,
+		collection,
+		options,
+	);
 	const prepared =
-		local === undefined
-			? reuseDraftBlob(entry, draftId)
-			: await uploadLocal(ctx, local);
+		reused !== undefined ? reused : await uploadReplacement(ctx, local);
 	const result = await publishFromDraft(ctx.adapter, ctx.config, {
 		publicationId,
 		publisherCapId,
@@ -251,11 +338,13 @@ export async function runRevisionAppendEncryptedDraft(
 	const numericEntryId = parseId(entryId, "entryId");
 	const local = await readLocalContent(options);
 	await loadEntry(ctx, publicationId, collection, numericEntryId);
-	const publisherCapId = await capFor(ctx, publicationId, options);
-	const sealId = buildPublisherSealId(
+	const publisherCapId = await authorizeRevision(
+		ctx,
 		publicationId,
-		crypto.getRandomValues(new Uint8Array(SEAL_NONCE_BYTES)),
+		collection,
+		options,
 	);
+	const sealId = freshPublisherSealId(publicationId);
 	ctx.output.info(`Encrypting ${local.bytes.length} bytes...`);
 	const { ciphertext } = await ctx.seal().encrypt(local.bytes, { sealId });
 	ctx.output.info(`Uploading ${ciphertext.length} bytes to Walrus...`);
@@ -304,7 +393,11 @@ export function registerRevisionCommands(program: Command): void {
 	revisionOptions(
 		revision
 			.command("append-draft <entryId>")
-			.description("Upload content and append it as a draft revision"),
+			.description("Upload content and append it as a draft revision")
+			.option(
+				"--allow-public-blob",
+				"Upload plaintext onto an entry that has encrypted revisions and no public head. The Walrus blob is readable by anyone with its id.",
+			),
 	).action(
 		async (entryId: string, options: ContentOptions, command: Command) => {
 			await runRevisionAppendDraft(

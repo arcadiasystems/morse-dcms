@@ -316,9 +316,9 @@ function selectPublicRevision(
 	return { revision, revisionIndex: entryData.publicHead };
 }
 
-// A missing public head is not proof that every revision is encrypted. An
-// encrypted entry can also hold a plaintext draft, and `entry decrypt` with
-// no index reads the latest revision, which would then be that plaintext.
+// A missing public head is not proof that every revision is encrypted. Name
+// the unencrypted drafts for `entry read` and the encrypted revisions for
+// `entry decrypt`. Decrypt with no index selects the latest encrypted one.
 function noPublicRevisionMessage(
 	entryData: Entry,
 	numericEntryId: number,

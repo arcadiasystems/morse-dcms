@@ -201,7 +201,8 @@ morse entry read 1 --out released.txt
 echo "updated internal note" > note.txt
 morse revision append-encrypted-draft 1 --file note.txt
 morse entry read 1 --out still-public.txt
-morse entry decrypt 1 2 --out note.recovered.txt
+# No index decrypts the latest encrypted revision (here, revision 2).
+morse entry decrypt 1 --out note.recovered.txt
 ```
 
 ## 9. Tear down

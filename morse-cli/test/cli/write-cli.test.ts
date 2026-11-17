@@ -122,6 +122,22 @@ describe("morse write commands (offline guards)", () => {
 		expect(res.stderr).toContain("--file");
 	});
 
+	test("revision append-draft accepts --allow-public-blob and still requires content", async () => {
+		const res = await run([
+			"revision",
+			"append-draft",
+			"0",
+			"--allow-public-blob",
+			"-P",
+			VALID_ID,
+			"-C",
+			"blog",
+		]);
+		expect(res.code).toBe(2);
+		expect(res.stderr).toContain("--file");
+		expect(res.stderr).not.toContain("unknown option");
+	});
+
 	test("revision publish-direct with a bad --epochs exits 2", async () => {
 		const res = await run([
 			"revision",

@@ -6,15 +6,23 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+These changes are not in 0.14.0. They ship as 0.15.0; `package.json` stays on 0.14.0 until that release.
+
+### Breaking
+
+- `entry read` with no revision index follows `publicHead` instead of the latest revision. After `entry add` and `revision append-draft`, `entry read <id>` returns the published revision, not the unpublished draft, and `--json` reports that revision's `revisionId`. The command still exits 0. Pass the index to read a specific unencrypted revision.
+
 ### Added
 
 - `revision append-encrypted-draft <entryId>` encrypts plaintext with Seal and appends an encrypted draft revision on an existing entry, whether that entry is public or already encrypted.
+- `revision append-draft --allow-public-blob` uploads plaintext onto an entry that has encrypted revisions and no public head. Without the flag the command exits 2 before any upload, because that blob is readable by anyone with its id.
 
 ### Changed
 
-- Mixed entries are supported. `revision publish-direct` and `revision publish-from-draft --file`/`--stdin` append a public revision on an entry that already has encrypted revisions. `entry read` with no revision index follows `publicHead`, so a later draft is not served as the public body, and an encrypted revision index is refused before any Walrus read.
-- `entry decrypt` with no index still uses the latest revision. When that revision is the public release, the error names the encrypted revision indexes.
-- `entry read` on an entry with no public head names each unencrypted draft index and each encrypted revision index. A plaintext draft appended after an encrypted revision is read with `entry read <entryId> <index>`, and decrypt is suggested only for the encrypted indexes.
+- Mixed entries are supported. `revision publish-direct` and `revision publish-from-draft --file`/`--stdin` append a public revision on an entry that already has encrypted revisions. An encrypted revision index passed to `entry read` is refused before any Walrus read.
+- `entry decrypt` with no index selects the latest encrypted revision. A later public release no longer makes `morse entry decrypt <id>` fail. An explicit index that is not encrypted still exits 2 and names the encrypted indexes.
+- `entry read` on an entry with no public head names each unencrypted draft index and each encrypted revision index.
+- `revision publish-direct`, `append-draft`, `publish-from-draft`, and `append-encrypted-draft` check that the collection is blob-mode and that the PublisherCap is not revoked before encrypting or uploading. A quilt collection exits 2. A revoked cap exits 4 with "The PublisherCap has been revoked and can no longer be used." and does not spend WAL.
 
 ### Fixed
 

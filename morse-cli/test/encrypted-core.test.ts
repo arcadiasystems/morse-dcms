@@ -103,7 +103,8 @@ describe("runEntryDecrypt guards", () => {
 		).rejects.toThrow(/not encrypted/);
 	});
 
-	test("names encrypted indexes when the latest revision is public", async () => {
+	test("an explicit public index names the encrypted revisions", async () => {
+		let fetched = false;
 		const { ctx } = decryptContext({
 			reader: {
 				getEntry: () =>
@@ -136,12 +137,72 @@ describe("runEntryDecrypt guards", () => {
 						draftHead: 0,
 					}),
 			} as never,
+			walrusRead: {
+				readBlobRef: () => {
+					fetched = true;
+					return Promise.resolve(new Uint8Array());
+				},
+			},
+		});
+		await expect(
+			runEntryDecrypt(ctx, "0", "1", {
+				publication: ID,
+				collection: "vault",
+			}),
+		).rejects.toThrow(/Encrypted revision indexes: 0/);
+		expect(fetched).toBe(false);
+	});
+
+	test("defaults to the latest encrypted revision after a public release", async () => {
+		const encryptedBlob = `0x${"9".repeat(64)}`;
+		let requested: unknown;
+		const { ctx } = decryptContext({
+			reader: {
+				getEntry: () =>
+					Promise.resolve({
+						...encryptedEntry([
+							{
+								id: 0,
+								contentType: "text/plain",
+								blobRef: { kind: "blob", blobObjectId: encryptedBlob },
+								author: AUTHOR,
+								encrypted: true,
+								sealId: new Uint8Array([1, 2, 3]),
+							},
+							{
+								id: 1,
+								contentType: "text/plain",
+								blobRef: {
+									kind: "blob",
+									blobObjectId: `0x${"8".repeat(64)}`,
+								},
+								author: AUTHOR,
+								encrypted: false,
+								sealId: null,
+							},
+						]),
+						publicHead: 1,
+						draftHead: 0,
+					}),
+				listPublisherCapsOwnedBy: () =>
+					Promise.resolve({
+						results: [{ id: `0x${"d".repeat(64)}`, publicationId: ID }],
+						nextCursor: null,
+					}),
+			} as never,
+			walrusRead: {
+				readBlobRef: (ref: unknown) => {
+					requested = ref;
+					return Promise.reject(new Error("stop after selection"));
+				},
+			},
 		});
 		await expect(
 			runEntryDecrypt(ctx, "0", undefined, {
 				publication: ID,
 				collection: "vault",
 			}),
-		).rejects.toThrow(/Encrypted revision indexes: 0/);
+		).rejects.toThrow(/stop after selection/);
+		expect(requested).toEqual({ kind: "blob", blobObjectId: encryptedBlob });
 	});
 });

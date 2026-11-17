@@ -6,7 +6,6 @@
 
 import {
 	addEncryptedEntryFromBytes,
-	buildPublisherSealId,
 	type Entry,
 } from "@arcadiasystems/morse-sdk";
 import { SessionKey } from "@mysten/seal";
@@ -32,12 +31,11 @@ import {
 	viaAggregatorOption,
 } from "./options.ts";
 import { resolvePublisherCap } from "./resolve.ts";
+import { freshPublisherSealId } from "./seal.ts";
 import { parseId, parsePositiveInt } from "./shared.ts";
 
 // SessionKey lifetime; long enough for one decrypt, short enough to limit reuse.
 const SESSION_KEY_TTL_MIN = 10;
-// 16 random bytes is the typical Seal nonce length; the Move layer requires >= 1.
-const SEAL_NONCE_BYTES = 16;
 
 type DecryptOptions = TargetOptions & {
 	out?: string;
@@ -65,10 +63,7 @@ export async function runEntryAddEncrypted(
 		options.publisherCap,
 		ctx.signal,
 	);
-	const sealId = buildPublisherSealId(
-		id,
-		crypto.getRandomValues(new Uint8Array(SEAL_NONCE_BYTES)),
-	);
+	const sealId = freshPublisherSealId(id);
 	ctx.output.info(`Encrypting and uploading ${plaintext.length} bytes...`);
 	const result = await addEncryptedEntryFromBytes(ctx.adapter, ctx.config, {
 		walrus: ctx.walrus,
@@ -111,13 +106,22 @@ export async function runEntryDecrypt(
 		numericEntryId,
 		ctx.signal,
 	);
-	if (revisionId === undefined && entryData.revisions.length === 0) {
-		throw new UsageError(`Entry #${numericEntryId} has no revisions.`);
-	}
 	const revisionIndex =
 		revisionId === undefined
-			? entryData.revisions.length - 1
+			? latestEncryptedIndex(entryData)
 			: parseId(revisionId, "revision");
+	if (revisionIndex === undefined) {
+		if (entryData.revisions.length === 0) {
+			throw new UsageError(`Entry #${numericEntryId} has no revisions.`);
+		}
+		throw new UsageError(
+			notEncryptedMessage(
+				entryData,
+				numericEntryId,
+				entryData.revisions.length - 1,
+			),
+		);
+	}
 	const revision = entryData.revisions[revisionIndex];
 	if (revision === undefined) {
 		throw new UsageError(
@@ -167,6 +171,18 @@ export async function runEntryDecrypt(
 	process.stdout.write(plaintext);
 }
 
+// No index means "the encrypted content", not "whatever was written last".
+// A later public release must not make `entry decrypt <id>` fail.
+function latestEncryptedIndex(entryData: Entry): number | undefined {
+	for (let index = entryData.revisions.length - 1; index >= 0; index -= 1) {
+		const revision = entryData.revisions[index];
+		if (revision?.encrypted && revision.sealId !== null) {
+			return index;
+		}
+	}
+	return undefined;
+}
+
 function notEncryptedMessage(
 	entryData: Entry,
 	numericEntryId: number,
@@ -198,7 +214,7 @@ export function registerEncryptedEntryCommands(entry: Command): void {
 	const decrypt = entry
 		.command("decrypt <entryId> [revisionIndex]")
 		.description(
-			"Decrypt an encrypted revision by zero-based index (default: latest); signs a SessionKey with the active account",
+			"Decrypt an encrypted revision by zero-based index (default: the latest encrypted revision); signs a SessionKey with the active account",
 		)
 		.option("--out <path>", "Write plaintext to a file instead of stdout");
 	collectionOption(
