@@ -66,6 +66,6 @@
 		"@mysten/sui": "2.39.1",
 		"@mysten/walrus": "1.2.39",
 		"@types/bun": "latest",
-		"typescript": "^5.6.0"
+		"typescript": "^7.0.2"
 	}
 }
