@@ -4,6 +4,14 @@ All notable changes to `@arcadiasystems/morse-cli` are documented here. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] - 2026-11-17
+
+Moves to `@arcadiasystems/morse-sdk` 0.12 and the current Mysten packages. Commands, flags, output and exit codes are unchanged.
+
+### Changed
+
+- **Dependencies.** `@arcadiasystems/morse-sdk` `^0.12.0` (was `^0.11.0`), `@mysten/sui` 2.39.1 (was 2.38.0), `@mysten/walrus` 1.2.39 (was 1.2.37), `@mysten/seal` 1.5.4 (was 1.5.2). Walrus 1.2.39 and seal 1.5.4 change no code beyond the version Seal reports to key servers. The sui 2.39 and bcs 2.1.4 changes, none of which alters a CLI command, are described in morse-sdk's 0.12.0 entry.
+
 ## [0.13.0] - 2026-10-31
 
 Moves to `@arcadiasystems/morse-sdk` 0.11 and the current Mysten packages. Commands, flags, output and exit codes are unchanged.
