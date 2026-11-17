@@ -18,14 +18,12 @@
 
 		"verbatimModuleSyntax": true,
 		"isolatedModules": true,
-		"esModuleInterop": false,
 		"forceConsistentCasingInFileNames": true,
 		"resolveJsonModule": true,
 		"skipLibCheck": true,
 
 		"noEmit": true,
 
-		"baseUrl": ".",
 		"paths": {
 			"@arcadiasystems/morse-sdk": ["./src/index.ts"]
 		}
