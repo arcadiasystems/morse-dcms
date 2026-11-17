@@ -4,6 +4,18 @@ All notable changes to `@arcadiasystems/morse-cli` are documented here. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+These changes are not in 0.14.0. They ship as 0.15.0; `package.json` stays on 0.14.0 until that release.
+
+### Breaking
+
+- **Node.js 22.12 is the minimum** (was 18). `engines.node` is now `>=22.12`, because commander 15 requires it. Node 18 and 20 are past end of life. The CLI is developed and tested on Node 26, the current LTS, and on the 22.12 minimum. Bun (>= 1.2) is unaffected.
+
+### Changed
+
+- **Dependencies.** `commander` `^15.1.0` (was `^14.0.3`). Commander 15 is ESM-only, which the CLI already is. Its other breaking changes do not reach the CLI: no option is declared with a `--no-` form, and nothing imports `commander/esm.mjs`. A command given too many arguments now names the extra ones in its error; the exit code stays 2.
+
 ## [0.14.0] - 2026-11-17
 
 Moves to `@arcadiasystems/morse-sdk` 0.12 and the current Mysten packages. Commands, flags, output and exit codes are unchanged.

@@ -28,8 +28,9 @@ with [Seal](https://github.com/MystenLabs/seal).
 
 ## Requirements
 
-- [Node.js](https://nodejs.org) >= 18, or [Bun](https://bun.sh) >= 1.2. The
-  published CLI runs under either.
+- [Node.js](https://nodejs.org) >= 22.12, or [Bun](https://bun.sh) >= 1.2. The
+  published CLI runs under either. It is developed and tested on Node 26, the
+  current LTS, and on Node 22.12, the minimum.
 - A funded Sui address for gas, and WAL for Walrus storage when adding content.
   On testnet, get SUI from the [Sui faucet](https://faucet.sui.io/) and swap some
   for WAL at [stake-wal.wal.app](https://stake-wal.wal.app/?network=testnet). On
@@ -475,7 +476,7 @@ bunx @arcadiasystems/morse-cli --help  # or: npx, run without installing
 
 The shipped `bin` is `dist/index.js`, a Node-targeted bundle (`bun run build`)
 with a `#!/usr/bin/env node` shebang and external dependencies, so installs run
-under Node or Bun. `prepublishOnly` runs typecheck, lint, tests, and the build,
+under Node (>= 22.12) or Bun. `prepublishOnly` runs typecheck, lint, tests, and the build,
 so the published `dist/` is always fresh.
 
 Releases are published by CI, not by hand: bump the version in `package.json`

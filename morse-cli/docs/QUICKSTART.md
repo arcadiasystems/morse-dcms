@@ -13,7 +13,7 @@ from the profile and prints which one it spent on.
 
 ## 0. Prerequisites
 
-- Install [Bun](https://bun.sh) >= 1.2.
+- Install [Node.js](https://nodejs.org) >= 22.12 or [Bun](https://bun.sh) >= 1.2.
 - Have a Sui testnet keypair. If you use the Sui CLI, export one with
   `sui keytool export --key-identity <alias>` to get a `suiprivkey1...` string.
 - Fund the address with testnet SUI ([faucet](https://faucet.sui.io/)) for gas,
@@ -24,7 +24,7 @@ from the profile and prints which one it spent on.
 Install the CLI:
 
 ```sh
-bun add -g @arcadiasystems/morse-cli
+npm i -g @arcadiasystems/morse-cli   # or: bun add -g @arcadiasystems/morse-cli
 morse --version
 ```
 
