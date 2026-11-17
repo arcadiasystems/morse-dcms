@@ -350,8 +350,10 @@ hydrated table gains a `blobId` column, and `--json` returns the full records.
   registry's unique key), so there is no rename command.
 - `entry read` serves public content to stdout or a file. With no revision
   index it follows `publicHead`, including on a mixed entry, and it refuses an
-  encrypted revision instead of printing ciphertext. Encrypted revisions are
-  retrieved with `entry decrypt`. A shareable Walrus link is printed by
+  encrypted revision instead of printing ciphertext. When there is no public
+  head, the error names each unencrypted draft for `entry read <entryId>
+  <index>` and each encrypted revision for `entry decrypt <entryId> <index>`.
+  A shareable Walrus link is printed by
   `entry add` (the `viewUrl` field), since the content id is known at upload
   time. `entry add-encrypted` and `revision append-encrypted-draft` do not print
   a public view link: the uploaded blob is ciphertext.

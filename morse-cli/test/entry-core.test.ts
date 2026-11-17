@@ -388,7 +388,37 @@ describe("runEntryRead", () => {
 				publication: ID,
 				collection: "posts",
 			}),
-		).rejects.toThrow(/no public revision/);
+		).rejects.toThrow(/morse entry decrypt 0 0/);
+		expect(fetched).toBe(false);
+	});
+
+	test("names the plaintext draft when a missing public head is mixed", async () => {
+		let fetched = false;
+		const { ctx } = readContentContext({
+			reader: {
+				getEntry: () =>
+					Promise.resolve({
+						...entry([
+							revision({ encrypted: true, sealId: new Uint8Array([1]) }),
+							revision({ id: 1 }),
+						]),
+						publicHead: null,
+						draftHead: 1,
+					}),
+			} as never,
+			walrusRead: {
+				readBlobRef: () => {
+					fetched = true;
+					return Promise.resolve(new Uint8Array());
+				},
+			},
+		});
+		await expect(
+			runEntryRead(ctx, "0", undefined, {
+				publication: ID,
+				collection: "posts",
+			}),
+		).rejects.toThrow(/morse entry read 0 1.*morse entry decrypt 0 0/);
 		expect(fetched).toBe(false);
 	});
 

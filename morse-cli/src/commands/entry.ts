@@ -305,9 +305,7 @@ function selectPublicRevision(
 		throw new UsageError(`Entry #${numericEntryId} has no revisions.`);
 	}
 	if (entryData.publicHead === null) {
-		throw new UsageError(
-			`Entry #${numericEntryId} has no public revision. Use \`morse entry decrypt\` to read an encrypted revision.`,
-		);
+		throw new UsageError(noPublicRevisionMessage(entryData, numericEntryId));
 	}
 	const revision = entryData.revisions[entryData.publicHead];
 	if (revision === undefined) {
@@ -316,6 +314,56 @@ function selectPublicRevision(
 		);
 	}
 	return { revision, revisionIndex: entryData.publicHead };
+}
+
+// A missing public head is not proof that every revision is encrypted. An
+// encrypted entry can also hold a plaintext draft, and `entry decrypt` with
+// no index reads the latest revision, which would then be that plaintext.
+function noPublicRevisionMessage(
+	entryData: Entry,
+	numericEntryId: number,
+): string {
+	const plain = entryData.revisions
+		.filter((revision) => !revision.encrypted)
+		.map((revision) => revision.id);
+	const encrypted = entryData.revisions
+		.filter((revision) => revision.encrypted)
+		.map((revision) => revision.id);
+	const parts = [`Entry #${numericEntryId} has no public revision.`];
+	if (plain.length > 0) {
+		parts.push(
+			revisionIndexAdvice(
+				"Read unencrypted draft",
+				"entry read",
+				numericEntryId,
+				plain,
+			),
+		);
+	}
+	if (encrypted.length > 0) {
+		parts.push(
+			revisionIndexAdvice(
+				"Decrypt encrypted revision",
+				"entry decrypt",
+				numericEntryId,
+				encrypted,
+			),
+		);
+	}
+	return parts.join(" ");
+}
+
+function revisionIndexAdvice(
+	label: string,
+	command: string,
+	entryId: number,
+	indexes: readonly number[],
+): string {
+	const only = indexes[0];
+	if (indexes.length === 1 && only !== undefined) {
+		return `${label} #${only} with \`morse ${command} ${entryId} ${only}\`.`;
+	}
+	return `${label}s ${indexes.join(", ")}. Pass one with \`morse ${command} ${entryId} <index>\`.`;
 }
 
 export function registerEntryCommands(program: Command): void {

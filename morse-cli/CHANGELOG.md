@@ -14,6 +14,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Mixed entries are supported. `revision publish-direct` and `revision publish-from-draft --file`/`--stdin` append a public revision on an entry that already has encrypted revisions. `entry read` with no revision index follows `publicHead`, so a later draft is not served as the public body, and an encrypted revision index is refused before any Walrus read.
 - `entry decrypt` with no index still uses the latest revision. When that revision is the public release, the error names the encrypted revision indexes.
+- `entry read` on an entry with no public head names each unencrypted draft index and each encrypted revision index. A plaintext draft appended after an encrypted revision is read with `entry read <entryId> <index>`, and decrypt is suggested only for the encrypted indexes.
 
 ### Fixed
 
