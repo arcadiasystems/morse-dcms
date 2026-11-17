@@ -9,7 +9,6 @@ import {
 	type PublisherCapId,
 	publishDirect,
 	publishFromDraft,
-	StorageMode,
 } from "@arcadiasystems/morse-sdk";
 import type { Command } from "commander";
 
@@ -19,11 +18,9 @@ import {
 	type ContentContext,
 	type EncryptContext,
 } from "../cli/context.ts";
-import { CliError, UsageError } from "../cli/errors.ts";
-import { ExitCode } from "../cli/exit-codes.ts";
+import { UsageError } from "../cli/errors.ts";
 import { readContentBytes, resolveContentType } from "../cli/input.ts";
 import { resolveCollection, resolvePublication } from "../cli/target.ts";
-import { shortId } from "../format/ids.ts";
 import {
 	type ContentOptions,
 	collectionOption,
@@ -31,7 +28,7 @@ import {
 	publicationOption,
 	publisherCapOption,
 } from "./options.ts";
-import { resolvePublisherCap } from "./resolve.ts";
+import { authorizeContentWrite } from "./preflight.ts";
 import { freshPublisherSealId } from "./seal.ts";
 import { parseId, parsePositiveInt } from "./shared.ts";
 
@@ -119,59 +116,18 @@ function uploadReplacement(
 	return uploadLocal(ctx, local);
 }
 
-function capFor(
+function authorize(
 	ctx: ContentContext,
-	publicationId: PublicationId,
+	target: ResolvedTarget,
 	options: ContentOptions,
+	command: string,
 ): Promise<PublisherCapId> {
-	return resolvePublisherCap(
-		ctx.reader,
-		ctx.address,
-		publicationId,
-		options.publisherCap,
-		ctx.signal,
-	);
-}
-
-// A quilt collection rejects a blob object id on chain, and a revoked cap aborts
-// the same way. Both are knowable from reads, so check them before paying for
-// an upload (or an encrypt) that the transaction cannot attach.
-async function authorizeRevision(
-	ctx: ContentContext,
-	publicationId: PublicationId,
-	collection: string,
-	options: ContentOptions,
-): Promise<PublisherCapId> {
-	const publication = await ctx.reader.getPublication(
-		publicationId,
-		ctx.signal,
-	);
-	const found = publication.collections.find(
-		(item) => item.name === collection,
-	);
-	if (found === undefined) {
-		throw new UsageError(
-			`Publication ${shortId(publicationId)} has no collection "${collection}".`,
-		);
-	}
-	if (found.storageMode === StorageMode.Quilt) {
-		throw new UsageError(
-			`Collection "${collection}" uses quilt storage, which the revision commands do not support yet. Use a blob-mode collection.`,
-		);
-	}
-	const publisherCapId = await capFor(ctx, publicationId, options);
-	const revoked = await ctx.reader.isPublisherCapRevoked(
-		publicationId,
-		publisherCapId,
-		ctx.signal,
-	);
-	if (revoked) {
-		throw new CliError(
-			"The PublisherCap has been revoked and can no longer be used.",
-			ExitCode.Auth,
-		);
-	}
-	return publisherCapId;
+	return authorizeContentWrite(ctx, {
+		publicationId: target.publicationId,
+		collection: target.collection,
+		publisherCap: options.publisherCap,
+		command: `revision ${command}`,
+	});
 }
 
 // A draft revision is not a private copy. Walrus stores the blob where anyone
@@ -201,11 +157,11 @@ export async function runRevisionPublishDirect(
 	const numericEntryId = parseId(entryId, "entryId");
 	const local = await readLocalContent(options);
 	await loadEntry(ctx, publicationId, collection, numericEntryId);
-	const publisherCapId = await authorizeRevision(
+	const publisherCapId = await authorize(
 		ctx,
-		publicationId,
-		collection,
+		{ publicationId, collection },
 		options,
+		"publish-direct",
 	);
 	const prepared = await uploadLocal(ctx, local);
 	const result = await publishDirect(ctx.adapter, ctx.config, {
@@ -233,11 +189,11 @@ export async function runRevisionAppendDraft(
 	const local = await readLocalContent(options);
 	const entry = await loadEntry(ctx, publicationId, collection, numericEntryId);
 	assertPlaintextDraftAllowed(entry, options.allowPublicBlob === true);
-	const publisherCapId = await authorizeRevision(
+	const publisherCapId = await authorize(
 		ctx,
-		publicationId,
-		collection,
+		{ publicationId, collection },
 		options,
+		"append-draft",
 	);
 	const prepared = await uploadLocal(ctx, local);
 	const result = await appendDraftRevision(ctx.adapter, ctx.config, {
@@ -305,11 +261,11 @@ export async function runRevisionPublishFromDraft(
 	// it would publish ciphertext, and that decision needs only the entry.
 	const reused =
 		local === undefined ? reuseDraftBlob(entry, draftId) : undefined;
-	const publisherCapId = await authorizeRevision(
+	const publisherCapId = await authorize(
 		ctx,
-		publicationId,
-		collection,
+		{ publicationId, collection },
 		options,
+		"publish-from-draft",
 	);
 	const prepared =
 		reused !== undefined ? reused : await uploadReplacement(ctx, local);
@@ -338,11 +294,11 @@ export async function runRevisionAppendEncryptedDraft(
 	const numericEntryId = parseId(entryId, "entryId");
 	const local = await readLocalContent(options);
 	await loadEntry(ctx, publicationId, collection, numericEntryId);
-	const publisherCapId = await authorizeRevision(
+	const publisherCapId = await authorize(
 		ctx,
-		publicationId,
-		collection,
+		{ publicationId, collection },
 		options,
+		"append-encrypted-draft",
 	);
 	const sealId = freshPublisherSealId(publicationId);
 	ctx.output.info(`Encrypting ${local.bytes.length} bytes...`);
