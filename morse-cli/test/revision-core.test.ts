@@ -10,6 +10,7 @@ import {
 } from "../src/commands/revision.ts";
 import { useTempFiles } from "./support/content.ts";
 import {
+	ADDRESS,
 	contentContext,
 	encryptContext,
 	type MockReader,
@@ -135,6 +136,74 @@ describe("runRevisionPublishDirect", () => {
 		expect(captured.stdout()).toContain("Published revision #1 on entry #0");
 	});
 
+	test("refuses a --publisher-cap for another publication before uploading", async () => {
+		const file = await files.write("v2.txt", "second version");
+		const uploaded: Uint8Array[] = [];
+		const cap = `0x${"d".repeat(64)}`;
+		const base = fixture(
+			[revision()],
+			{},
+			{
+				getPublisherCap: () =>
+					Promise.resolve({
+						id: cap,
+						publicationId: `0x${"2".repeat(64)}`,
+						holder: ADDRESS,
+					} as never),
+			},
+		);
+		const ctx = { ...base.ctx, walrus: trackingWalrus(uploaded) };
+		const error = await runRevisionPublishDirect(ctx, "0", {
+			...baseOptions,
+			file,
+			publisherCap: cap,
+		}).then(
+			() => {
+				throw new Error("expected the wrong publication to fail");
+			},
+			(caught: unknown) => caught,
+		);
+		expect(error).toBeInstanceOf(CliError);
+		expect((error as CliError).exitCode).toBe(ExitCode.Auth);
+		expect((error as Error).message).toContain("belongs to publication");
+		expect(uploaded).toHaveLength(0);
+		expect(ops.publishDirect).not.toHaveBeenCalled();
+	});
+
+	test("refuses a --publisher-cap held by another address before uploading", async () => {
+		const file = await files.write("v2.txt", "second version");
+		const uploaded: Uint8Array[] = [];
+		const cap = `0x${"d".repeat(64)}`;
+		const base = fixture(
+			[revision()],
+			{},
+			{
+				getPublisherCap: () =>
+					Promise.resolve({
+						id: cap,
+						publicationId: ID,
+						holder: `0x${"b".repeat(64)}`,
+					} as never),
+			},
+		);
+		const ctx = { ...base.ctx, walrus: trackingWalrus(uploaded) };
+		const error = await runRevisionPublishDirect(ctx, "0", {
+			...baseOptions,
+			file,
+			publisherCap: cap,
+		}).then(
+			() => {
+				throw new Error("expected the wrong holder to fail");
+			},
+			(caught: unknown) => caught,
+		);
+		expect(error).toBeInstanceOf(CliError);
+		expect((error as CliError).exitCode).toBe(ExitCode.Auth);
+		expect((error as Error).message).toContain("approved holder");
+		expect(uploaded).toHaveLength(0);
+		expect(ops.publishDirect).not.toHaveBeenCalled();
+	});
+
 	test("rejects a bad --epochs before uploading", async () => {
 		const { ctx } = fixture();
 		await expect(
@@ -171,17 +240,19 @@ describe("runRevisionAppendDraft", () => {
 });
 
 describe("runRevisionPublishFromDraft", () => {
-	test("uploads new content when --file is given", async () => {
+	test("uploads new content when --file names an existing draft", async () => {
 		const file = await files.write("final.txt", "final");
-		const { ctx, captured } = fixture();
-		await runRevisionPublishFromDraft(ctx, "0", "1", { ...baseOptions, file });
-		expect(ops.publishFromDraft).toHaveBeenCalledTimes(1);
+		const uploaded: Uint8Array[] = [];
+		const base = fixture();
+		const ctx = { ...base.ctx, walrus: trackingWalrus(uploaded) };
+		await runRevisionPublishFromDraft(ctx, "0", "0", { ...baseOptions, file });
 		expect(ops.publishFromDraft.mock.calls[0]?.[2]).toMatchObject({
 			entryId: 0,
-			draftRevisionId: 1,
+			draftRevisionId: 0,
 			blobObjectId: BLOB,
 		});
-		expect(captured.stdout()).toContain("from draft #1");
+		expect(uploaded).toEqual([new TextEncoder().encode("final")]);
+		expect(base.captured.stdout()).toContain("from draft #0");
 	});
 
 	test("reuses the draft's blob when no content is given", async () => {
@@ -205,6 +276,18 @@ describe("runRevisionPublishFromDraft", () => {
 		await expect(
 			runRevisionPublishFromDraft(ctx, "0", "9", baseOptions),
 		).rejects.toThrow(/no revision #9/);
+		expect(ops.publishFromDraft).not.toHaveBeenCalled();
+	});
+
+	test("does not upload when --file names a missing draft", async () => {
+		const file = await files.write("final.txt", "final");
+		const uploaded: Uint8Array[] = [];
+		const base = fixture([revision()]);
+		const ctx = { ...base.ctx, walrus: trackingWalrus(uploaded) };
+		await expect(
+			runRevisionPublishFromDraft(ctx, "0", "7", { ...baseOptions, file }),
+		).rejects.toThrow(/no revision #7/);
+		expect(uploaded).toHaveLength(0);
 		expect(ops.publishFromDraft).not.toHaveBeenCalled();
 	});
 });
@@ -269,11 +352,26 @@ describe("mixed entries", () => {
 		expect(uploaded).toEqual([new TextEncoder().encode("soon")]);
 	});
 
-	test("append-draft allows plaintext once the entry has a public head", async () => {
+	test("append-draft refuses when a public head sits beside an encrypted draft", async () => {
 		const file = await files.write("draft.txt", "soon");
 		const uploaded: Uint8Array[] = [];
 		const base = fixture([revision({ encrypted: true }), revision({ id: 1 })], {
-			publicHead: 1,
+			publicHead: 0,
+			draftHead: 1,
+		});
+		const ctx = { ...base.ctx, walrus: trackingWalrus(uploaded) };
+		await expect(
+			runRevisionAppendDraft(ctx, "0", { ...baseOptions, file }),
+		).rejects.toThrow(/--allow-public-blob/);
+		expect(uploaded).toHaveLength(0);
+		expect(ops.appendDraftRevision).not.toHaveBeenCalled();
+	});
+
+	test("append-draft allows plaintext on an entry with no encrypted revision", async () => {
+		const file = await files.write("draft.txt", "soon");
+		const uploaded: Uint8Array[] = [];
+		const base = fixture([revision(), revision({ id: 1 })], {
+			publicHead: 0,
 			draftHead: 1,
 		});
 		const ctx = { ...base.ctx, walrus: trackingWalrus(uploaded) };

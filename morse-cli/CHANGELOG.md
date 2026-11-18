@@ -15,14 +15,14 @@ These changes are not in 0.14.0. They ship as 0.15.0; `package.json` stays on 0.
 ### Added
 
 - `revision append-encrypted-draft <entryId>` encrypts plaintext with Seal and appends an encrypted draft revision on an existing entry, whether that entry is public or already encrypted.
-- `revision append-draft --allow-public-blob` uploads plaintext onto an entry that has encrypted revisions and no public head. Without the flag the command exits 2 before any upload, because that blob is readable by anyone with its id.
+- `revision append-draft --allow-public-blob` uploads plaintext onto an entry that has an encrypted revision, including one that already has a public head. Without the flag the command exits 2 before any upload, because that blob is readable by anyone with its id.
 
 ### Changed
 
 - Mixed entries are supported. `revision publish-direct` and `revision publish-from-draft --file`/`--stdin` append a public revision on an entry that already has encrypted revisions. An encrypted revision index passed to `entry read` is refused before any Walrus read.
 - `entry decrypt` with no index selects the latest encrypted revision. A later public release no longer makes `morse entry decrypt <id>` fail. An explicit index that is not encrypted still exits 2 and names the encrypted indexes.
 - `entry read` on an entry with no public head names each unencrypted draft index and each encrypted revision index.
-- `revision publish-direct`, `append-draft`, `publish-from-draft`, and `append-encrypted-draft` check that the collection is blob-mode and that the PublisherCap is not revoked before encrypting or uploading. A quilt collection exits 2. A revoked cap exits 4 with "The PublisherCap has been revoked and can no longer be used." and does not spend WAL.
+- `entry add`, `entry add-encrypted`, and the revision commands check that the collection is blob-mode and that the PublisherCap is live before encrypting or uploading. A quilt collection exits 2. A revoked cap exits 4 with "The PublisherCap has been revoked and can no longer be used." An explicit `--publisher-cap` for another publication or another holder exits 4 before any upload. `publish-from-draft` also checks that the draft revision exists before paying for a replacement upload.
 
 ### Fixed
 

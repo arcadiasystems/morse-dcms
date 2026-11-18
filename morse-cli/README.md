@@ -238,7 +238,7 @@ commands; pure on-chain commands (publication, collection, cap) have no epochs.
 | Command | Purpose |
 | --- | --- |
 | `revision publish-direct <entryId> --file <path> [-P …] [-C …]` | Upload plaintext and append a public revision. Works on an entry that already has encrypted revisions. |
-| `revision append-draft <entryId> --file <path> [--allow-public-blob] [-P …] [-C …]` | Upload plaintext and append an unencrypted draft. On an entry with encrypted revisions and no public head, exits 2 unless `--allow-public-blob` is set, because the blob is publicly readable. |
+| `revision append-draft <entryId> --file <path> [--allow-public-blob] [-P …] [-C …]` | Upload plaintext and append an unencrypted draft. On an entry that has an encrypted revision, exits 2 unless `--allow-public-blob` is set, because the blob is publicly readable. |
 | `revision append-encrypted-draft <entryId> --file <path> [-P …] [-C …]` | Encrypt plaintext with Seal and append an encrypted draft revision on an existing entry (public or already encrypted). Prints the generated `sealId`. |
 | `revision publish-from-draft <entryId> <draftRevisionId> [--file <path>] [-P …] [-C …]` | Publish a draft as a new public revision. Reuses an unencrypted draft's blob by default. Pass `--file`/`--stdin` to publish replacement plaintext. Required when the draft is encrypted: reusing that blob would publish the ciphertext. |
 
@@ -371,17 +371,17 @@ hydrated table gains a `blobId` column, and `--json` returns the full records.
   with `--file` or `--stdin` append a public, unencrypted revision on an entry
   that already has encrypted drafts. `revision append-encrypted-draft` appends
   an encrypted draft on a public or encrypted entry. `append-draft` on an entry
-  that has encrypted revisions and no public head exits 2 unless
-  `--allow-public-blob` is set: the draft blob is publicly readable.
+  that has an encrypted revision exits 2 unless `--allow-public-blob` is set:
+  the draft blob is publicly readable. A public head does not change that.
   `publish-from-draft` without `--file`/`--stdin` reuses the draft blob, and
   refuses when that draft is encrypted so ciphertext is not published as the
   public revision. Pass the plaintext with `--file` or `--stdin`. Public
   revisions are never encrypted: the chain hardcodes `encrypted=false` on
   `publish_direct` and `publish_from_draft`. `entry decrypt` with no index
   selects the latest encrypted revision.
-- `entry add` and the `revision` commands support blob-mode collections only.
-  Quilt collections can be created but not yet populated through the CLI; those
-  commands refuse them before uploading.
+- `entry add`, `entry add-encrypted`, and the `revision` commands support
+  blob-mode collections only. Quilt collections can be created but not yet
+  populated through the CLI; those commands refuse them before uploading.
 - There is no command to query Walrus blob storage expiry; `--epochs` sets the
   lease at upload time, but remaining lease time is not exposed by the SDK.
 - Encrypted commands do not work on mainnet, per the status note above. There

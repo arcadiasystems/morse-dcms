@@ -13,13 +13,20 @@ const files = useTempFiles();
 const ID = `0x${"1".repeat(64)}`;
 const AUTHOR = `0x${"a".repeat(64)}`;
 
-function publisherCapReader() {
+function publisherCapReader(
+	collections: unknown[] = [
+		{ name: "vault", storageMode: "blob", nextEntryId: 0 },
+	],
+	revoked = false,
+) {
 	return {
 		listPublisherCapsOwnedBy: () =>
 			Promise.resolve({
 				results: [{ id: `0x${"d".repeat(64)}`, publicationId: ID }],
 				nextCursor: null,
 			}),
+		getPublication: () => Promise.resolve({ id: ID, collections }),
+		isPublisherCapRevoked: () => Promise.resolve(revoked),
 	} as never;
 }
 
@@ -51,6 +58,40 @@ describe("runEntryAddEncrypted", () => {
 		expect(args.name).toBe("secret");
 		expect(args.sealId).toBeDefined();
 		expect(captured.stdout()).toContain('Added encrypted entry #0 "secret"');
+	});
+
+	test("refuses a quilt collection before encrypting", async () => {
+		const file = await files.write("secret.txt", "classified");
+		const { ctx } = encryptContext({
+			reader: publisherCapReader([
+				{ name: "vault", storageMode: "quilt", nextEntryId: 0 },
+			]),
+		});
+		await expect(
+			runEntryAddEncrypted(ctx, "secret", {
+				publication: ID,
+				collection: "vault",
+				epochs: "3",
+				file,
+			}),
+		).rejects.toThrow(/quilt/);
+		expect(ops.addEncryptedEntryFromBytes).not.toHaveBeenCalled();
+	});
+
+	test("refuses a revoked cap before encrypting", async () => {
+		const file = await files.write("secret.txt", "classified");
+		const { ctx } = encryptContext({
+			reader: publisherCapReader(undefined, true),
+		});
+		await expect(
+			runEntryAddEncrypted(ctx, "secret", {
+				publication: ID,
+				collection: "vault",
+				epochs: "3",
+				file,
+			}),
+		).rejects.toThrow(/revoked/);
+		expect(ops.addEncryptedEntryFromBytes).not.toHaveBeenCalled();
 	});
 });
 

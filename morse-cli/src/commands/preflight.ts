@@ -59,6 +59,24 @@ export async function authorizeContentWrite(
 		target.publisherCap,
 		ctx.signal,
 	);
+	// An explicit cap id skips the "caps this account holds for this
+	// publication" search, so a cap for someone else or another publication
+	// would otherwise be encrypted and uploaded, then abort on chain.
+	if (target.publisherCap !== undefined) {
+		const cap = await ctx.reader.getPublisherCap(publisherCapId, ctx.signal);
+		if (cap.publicationId !== publicationId) {
+			throw new CliError(
+				`PublisherCap ${shortId(publisherCapId)} belongs to publication ${shortId(cap.publicationId)}, not ${shortId(publicationId)}.`,
+				ExitCode.Auth,
+			);
+		}
+		if (cap.holder !== ctx.address) {
+			throw new CliError(
+				"The sender is not the approved holder for this PublisherCap.",
+				ExitCode.Auth,
+			);
+		}
+	}
 	const revoked = await ctx.reader.isPublisherCapRevoked(
 		publicationId,
 		publisherCapId,

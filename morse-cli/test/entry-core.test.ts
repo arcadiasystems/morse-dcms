@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
+import { CliError } from "../src/cli/errors.ts";
+import { ExitCode } from "../src/cli/exit-codes.ts";
 import {
 	runEntryAdd,
 	runEntryDelete,
@@ -53,6 +55,7 @@ function publisherCapReader(
 	collections: unknown[] = [
 		{ name: "posts", storageMode: "blob", nextEntryId: 0 },
 	],
+	revoked = false,
 ) {
 	return {
 		listPublisherCapsOwnedBy: () =>
@@ -61,6 +64,7 @@ function publisherCapReader(
 				nextCursor: null,
 			}),
 		getPublication: () => Promise.resolve(publicationWith(collections)),
+		isPublisherCapRevoked: () => Promise.resolve(revoked),
 	} as never;
 }
 
@@ -248,6 +252,27 @@ describe("runEntryAdd", () => {
 				file,
 			}),
 		).rejects.toThrow(/no collection "posts"/);
+		expect(ops.addEntryFromBytes).not.toHaveBeenCalled();
+	});
+
+	test("refuses a revoked cap before uploading", async () => {
+		const file = await files.write("post.md", "# hello");
+		const { ctx } = contentContext({
+			reader: publisherCapReader(undefined, true),
+		});
+		const error = await runEntryAdd(ctx, "post", {
+			publication: ID,
+			collection: "posts",
+			epochs: "3",
+			file,
+		}).then(
+			() => {
+				throw new Error("expected a revoked cap to fail");
+			},
+			(caught: unknown) => caught,
+		);
+		expect(error).toBeInstanceOf(CliError);
+		expect((error as CliError).exitCode).toBe(ExitCode.Auth);
 		expect(ops.addEntryFromBytes).not.toHaveBeenCalled();
 	});
 
