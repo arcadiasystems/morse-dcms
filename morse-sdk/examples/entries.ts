@@ -24,6 +24,7 @@
  *
  * No encrypted publish path: `publishFromDraft` and `publishDirect` create
  * non-encrypted public revisions only. Encrypted content lives as drafts.
+ * An entry may hold both. Publishing does not clear earlier encrypted drafts.
  *
  * The four functions that return a `u64` (entryId / revisionId) cost two
  * RPCs each: one simulate, one execute. The simulate read is how the SDK

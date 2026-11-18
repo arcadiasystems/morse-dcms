@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
+import { CliError } from "../src/cli/errors.ts";
+import { ExitCode } from "../src/cli/exit-codes.ts";
 import {
 	runEntryAdd,
 	runEntryDelete,
@@ -53,6 +55,7 @@ function publisherCapReader(
 	collections: unknown[] = [
 		{ name: "posts", storageMode: "blob", nextEntryId: 0 },
 	],
+	revoked = false,
 ) {
 	return {
 		listPublisherCapsOwnedBy: () =>
@@ -61,6 +64,7 @@ function publisherCapReader(
 				nextCursor: null,
 			}),
 		getPublication: () => Promise.resolve(publicationWith(collections)),
+		isPublisherCapRevoked: () => Promise.resolve(revoked),
 	} as never;
 }
 
@@ -76,6 +80,29 @@ describe("runEntryGet", () => {
 		expect(captured.stdout()).toContain("revisions:");
 	});
 
+	test("renders a mixed entry's public head and encrypted revision", async () => {
+		const { ctx, captured } = readContext({
+			reader: {
+				getEntry: () =>
+					Promise.resolve({
+						...entry([
+							revision({ encrypted: true, sealId: new Uint8Array([1]) }),
+							revision({ id: 1 }),
+						]),
+						draftHead: 0,
+						publicHead: 1,
+					}),
+			} as never,
+		});
+		await runEntryGet(ctx, "0", { publication: ID, collection: "posts" });
+		const lines = captured.stdout().split("\n");
+		expect(captured.stdout()).toContain("publicHead:   1");
+		expect(lines.find((line) => line.includes("[0]"))).toContain("encrypted");
+		expect(lines.find((line) => line.includes("[1]"))).not.toContain(
+			"encrypted",
+		);
+	});
+
 	test("rejects a non-numeric entry id", async () => {
 		const { ctx } = readContext({ reader: {} as never });
 		await expect(
@@ -85,6 +112,43 @@ describe("runEntryGet", () => {
 });
 
 describe("runEntryList / runEntryScan", () => {
+	test("list marks a newer encrypted draft and not a released public head", async () => {
+		const pending = {
+			...entry([
+				revision(),
+				revision({ id: 1, encrypted: true, sealId: new Uint8Array([1]) }),
+			]),
+			id: 3,
+			name: "pending",
+			draftHead: 1,
+			publicHead: 0,
+		};
+		const released = {
+			...entry([
+				revision({ encrypted: true, sealId: new Uint8Array([1]) }),
+				revision({ id: 1 }),
+			]),
+			id: 2,
+			name: "released",
+			draftHead: 0,
+			publicHead: 1,
+		};
+		const { ctx, captured } = readContext({
+			reader: {
+				listEntries: () =>
+					Promise.resolve({
+						results: [released, pending],
+						nextCursor: null,
+					}),
+			} as never,
+		});
+		await runEntryList(ctx, { publication: ID, collection: "posts" });
+		const out = captured.stdout();
+		expect(out).toContain("#2 released (2 revisions)");
+		expect(out).not.toContain("#2 released (2 revisions) [draft]");
+		expect(out).toContain("#3 pending (2 revisions) [draft]");
+	});
+
 	test("list renders entries", async () => {
 		const { ctx, captured } = readContext({
 			reader: {
@@ -188,6 +252,27 @@ describe("runEntryAdd", () => {
 				file,
 			}),
 		).rejects.toThrow(/no collection "posts"/);
+		expect(ops.addEntryFromBytes).not.toHaveBeenCalled();
+	});
+
+	test("refuses a revoked cap before uploading", async () => {
+		const file = await files.write("post.md", "# hello");
+		const { ctx } = contentContext({
+			reader: publisherCapReader(undefined, true),
+		});
+		const error = await runEntryAdd(ctx, "post", {
+			publication: ID,
+			collection: "posts",
+			epochs: "3",
+			file,
+		}).then(
+			() => {
+				throw new Error("expected a revoked cap to fail");
+			},
+			(caught: unknown) => caught,
+		);
+		expect(error).toBeInstanceOf(CliError);
+		expect((error as CliError).exitCode).toBe(ExitCode.Auth);
 		expect(ops.addEntryFromBytes).not.toHaveBeenCalled();
 	});
 
@@ -305,10 +390,239 @@ describe("runEntryRead", () => {
 		).rejects.toThrow(/no revisions/);
 	});
 
-	test("refuses an encrypted revision", async () => {
+	test("refuses an encrypted revision and does not fetch it", async () => {
+		let fetched = false;
 		const { ctx } = readContentContext({
 			reader: {
-				getEntry: () => Promise.resolve(entry([revision({ encrypted: true })])),
+				getEntry: () =>
+					Promise.resolve({
+						...entry([revision({ encrypted: true })]),
+						publicHead: null,
+						draftHead: 0,
+					}),
+			} as never,
+			walrusRead: {
+				readBlobRef: () => {
+					fetched = true;
+					return Promise.resolve(new Uint8Array());
+				},
+			},
+		});
+		await expect(
+			runEntryRead(ctx, "0", undefined, {
+				publication: ID,
+				collection: "posts",
+			}),
+		).rejects.toThrow(/morse entry decrypt 0 0/);
+		expect(fetched).toBe(false);
+	});
+
+	test("names the plaintext draft when a missing public head is mixed", async () => {
+		let fetched = false;
+		const { ctx } = readContentContext({
+			reader: {
+				getEntry: () =>
+					Promise.resolve({
+						...entry([
+							revision({ encrypted: true, sealId: new Uint8Array([1]) }),
+							revision({ id: 1 }),
+						]),
+						publicHead: null,
+						draftHead: 1,
+					}),
+			} as never,
+			walrusRead: {
+				readBlobRef: () => {
+					fetched = true;
+					return Promise.resolve(new Uint8Array());
+				},
+			},
+		});
+		await expect(
+			runEntryRead(ctx, "0", undefined, {
+				publication: ID,
+				collection: "posts",
+			}),
+		).rejects.toThrow(/morse entry read 0 1.*morse entry decrypt 0 0/);
+		expect(fetched).toBe(false);
+	});
+
+	test("serves the public head when a later revision is encrypted", async () => {
+		const publicBlob = `0x${"1".repeat(64)}`;
+		const secretBlob = `0x${"2".repeat(64)}`;
+		const out = files.path("public.txt");
+		const { ctx } = readContentContext({
+			reader: {
+				getEntry: () =>
+					Promise.resolve({
+						...entry([
+							revision({
+								blobRef: { kind: "blob", blobObjectId: publicBlob },
+							}),
+							revision({
+								id: 1,
+								encrypted: true,
+								sealId: new Uint8Array([1]),
+								blobRef: { kind: "blob", blobObjectId: secretBlob },
+							}),
+						]),
+						publicHead: 0,
+						draftHead: 1,
+					}),
+			} as never,
+			walrusRead: {
+				readBlobRef: (ref: { blobObjectId: string }) =>
+					Promise.resolve(
+						new TextEncoder().encode(
+							ref.blobObjectId === secretBlob ? "CIPHERTEXT" : "public body",
+						),
+					),
+			},
+		});
+		await runEntryRead(ctx, "0", undefined, {
+			publication: ID,
+			collection: "posts",
+			out,
+		});
+		expect(await readFile(out, "utf8")).toBe("public body");
+	});
+
+	test("--json names the revision it read: the public head by default, the index when given", async () => {
+		const publishedBlob = `0x${"1".repeat(64)}`;
+		const draftBlob = `0x${"2".repeat(64)}`;
+		const read = async (revisionIndex: string | undefined) => {
+			const out = files.path("body.txt");
+			const { ctx, captured } = readContentContext({
+				json: true,
+				reader: {
+					getEntry: () =>
+						Promise.resolve({
+							...entry([
+								revision({
+									blobRef: { kind: "blob", blobObjectId: publishedBlob },
+								}),
+								revision({
+									id: 1,
+									contentType: "text/markdown",
+									blobRef: { kind: "blob", blobObjectId: draftBlob },
+								}),
+							]),
+							publicHead: 0,
+							draftHead: 1,
+						}),
+				} as never,
+				walrusRead: {
+					readBlobRef: (ref: { blobObjectId: string }) =>
+						Promise.resolve(
+							new TextEncoder().encode(
+								ref.blobObjectId === draftBlob
+									? "unpublished draft"
+									: "published",
+							),
+						),
+				},
+			});
+			await runEntryRead(ctx, "0", revisionIndex, {
+				publication: ID,
+				collection: "posts",
+				out,
+			});
+			return { doc: captured.json(), body: await readFile(out, "utf8") };
+		};
+
+		const byDefault = await read(undefined);
+		expect(byDefault.body).toBe("published");
+		expect(byDefault.doc).toMatchObject({
+			entryId: 0,
+			revisionId: 0,
+			bytes: 9,
+			contentType: "text/plain",
+		});
+
+		const byIndex = await read("1");
+		expect(byIndex.body).toBe("unpublished draft");
+		expect(byIndex.doc).toMatchObject({
+			entryId: 0,
+			revisionId: 1,
+			contentType: "text/markdown",
+		});
+	});
+
+	test("serves the public head when an earlier revision is encrypted", async () => {
+		const secretBlob = `0x${"2".repeat(64)}`;
+		const publicBlob = `0x${"3".repeat(64)}`;
+		const out = files.path("released.txt");
+		const { ctx } = readContentContext({
+			reader: {
+				getEntry: () =>
+					Promise.resolve({
+						...entry([
+							revision({
+								encrypted: true,
+								sealId: new Uint8Array([1]),
+								blobRef: { kind: "blob", blobObjectId: secretBlob },
+							}),
+							revision({
+								id: 1,
+								blobRef: { kind: "blob", blobObjectId: publicBlob },
+							}),
+						]),
+						publicHead: 1,
+						draftHead: 0,
+					}),
+			} as never,
+			walrusRead: {
+				readBlobRef: (ref: { blobObjectId: string }) =>
+					Promise.resolve(
+						new TextEncoder().encode(
+							ref.blobObjectId === publicBlob ? "released" : "CIPHERTEXT",
+						),
+					),
+			},
+		});
+		await runEntryRead(ctx, "0", undefined, {
+			publication: ID,
+			collection: "posts",
+			out,
+		});
+		expect(await readFile(out, "utf8")).toBe("released");
+	});
+
+	test("refuses an explicit encrypted index without fetching it", async () => {
+		let fetched = false;
+		const { ctx } = readContentContext({
+			reader: {
+				getEntry: () =>
+					Promise.resolve({
+						...entry([
+							revision(),
+							revision({ id: 1, encrypted: true, sealId: new Uint8Array([1]) }),
+						]),
+						publicHead: 0,
+						draftHead: 1,
+					}),
+			} as never,
+			walrusRead: {
+				readBlobRef: () => {
+					fetched = true;
+					return Promise.resolve(new Uint8Array());
+				},
+			},
+		});
+		await expect(
+			runEntryRead(ctx, "0", "1", {
+				publication: ID,
+				collection: "posts",
+			}),
+		).rejects.toThrow(/encrypted/);
+		expect(fetched).toBe(false);
+	});
+
+	test("errors when the public head does not match a revision", async () => {
+		const { ctx } = readContentContext({
+			reader: {
+				getEntry: () =>
+					Promise.resolve({ ...entry([revision()]), publicHead: 4 }),
 			} as never,
 		});
 		await expect(
@@ -316,7 +630,7 @@ describe("runEntryRead", () => {
 				publication: ID,
 				collection: "posts",
 			}),
-		).rejects.toThrow(/encrypted/);
+		).rejects.toThrow(/public head #4/);
 	});
 
 	test("writes fetched bytes to --out", async () => {

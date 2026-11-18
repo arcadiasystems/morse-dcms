@@ -8,9 +8,10 @@
  * not leak into the test report.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { RpcPublicationReader } from "@arcadiasystems/morse-sdk";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import type { Command } from "commander";
 import {
@@ -24,6 +25,7 @@ import {
 import { buildProgram } from "../src/cli/program.ts";
 import { registerCommands } from "../src/commands/index.ts";
 import { useTempConfigHome } from "./support/config-home.ts";
+import { useTempFiles } from "./support/content.ts";
 
 useTempConfigHome();
 
@@ -268,6 +270,20 @@ describe("content/encrypt contexts build offline and guard", () => {
 		).rejects.toThrow(/--file|content/);
 	});
 
+	test("revision append-encrypted-draft with no content source", async () => {
+		await expect(
+			dispatch([
+				"revision",
+				"append-encrypted-draft",
+				"0",
+				"-P",
+				ID,
+				"-C",
+				"blog",
+			]),
+		).rejects.toThrow(/--file|content/);
+	});
+
 	test("entry add-encrypted with no content source", async () => {
 		await expect(
 			dispatch(["entry", "add-encrypted", "post", "-P", ID, "-C", "blog"]),
@@ -312,6 +328,105 @@ describe("content/encrypt contexts build offline and guard", () => {
 				"--via-aggregator",
 			]),
 		).rejects.toThrow(/--out/);
+	});
+});
+
+// The mixed-entry safeguards, routed through commander and the real content
+// context with only the chain reader replaced. Each reader answers the entry
+// read and nothing else, so a command that got past its guard would fail on
+// the next read instead of matching the expected refusal.
+describe("mixed-entry safeguards through the program", () => {
+	const files = useTempFiles();
+
+	const encryptedOnlyEntry = {
+		id: 0,
+		name: "secret",
+		publicHead: null,
+		draftHead: 0,
+		revisions: [
+			{
+				id: 0,
+				contentType: "text/plain",
+				blobRef: { kind: "blob", blobObjectId: ID },
+				author: RECIPIENT,
+				encrypted: true,
+				sealId: new Uint8Array([1]),
+			},
+		],
+	};
+
+	async function dispatchWithReader(
+		reader: Partial<RpcPublicationReader>,
+		args: string[],
+	): Promise<void> {
+		const built = spyOn(
+			RpcPublicationReader,
+			"fromMorseConfig",
+		).mockReturnValue(reader as RpcPublicationReader);
+		try {
+			await dispatch(args);
+		} finally {
+			built.mockRestore();
+		}
+	}
+
+	function entryOnlyReader(): Partial<RpcPublicationReader> {
+		return { getEntry: () => Promise.resolve(encryptedOnlyEntry as never) };
+	}
+
+	test("publish-from-draft with no --file or --stdin refuses an encrypted draft", async () => {
+		await expect(
+			dispatchWithReader(entryOnlyReader(), [
+				"revision",
+				"publish-from-draft",
+				"0",
+				"0",
+				"-P",
+				ID,
+				"-C",
+				"blog",
+			]),
+		).rejects.toThrow(/Reusing its blob would publish the ciphertext/);
+	});
+
+	test("append-draft refuses an entry with only encrypted revisions", async () => {
+		const file = await files.write("draft.txt", "plaintext");
+		await expect(
+			dispatchWithReader(entryOnlyReader(), [
+				"revision",
+				"append-draft",
+				"0",
+				"--file",
+				file,
+				"-P",
+				ID,
+				"-C",
+				"blog",
+			]),
+		).rejects.toThrow(/--allow-public-blob/);
+	});
+
+	test("append-draft --allow-public-blob gets past that refusal", async () => {
+		const file = await files.write("draft.txt", "plaintext");
+		const reader: Partial<RpcPublicationReader> = {
+			...entryOnlyReader(),
+			getPublication: () =>
+				Promise.reject(new Error("reached the pre-upload checks")),
+		};
+		await expect(
+			dispatchWithReader(reader, [
+				"revision",
+				"append-draft",
+				"0",
+				"--allow-public-blob",
+				"--file",
+				file,
+				"-P",
+				ID,
+				"-C",
+				"blog",
+			]),
+		).rejects.toThrow("reached the pre-upload checks");
 	});
 });
 

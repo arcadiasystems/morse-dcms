@@ -268,4 +268,90 @@ describe.if(RUN)("live testnet lifecycle (MORSE_E2E=1)", () => {
 		},
 		STEP_TIMEOUT_MS,
 	);
+
+	test(
+		"append-draft on an encrypted-only entry exits 2 before uploading",
+		async () => {
+			if (state.encryptedEntryId === undefined) {
+				throw new Error("Skipped: no entry id from the `add-encrypted` step.");
+			}
+			const draft = await writeTemp("leak.txt", "should stay private");
+			const res = await run([
+				"revision",
+				"append-draft",
+				state.encryptedEntryId,
+				"--file",
+				draft,
+			]);
+			expect(res.code).toBe(2);
+			expect(res.stderr).toContain("--allow-public-blob");
+		},
+		STEP_TIMEOUT_MS,
+	);
+
+	test(
+		"publish-from-draft refuses to reuse the encrypted blob",
+		async () => {
+			if (state.encryptedEntryId === undefined) {
+				throw new Error("Skipped: no entry id from the `add-encrypted` step.");
+			}
+			const res = await run([
+				"revision",
+				"publish-from-draft",
+				state.encryptedEntryId,
+				"0",
+			]);
+			expect(res.code).toBe(2);
+			expect(res.stderr).toContain("ciphertext");
+		},
+		STEP_TIMEOUT_MS,
+	);
+
+	test(
+		"publish the encrypted entry's plaintext",
+		async () => {
+			if (state.encryptedEntryId === undefined) {
+				throw new Error("Skipped: no entry id from the `add-encrypted` step.");
+			}
+			const secretFile = await writeTemp("secret-public.txt", SECRET);
+			await okEventually([
+				"revision",
+				"publish-direct",
+				state.encryptedEntryId,
+				"--file",
+				secretFile,
+			]);
+			const readOut = join(payloadDir, "released.txt");
+			await okEventually([
+				"entry",
+				"read",
+				state.encryptedEntryId,
+				"--out",
+				readOut,
+				...READ_FLAGS,
+			]);
+			expect(await readFile(readOut, "utf8")).toBe(SECRET);
+		},
+		STEP_TIMEOUT_MS,
+	);
+
+	test(
+		"decrypt with no index still returns the encrypted revision",
+		async () => {
+			if (state.encryptedEntryId === undefined) {
+				throw new Error("Skipped: no entry id from the `add-encrypted` step.");
+			}
+			const decryptOut = join(payloadDir, "still-secret.txt");
+			await okEventually([
+				"entry",
+				"decrypt",
+				state.encryptedEntryId,
+				"--out",
+				decryptOut,
+				...READ_FLAGS,
+			]);
+			expect(await readFile(decryptOut, "utf8")).toBe(SECRET);
+		},
+		STEP_TIMEOUT_MS,
+	);
 });

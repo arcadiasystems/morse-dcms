@@ -32,7 +32,7 @@ post_id=$(morse --json entry add hello --file "$tmp/post.md" | jq -r .entryId)
 echo "# Hello, Morse (edited)" >"$tmp/post.md"
 morse revision publish-direct "$post_id" --file "$tmp/post.md"
 
-# Open the published content: fetch the latest revision back to a file.
+# Open the published content: fetch the public head back to a file.
 morse entry read "$post_id" --out "$tmp/fetched.md"
 cat "$tmp/fetched.md"
 

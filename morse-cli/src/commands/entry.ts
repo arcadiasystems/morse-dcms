@@ -4,8 +4,6 @@ import {
 	addEntryFromBytes,
 	deleteEntry,
 	type Entry,
-	type PublicationId,
-	StorageMode,
 } from "@arcadiasystems/morse-sdk";
 import type { Command } from "commander";
 
@@ -42,6 +40,7 @@ import {
 	type TargetOptions,
 	viaAggregatorOption,
 } from "./options.ts";
+import { authorizeContentWrite } from "./preflight.ts";
 import { resolvePublisherCap } from "./resolve.ts";
 import { parseId, parseLimit, parsePositiveInt } from "./shared.ts";
 
@@ -54,31 +53,6 @@ type ListOptions = TargetOptions & {
 type ScanOptions = TargetOptions & { draftsOnly?: boolean };
 type DeleteOptions = TargetOptions & { publisherCap?: string };
 type ReadOptions = TargetOptions & { out?: string; viaAggregator?: boolean };
-
-// Verify the collection exists (and is a kind `entry add` can populate) before
-// any Walrus upload, so a missing or quilt collection fails fast instead of
-// after the user has already paid for storage on a doomed transaction.
-async function assertEntryAddCollection(
-	ctx: ReadContext,
-	publicationId: PublicationId,
-	collection: string,
-): Promise<void> {
-	const publication = await ctx.reader.getPublication(
-		publicationId,
-		ctx.signal,
-	);
-	const found = publication.collections.find((c) => c.name === collection);
-	if (found === undefined) {
-		throw new UsageError(
-			`Publication ${shortId(publicationId)} has no collection "${collection}".`,
-		);
-	}
-	if (found.storageMode === StorageMode.Quilt) {
-		throw new UsageError(
-			`Collection "${collection}" uses quilt storage, which \`entry add\` does not support yet. Use a blob-mode collection.`,
-		);
-	}
-}
 
 export async function runEntryGet(
 	ctx: ReadContext,
@@ -161,17 +135,12 @@ export async function runEntryAdd(
 		options.contentType,
 		options.stdin ? undefined : options.file,
 	);
-	// Check the collection before the cap lookup and the upload, so a missing or
-	// quilt collection fails on the cheapest network call and never burns Walrus
-	// storage on a doomed transaction.
-	await assertEntryAddCollection(ctx, id, collection);
-	const publisherCapId = await resolvePublisherCap(
-		ctx.reader,
-		ctx.address,
-		id,
-		options.publisherCap,
-		ctx.signal,
-	);
+	const publisherCapId = await authorizeContentWrite(ctx, {
+		publicationId: id,
+		collection,
+		publisherCap: options.publisherCap,
+		command: "entry add",
+	});
 	ctx.output.info(`Uploading ${bytes.length} bytes to Walrus...`);
 	const result = await addEntryFromBytes(ctx.adapter, ctx.config, {
 		walrus: ctx.walrus,
@@ -252,24 +221,19 @@ export async function runEntryRead(
 		numericEntryId,
 		ctx.signal,
 	);
-	if (revisionId === undefined && entryData.revisions.length === 0) {
-		throw new UsageError(`Entry #${numericEntryId} has no revisions.`);
-	}
-	const revisionIndex =
-		revisionId === undefined
-			? entryData.revisions.length - 1
-			: parseId(revisionId, "revision");
-	const revision = entryData.revisions[revisionIndex];
-	if (revision === undefined) {
-		throw new UsageError(
-			`Entry #${numericEntryId} has no revision at index ${revisionIndex}.`,
-		);
-	}
+	const { revision, revisionIndex } = selectPublicRevision(
+		entryData,
+		numericEntryId,
+		revisionId,
+	);
 	if (revision.encrypted) {
 		throw new UsageError(
 			`Revision #${revisionIndex} of entry #${numericEntryId} is encrypted; use \`morse entry decrypt\`.`,
 		);
 	}
+	// Storage-node and aggregator readers both fetch whatever blob ref they
+	// are given. Selection happens here, and an encrypted revision is refused
+	// first, so neither path is asked for ciphertext on a public read.
 	ctx.output.info("Fetching content from Walrus...");
 	const bytes = await ctx.walrusRead.readBlobRef(revision.blobRef, {
 		signal: ctx.signal,
@@ -286,6 +250,89 @@ export async function runEntryRead(
 		return;
 	}
 	process.stdout.write(bytes);
+}
+
+// Default reads follow publicHead, not the latest revision. A newer draft
+// (encrypted or not) must not be served as the public body. An explicit index
+// still addresses that revision, and the caller refuses encrypted ones.
+function selectPublicRevision(
+	entryData: Entry,
+	numericEntryId: number,
+	revisionId: string | undefined,
+): { revision: Entry["revisions"][number]; revisionIndex: number } {
+	if (revisionId !== undefined) {
+		const revisionIndex = parseId(revisionId, "revision");
+		const revision = entryData.revisions[revisionIndex];
+		if (revision === undefined) {
+			throw new UsageError(
+				`Entry #${numericEntryId} has no revision at index ${revisionIndex}.`,
+			);
+		}
+		return { revision, revisionIndex };
+	}
+	if (entryData.revisions.length === 0) {
+		throw new UsageError(`Entry #${numericEntryId} has no revisions.`);
+	}
+	if (entryData.publicHead === null) {
+		throw new UsageError(noPublicRevisionMessage(entryData, numericEntryId));
+	}
+	const revision = entryData.revisions[entryData.publicHead];
+	if (revision === undefined) {
+		throw new UsageError(
+			`Entry #${numericEntryId} public head #${entryData.publicHead} does not match a revision.`,
+		);
+	}
+	return { revision, revisionIndex: entryData.publicHead };
+}
+
+// A missing public head is not proof that every revision is encrypted. Name
+// the unencrypted drafts for `entry read` and the encrypted revisions for
+// `entry decrypt`. Decrypt with no index selects the latest encrypted one.
+function noPublicRevisionMessage(
+	entryData: Entry,
+	numericEntryId: number,
+): string {
+	const plain = entryData.revisions
+		.filter((revision) => !revision.encrypted)
+		.map((revision) => revision.id);
+	const encrypted = entryData.revisions
+		.filter((revision) => revision.encrypted)
+		.map((revision) => revision.id);
+	const parts = [`Entry #${numericEntryId} has no public revision.`];
+	if (plain.length > 0) {
+		parts.push(
+			revisionIndexAdvice(
+				"Read unencrypted draft",
+				"entry read",
+				numericEntryId,
+				plain,
+			),
+		);
+	}
+	if (encrypted.length > 0) {
+		parts.push(
+			revisionIndexAdvice(
+				"Decrypt encrypted revision",
+				"entry decrypt",
+				numericEntryId,
+				encrypted,
+			),
+		);
+	}
+	return parts.join(" ");
+}
+
+function revisionIndexAdvice(
+	label: string,
+	command: string,
+	entryId: number,
+	indexes: readonly number[],
+): string {
+	const only = indexes[0];
+	if (indexes.length === 1 && only !== undefined) {
+		return `${label} #${only} with \`morse ${command} ${entryId} ${only}\`.`;
+	}
+	return `${label}s ${indexes.join(", ")}. Pass one with \`morse ${command} ${entryId} <index>\`.`;
 }
 
 export function registerEntryCommands(program: Command): void {
@@ -360,7 +407,9 @@ export function registerEntryCommands(program: Command): void {
 	const read = entry
 		.command("read <entryId> [revisionIndex]")
 		.alias("download")
-		.description("Fetch a public entry's content to stdout or a file")
+		.description(
+			"Fetch the public head (or an explicit unencrypted revision) to stdout or a file",
+		)
 		.option("--out <path>", "Write content to a file instead of stdout");
 	collectionOption(publicationOption(viaAggregatorOption(read))).action(
 		async (

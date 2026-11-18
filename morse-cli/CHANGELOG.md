@@ -4,6 +4,30 @@ All notable changes to `@arcadiasystems/morse-cli` are documented here. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+These changes are not in 0.14.0. They ship as 0.15.0; `package.json` stays on 0.14.0 until that release.
+
+### Breaking
+
+- `entry read` with no revision index follows `publicHead` instead of the latest revision. After `entry add` and `revision append-draft`, `entry read <id>` returns the published revision, not the unpublished draft, and `--json` reports that revision's `revisionId`. The command still exits 0. Pass the index to read a specific unencrypted revision.
+
+### Added
+
+- `revision append-encrypted-draft <entryId>` encrypts plaintext with Seal and appends an encrypted draft revision on an existing entry, whether that entry is public or already encrypted.
+- `revision append-draft --allow-public-blob` uploads plaintext onto an entry that has an encrypted revision, including one that already has a public head. Without the flag the command exits 2 before any upload, because that blob is readable by anyone with its id.
+
+### Changed
+
+- Mixed entries are supported. `revision publish-direct` and `revision publish-from-draft --file`/`--stdin` append a public revision on an entry that already has encrypted revisions. An encrypted revision index passed to `entry read` is refused before any Walrus read.
+- `entry decrypt` with no index selects the latest encrypted revision. A later public release no longer makes `morse entry decrypt <id>` fail. An explicit index that is not encrypted still exits 2 and names the encrypted indexes.
+- `entry read` on an entry with no public head names each unencrypted draft index and each encrypted revision index.
+- `entry add`, `entry add-encrypted`, and the revision commands check that the collection is blob-mode and that the PublisherCap is live before encrypting or uploading. A quilt collection exits 2. A revoked cap exits 4 with "The PublisherCap has been revoked and can no longer be used." An explicit `--publisher-cap` for another publication or another holder exits 4 before any upload. `publish-from-draft` also checks that the draft revision exists before paying for a replacement upload.
+
+### Fixed
+
+- `revision publish-from-draft` without `--file`/`--stdin` refuses when the draft revision is encrypted, instead of publishing that ciphertext as the public revision. Pass the plaintext with `--file` or `--stdin`.
+
 ## [0.14.0] - 2026-11-17
 
 Moves to `@arcadiasystems/morse-sdk` 0.12 and the current Mysten packages. Commands, flags, output and exit codes are unchanged.

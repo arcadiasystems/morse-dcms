@@ -13,6 +13,8 @@
  *
  * No encrypted publish path: `publishFromDraft` and `publishDirect` always
  * write non-encrypted public revisions. Encrypted content stays as drafts.
+ * An entry may hold both. Pass plaintext bytes for the public revision;
+ * the encrypted draft's blob is ciphertext.
  *
  * These examples encrypt with Seal and stay on testnet. Every flow calls
  * `requireTestnet` first, so a context built with `MORSE_NETWORK=mainnet`

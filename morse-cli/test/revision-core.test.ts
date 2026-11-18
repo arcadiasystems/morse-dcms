@@ -1,11 +1,20 @@
 import { beforeEach, describe, expect, test } from "bun:test";
+import type { ContentContext } from "../src/cli/context.ts";
+import { CliError } from "../src/cli/errors.ts";
+import { ExitCode } from "../src/cli/exit-codes.ts";
 import {
 	runRevisionAppendDraft,
+	runRevisionAppendEncryptedDraft,
 	runRevisionPublishDirect,
 	runRevisionPublishFromDraft,
 } from "../src/commands/revision.ts";
 import { useTempFiles } from "./support/content.ts";
-import { contentContext } from "./support/context.ts";
+import {
+	ADDRESS,
+	contentContext,
+	encryptContext,
+	type MockReader,
+} from "./support/context.ts";
 import { ops, resetSdkMock } from "./support/sdk-mock.ts";
 
 beforeEach(resetSdkMock);
@@ -14,6 +23,7 @@ const files = useTempFiles();
 const ID = `0x${"1".repeat(64)}`;
 const BLOB = `0x${"7".repeat(64)}`;
 const DRAFT_BLOB = `0x${"5".repeat(64)}`;
+const CAP = `0x${"d".repeat(64)}`;
 
 function revision(over: Record<string, unknown> = {}) {
 	return {
@@ -27,28 +37,83 @@ function revision(over: Record<string, unknown> = {}) {
 	};
 }
 
-function entry(revisions: unknown[]) {
+function entry(revisions: unknown[], over: Record<string, unknown> = {}) {
 	return {
 		id: 0,
 		name: "post",
 		publicHead: 0,
 		draftHead: 1,
 		revisions,
+		...over,
 	};
 }
 
-function fixture(entryRevisions: unknown[] = [revision()]) {
+function readerFor(
+	entryRevisions: unknown[],
+	over: Record<string, unknown> = {},
+	readerOver: MockReader = {},
+): MockReader {
+	return {
+		listPublisherCapsOwnedBy: () =>
+			Promise.resolve({
+				results: [{ id: CAP, publicationId: ID }],
+				nextCursor: null,
+			}),
+		getEntry: () => Promise.resolve(entry(entryRevisions, over) as never),
+		getPublication: () =>
+			Promise.resolve({
+				id: ID,
+				collections: [{ name: "posts", storageMode: "blob", nextEntryId: 0 }],
+			} as never),
+		isPublisherCapRevoked: () => Promise.resolve(false),
+		...readerOver,
+	} as MockReader;
+}
+
+function fixture(
+	entryRevisions: unknown[] = [revision()],
+	over: Record<string, unknown> = {},
+	readerOver: MockReader = {},
+) {
 	return contentContext({
-		reader: {
-			listPublisherCapsOwnedBy: () =>
-				Promise.resolve({
-					results: [{ id: `0x${"d".repeat(64)}`, publicationId: ID }],
-					nextCursor: null,
-				}),
-			getEntry: () => Promise.resolve(entry(entryRevisions)),
-		} as never,
+		reader: readerFor(entryRevisions, over, readerOver),
 		walrus: { uploadBlob: () => Promise.resolve({ blobObjectId: BLOB }) },
 	});
+}
+
+function hexBytes(bytes: Uint8Array): string {
+	return `0x${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+}
+
+function guardedEncrypt(readerOver: Record<string, unknown>) {
+	let encrypted = false;
+	let uploaded = false;
+	const fixtureReader = readerFor([revision()]);
+	const { ctx } = encryptContext({
+		reader: { ...fixtureReader, ...readerOver } as MockReader,
+		walrus: {
+			uploadBlob: () => {
+				uploaded = true;
+				return Promise.resolve({ blobObjectId: BLOB });
+			},
+		},
+		seal: {
+			encrypt: () => {
+				encrypted = true;
+				return Promise.resolve({ ciphertext: new Uint8Array() });
+			},
+		},
+	});
+	return { encrypted: () => encrypted, uploaded: () => uploaded, ctx };
+}
+
+function trackingWalrus(uploaded: Uint8Array[]) {
+	return {
+		uploadBlob: (bytes: Uint8Array) => {
+			uploaded.push(bytes);
+			return Promise.resolve({ blobObjectId: BLOB });
+		},
+	} as unknown as ContentContext["walrus"];
 }
 
 const baseOptions = {
@@ -71,6 +136,74 @@ describe("runRevisionPublishDirect", () => {
 		expect(captured.stdout()).toContain("Published revision #1 on entry #0");
 	});
 
+	test("refuses a --publisher-cap for another publication before uploading", async () => {
+		const file = await files.write("v2.txt", "second version");
+		const uploaded: Uint8Array[] = [];
+		const cap = `0x${"d".repeat(64)}`;
+		const base = fixture(
+			[revision()],
+			{},
+			{
+				getPublisherCap: () =>
+					Promise.resolve({
+						id: cap,
+						publicationId: `0x${"2".repeat(64)}`,
+						holder: ADDRESS,
+					} as never),
+			},
+		);
+		const ctx = { ...base.ctx, walrus: trackingWalrus(uploaded) };
+		const error = await runRevisionPublishDirect(ctx, "0", {
+			...baseOptions,
+			file,
+			publisherCap: cap,
+		}).then(
+			() => {
+				throw new Error("expected the wrong publication to fail");
+			},
+			(caught: unknown) => caught,
+		);
+		expect(error).toBeInstanceOf(CliError);
+		expect((error as CliError).exitCode).toBe(ExitCode.Auth);
+		expect((error as Error).message).toContain("belongs to publication");
+		expect(uploaded).toHaveLength(0);
+		expect(ops.publishDirect).not.toHaveBeenCalled();
+	});
+
+	test("refuses a --publisher-cap held by another address before uploading", async () => {
+		const file = await files.write("v2.txt", "second version");
+		const uploaded: Uint8Array[] = [];
+		const cap = `0x${"d".repeat(64)}`;
+		const base = fixture(
+			[revision()],
+			{},
+			{
+				getPublisherCap: () =>
+					Promise.resolve({
+						id: cap,
+						publicationId: ID,
+						holder: `0x${"b".repeat(64)}`,
+					} as never),
+			},
+		);
+		const ctx = { ...base.ctx, walrus: trackingWalrus(uploaded) };
+		const error = await runRevisionPublishDirect(ctx, "0", {
+			...baseOptions,
+			file,
+			publisherCap: cap,
+		}).then(
+			() => {
+				throw new Error("expected the wrong holder to fail");
+			},
+			(caught: unknown) => caught,
+		);
+		expect(error).toBeInstanceOf(CliError);
+		expect((error as CliError).exitCode).toBe(ExitCode.Auth);
+		expect((error as Error).message).toContain("approved holder");
+		expect(uploaded).toHaveLength(0);
+		expect(ops.publishDirect).not.toHaveBeenCalled();
+	});
+
 	test("rejects a bad --epochs before uploading", async () => {
 		const { ctx } = fixture();
 		await expect(
@@ -85,27 +218,41 @@ describe("runRevisionPublishDirect", () => {
 });
 
 describe("runRevisionAppendDraft", () => {
-	test("appends a draft revision", async () => {
-		const file = await files.write("draft.txt", "draft");
-		const { ctx, captured } = fixture();
+	test("uploads the file and appends it as a draft with the resolved cap", async () => {
+		const file = await files.write("draft.md", "draft");
+		const uploaded: Uint8Array[] = [];
+		const base = fixture();
+		const ctx = { ...base.ctx, walrus: trackingWalrus(uploaded) };
 		await runRevisionAppendDraft(ctx, "0", { ...baseOptions, file });
-		expect(ops.appendDraftRevision).toHaveBeenCalledTimes(1);
-		expect(captured.stdout()).toContain("Appended draft revision #1");
+		expect(uploaded).toEqual([new TextEncoder().encode("draft")]);
+		expect(ops.appendDraftRevision.mock.calls[0]?.[2]).toMatchObject({
+			publicationId: ID,
+			publisherCapId: CAP,
+			collectionName: "posts",
+			entryId: 0,
+			blobObjectId: BLOB,
+			contentType: "text/markdown",
+		});
+		expect(base.captured.stdout()).toContain(
+			"Appended draft revision #1 on entry #0",
+		);
 	});
 });
 
 describe("runRevisionPublishFromDraft", () => {
-	test("uploads new content when --file is given", async () => {
+	test("uploads new content when --file names an existing draft", async () => {
 		const file = await files.write("final.txt", "final");
-		const { ctx, captured } = fixture();
-		await runRevisionPublishFromDraft(ctx, "0", "1", { ...baseOptions, file });
-		expect(ops.publishFromDraft).toHaveBeenCalledTimes(1);
+		const uploaded: Uint8Array[] = [];
+		const base = fixture();
+		const ctx = { ...base.ctx, walrus: trackingWalrus(uploaded) };
+		await runRevisionPublishFromDraft(ctx, "0", "0", { ...baseOptions, file });
 		expect(ops.publishFromDraft.mock.calls[0]?.[2]).toMatchObject({
 			entryId: 0,
-			draftRevisionId: 1,
+			draftRevisionId: 0,
 			blobObjectId: BLOB,
 		});
-		expect(captured.stdout()).toContain("from draft #1");
+		expect(uploaded).toEqual([new TextEncoder().encode("final")]);
+		expect(base.captured.stdout()).toContain("from draft #0");
 	});
 
 	test("reuses the draft's blob when no content is given", async () => {
@@ -131,32 +278,377 @@ describe("runRevisionPublishFromDraft", () => {
 		).rejects.toThrow(/no revision #9/);
 		expect(ops.publishFromDraft).not.toHaveBeenCalled();
 	});
+
+	test("does not upload when --file names a missing draft", async () => {
+		const file = await files.write("final.txt", "final");
+		const uploaded: Uint8Array[] = [];
+		const base = fixture([revision()]);
+		const ctx = { ...base.ctx, walrus: trackingWalrus(uploaded) };
+		await expect(
+			runRevisionPublishFromDraft(ctx, "0", "7", { ...baseOptions, file }),
+		).rejects.toThrow(/no revision #7/);
+		expect(uploaded).toHaveLength(0);
+		expect(ops.publishFromDraft).not.toHaveBeenCalled();
+	});
 });
 
-describe("encrypted-entry guard", () => {
-	test("publish-direct refuses to append to an encrypted entry", async () => {
-		const file = await files.write("v.txt", "content");
-		const { ctx } = fixture([revision({ encrypted: true })]);
-		await expect(
-			runRevisionPublishDirect(ctx, "0", { ...baseOptions, file }),
-		).rejects.toThrow(/encrypted/);
-		expect(ops.publishDirect).not.toHaveBeenCalled();
+describe("mixed entries", () => {
+	test("publish-direct uploads the plaintext, not the encrypted draft blob", async () => {
+		const file = await files.write("v.txt", "released");
+		const uploaded: Uint8Array[] = [];
+		const encryptedBlob = `0x${"4".repeat(64)}`;
+		const base = fixture(
+			[
+				revision({
+					encrypted: true,
+					blobRef: { kind: "blob", blobObjectId: encryptedBlob },
+				}),
+			],
+			{ publicHead: null },
+		);
+		const ctx = { ...base.ctx, walrus: trackingWalrus(uploaded) };
+		await runRevisionPublishDirect(ctx, "0", { ...baseOptions, file });
+		const args = ops.publishDirect.mock.calls[0]?.[2] as {
+			blobObjectId: string;
+			contentType: string;
+		};
+		expect(args.blobObjectId).toBe(BLOB);
+		expect(args.blobObjectId).not.toBe(encryptedBlob);
+		expect(args.contentType).toBe("text/plain");
+		expect(uploaded).toEqual([new TextEncoder().encode("released")]);
+		expect(base.captured.stdout()).toContain(
+			"Published revision #1 on entry #0",
+		);
 	});
 
-	test("append-draft refuses to append to an encrypted entry", async () => {
-		const file = await files.write("v.txt", "content");
-		const { ctx } = fixture([revision({ encrypted: true })]);
+	test("append-draft refuses a team-only entry before uploading", async () => {
+		const file = await files.write("draft.txt", "soon");
+		const uploaded: Uint8Array[] = [];
+		const base = fixture([revision({ encrypted: true })], { publicHead: null });
+		const ctx = { ...base.ctx, walrus: trackingWalrus(uploaded) };
 		await expect(
 			runRevisionAppendDraft(ctx, "0", { ...baseOptions, file }),
-		).rejects.toThrow(/encrypted/);
+		).rejects.toThrow(/--allow-public-blob/);
+		expect(uploaded).toHaveLength(0);
 		expect(ops.appendDraftRevision).not.toHaveBeenCalled();
 	});
 
-	test("publish-from-draft refuses to publish on an encrypted entry", async () => {
-		const { ctx } = fixture([revision({ encrypted: true })]);
+	test("append-draft with --allow-public-blob uploads the plaintext", async () => {
+		const file = await files.write("draft.txt", "soon");
+		const uploaded: Uint8Array[] = [];
+		const base = fixture([revision({ encrypted: true })], { publicHead: null });
+		const ctx = { ...base.ctx, walrus: trackingWalrus(uploaded) };
+		await runRevisionAppendDraft(ctx, "0", {
+			...baseOptions,
+			file,
+			allowPublicBlob: true,
+		});
+		const args = ops.appendDraftRevision.mock.calls[0]?.[2] as {
+			blobObjectId: string;
+			contentType: string;
+		};
+		expect(args.blobObjectId).toBe(BLOB);
+		expect(args.contentType).toBe("text/plain");
+		expect(uploaded).toEqual([new TextEncoder().encode("soon")]);
+	});
+
+	test("append-draft refuses when a public head sits beside an encrypted draft", async () => {
+		const file = await files.write("draft.txt", "soon");
+		const uploaded: Uint8Array[] = [];
+		const base = fixture([revision({ encrypted: true }), revision({ id: 1 })], {
+			publicHead: 0,
+			draftHead: 1,
+		});
+		const ctx = { ...base.ctx, walrus: trackingWalrus(uploaded) };
 		await expect(
-			runRevisionPublishFromDraft(ctx, "0", "1", baseOptions),
-		).rejects.toThrow(/encrypted/);
+			runRevisionAppendDraft(ctx, "0", { ...baseOptions, file }),
+		).rejects.toThrow(/--allow-public-blob/);
+		expect(uploaded).toHaveLength(0);
+		expect(ops.appendDraftRevision).not.toHaveBeenCalled();
+	});
+
+	test("append-draft allows plaintext on an entry with no encrypted revision", async () => {
+		const file = await files.write("draft.txt", "soon");
+		const uploaded: Uint8Array[] = [];
+		const base = fixture([revision(), revision({ id: 1 })], {
+			publicHead: 0,
+			draftHead: 1,
+		});
+		const ctx = { ...base.ctx, walrus: trackingWalrus(uploaded) };
+		await runRevisionAppendDraft(ctx, "0", { ...baseOptions, file });
+		expect(uploaded).toEqual([new TextEncoder().encode("soon")]);
+		expect(ops.appendDraftRevision.mock.calls[0]?.[2]).toMatchObject({
+			entryId: 0,
+			blobObjectId: BLOB,
+		});
+	});
+
+	test("publish-from-draft with --file uploads that plaintext", async () => {
+		const file = await files.write("final.txt", "public");
+		const uploaded: Uint8Array[] = [];
+		const draft = revision({
+			id: 0,
+			encrypted: true,
+			blobRef: { kind: "blob", blobObjectId: DRAFT_BLOB },
+		});
+		const base = fixture([draft], { publicHead: null });
+		const ctx = { ...base.ctx, walrus: trackingWalrus(uploaded) };
+		await runRevisionPublishFromDraft(ctx, "0", "0", { ...baseOptions, file });
+		const args = ops.publishFromDraft.mock.calls[0]?.[2] as {
+			draftRevisionId: number;
+			blobObjectId: string;
+			contentType: string;
+		};
+		expect(args.draftRevisionId).toBe(0);
+		expect(args.blobObjectId).toBe(BLOB);
+		expect(args.blobObjectId).not.toBe(DRAFT_BLOB);
+		expect(args.contentType).toBe("text/plain");
+		expect(uploaded).toEqual([new TextEncoder().encode("public")]);
+	});
+
+	test("publish-from-draft refuses to reuse an encrypted draft blob", async () => {
+		const uploaded: Uint8Array[] = [];
+		const draft = revision({
+			id: 0,
+			encrypted: true,
+			blobRef: { kind: "blob", blobObjectId: DRAFT_BLOB },
+		});
+		const base = fixture([draft], { publicHead: null });
+		const ctx = { ...base.ctx, walrus: trackingWalrus(uploaded) };
+		await expect(
+			runRevisionPublishFromDraft(ctx, "0", "0", baseOptions),
+		).rejects.toThrow(/ciphertext/);
+		expect(uploaded).toHaveLength(0);
 		expect(ops.publishFromDraft).not.toHaveBeenCalled();
+	});
+
+	test("reuses an unencrypted draft and does not upload", async () => {
+		const uploaded: Uint8Array[] = [];
+		const encrypted = revision({ id: 0, encrypted: true });
+		const draft = revision({
+			id: 1,
+			contentType: "text/markdown",
+			blobRef: { kind: "blob", blobObjectId: DRAFT_BLOB },
+		});
+		const base = fixture([encrypted, draft]);
+		const ctx = { ...base.ctx, walrus: trackingWalrus(uploaded) };
+		await runRevisionPublishFromDraft(ctx, "0", "1", baseOptions);
+		const args = ops.publishFromDraft.mock.calls[0]?.[2] as {
+			draftRevisionId: number;
+			blobObjectId: string;
+			contentType: string;
+		};
+		expect(args.draftRevisionId).toBe(1);
+		expect(args.blobObjectId).toBe(DRAFT_BLOB);
+		expect(args.contentType).toBe("text/markdown");
+		expect(uploaded).toHaveLength(0);
+	});
+});
+
+describe("pre-upload checks on the plaintext commands", () => {
+	const commands: readonly {
+		name: string;
+		run: (ctx: ContentContext, file: string) => Promise<void>;
+		op: { mock: { calls: unknown[] } };
+	}[] = [
+		{
+			name: "publish-direct",
+			run: (ctx, file) =>
+				runRevisionPublishDirect(ctx, "0", { ...baseOptions, file }),
+			op: ops.publishDirect,
+		},
+		{
+			name: "append-draft",
+			run: (ctx, file) =>
+				runRevisionAppendDraft(ctx, "0", { ...baseOptions, file }),
+			op: ops.appendDraftRevision,
+		},
+		{
+			name: "publish-from-draft",
+			run: (ctx, file) =>
+				runRevisionPublishFromDraft(ctx, "0", "0", { ...baseOptions, file }),
+			op: ops.publishFromDraft,
+		},
+	];
+
+	for (const command of commands) {
+		test(`${command.name} refuses a revoked cap with exit 4 before uploading`, async () => {
+			const file = await files.write("v.txt", "content");
+			const uploaded: Uint8Array[] = [];
+			const base = fixture(
+				[revision()],
+				{},
+				{
+					isPublisherCapRevoked: () => Promise.resolve(true),
+				},
+			);
+			const ctx = { ...base.ctx, walrus: trackingWalrus(uploaded) };
+			const error = await command.run(ctx, file).catch((err: unknown) => err);
+			expect(error).toBeInstanceOf(CliError);
+			expect((error as CliError).exitCode).toBe(ExitCode.Auth);
+			expect((error as CliError).message).toBe(
+				"The PublisherCap has been revoked and can no longer be used.",
+			);
+			expect(uploaded).toHaveLength(0);
+			expect(command.op.mock.calls).toHaveLength(0);
+		});
+
+		test(`${command.name} refuses a quilt collection by name before uploading`, async () => {
+			const file = await files.write("v.txt", "content");
+			const uploaded: Uint8Array[] = [];
+			const base = fixture(
+				[revision()],
+				{},
+				{
+					getPublication: () =>
+						Promise.resolve({
+							id: ID,
+							collections: [
+								{ name: "posts", storageMode: "quilt", nextEntryId: 0 },
+							],
+						} as never),
+				},
+			);
+			const ctx = { ...base.ctx, walrus: trackingWalrus(uploaded) };
+			const error = await command.run(ctx, file).catch((err: unknown) => err);
+			expect(error).toBeInstanceOf(CliError);
+			expect((error as CliError).exitCode).toBe(ExitCode.Usage);
+			expect((error as CliError).message).toContain(
+				`\`revision ${command.name}\` does not support yet`,
+			);
+			expect(uploaded).toHaveLength(0);
+			expect(command.op.mock.calls).toHaveLength(0);
+		});
+	}
+});
+
+describe("runRevisionAppendEncryptedDraft", () => {
+	test("sends one seal id to Seal and the chain, and uploads the ciphertext", async () => {
+		const file = await files.write("secret.txt", "plaintext");
+		const uploaded: Uint8Array[] = [];
+		let encryptedWith: Uint8Array | undefined;
+		let encryptedBytes: Uint8Array | undefined;
+		const plaintext = new TextEncoder().encode("plaintext");
+		const { ctx, captured } = encryptContext({
+			json: true,
+			reader: fixture().ctx.reader,
+			walrus: trackingWalrus(uploaded),
+			seal: {
+				encrypt: (bytes: Uint8Array, options: { sealId: Uint8Array }) => {
+					encryptedBytes = bytes;
+					encryptedWith = options.sealId;
+					return Promise.resolve({
+						ciphertext: Uint8Array.from(plaintext, (byte) => byte ^ 0xff),
+					});
+				},
+			},
+		});
+		await runRevisionAppendEncryptedDraft(ctx, "0", { ...baseOptions, file });
+		const args = ops.appendEncryptedDraftRevision.mock.calls[0]?.[2] as {
+			entryId: number;
+			blobObjectId: string;
+			sealId: Uint8Array;
+			contentType: string;
+		};
+		expect(args.entryId).toBe(0);
+		expect(args.blobObjectId).toBe(BLOB);
+		expect(args.contentType).toBe("text/plain");
+		if (encryptedWith === undefined) {
+			throw new Error("encrypt was not called");
+		}
+		expect(args.sealId).toBe(encryptedWith);
+		expect(encryptedBytes).toEqual(plaintext);
+		expect(uploaded).toEqual([
+			Uint8Array.from(plaintext, (byte) => byte ^ 0xff),
+		]);
+		expect(uploaded[0]).not.toEqual(plaintext);
+		expect(ops.appendDraftRevision).not.toHaveBeenCalled();
+		expect(ops.publishDirect).not.toHaveBeenCalled();
+		const doc = captured.json() as { sealId: string; revisionId: number };
+		expect(doc.revisionId).toBe(1);
+		expect(doc.sealId).toBe(hexBytes(args.sealId));
+	});
+
+	test("refuses a quilt collection before encrypting or uploading", async () => {
+		const file = await files.write("secret.txt", "plaintext");
+		const { encrypted, uploaded, ctx } = guardedEncrypt({
+			getPublication: () =>
+				Promise.resolve({
+					id: ID,
+					collections: [
+						{ name: "posts", storageMode: "quilt", nextEntryId: 0 },
+					],
+				}),
+		});
+		await expect(
+			runRevisionAppendEncryptedDraft(ctx, "0", { ...baseOptions, file }),
+		).rejects.toThrow(/quilt/);
+		expect(encrypted()).toBe(false);
+		expect(uploaded()).toBe(false);
+		expect(ops.appendEncryptedDraftRevision).not.toHaveBeenCalled();
+	});
+
+	test("refuses a missing collection before encrypting or uploading", async () => {
+		const file = await files.write("secret.txt", "plaintext");
+		const { encrypted, uploaded, ctx } = guardedEncrypt({
+			getPublication: () => Promise.resolve({ id: ID, collections: [] }),
+		});
+		await expect(
+			runRevisionAppendEncryptedDraft(ctx, "0", { ...baseOptions, file }),
+		).rejects.toThrow(/no collection "posts"/);
+		expect(encrypted()).toBe(false);
+		expect(uploaded()).toBe(false);
+		expect(ops.appendEncryptedDraftRevision).not.toHaveBeenCalled();
+	});
+
+	test("refuses a revoked cap before encrypting or uploading", async () => {
+		const file = await files.write("secret.txt", "plaintext");
+		const { encrypted, uploaded, ctx } = guardedEncrypt({
+			isPublisherCapRevoked: () => Promise.resolve(true),
+		});
+		const error = await runRevisionAppendEncryptedDraft(ctx, "0", {
+			...baseOptions,
+			file,
+		}).then(
+			() => {
+				throw new Error("expected a revoked cap to fail");
+			},
+			(caught: unknown) => caught,
+		);
+		expect(error).toBeInstanceOf(CliError);
+		expect((error as CliError).exitCode).toBe(ExitCode.Auth);
+		expect((error as Error).message).toContain("revoked");
+		expect(encrypted()).toBe(false);
+		expect(uploaded()).toBe(false);
+		expect(ops.appendEncryptedDraftRevision).not.toHaveBeenCalled();
+	});
+
+	test("does not encrypt or upload when the entry cannot be read", async () => {
+		const file = await files.write("secret.txt", "plaintext");
+		let encrypted = false;
+		let uploaded = false;
+		const { ctx } = encryptContext({
+			reader: {
+				getEntry: () => Promise.reject(new Error("missing entry")),
+			} as never,
+			walrus: {
+				uploadBlob: () => {
+					uploaded = true;
+					return Promise.resolve({ blobObjectId: BLOB });
+				},
+			},
+			seal: {
+				encrypt: () => {
+					encrypted = true;
+					return Promise.resolve({ ciphertext: new Uint8Array() });
+				},
+			},
+		});
+		await expect(
+			runRevisionAppendEncryptedDraft(ctx, "0", { ...baseOptions, file }),
+		).rejects.toThrow(/missing entry/);
+		expect(encrypted).toBe(false);
+		expect(uploaded).toBe(false);
+		expect(ops.appendEncryptedDraftRevision).not.toHaveBeenCalled();
 	});
 });
