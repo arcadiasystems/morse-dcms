@@ -57,9 +57,9 @@
 	},
 	"dependencies": {
 		"@arcadiasystems/morse-sdk": "^0.12.0",
-		"@mysten/seal": "1.5.4",
-		"@mysten/sui": "2.39.1",
-		"@mysten/walrus": "1.2.39",
+		"@mysten/seal": "2.0.1",
+		"@mysten/sui": "3.0.1",
+		"@mysten/walrus": "2.0.1",
 		"commander": "^14.0.3"
 	},
 	"devDependencies": {

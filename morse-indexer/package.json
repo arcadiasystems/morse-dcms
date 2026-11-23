@@ -10,6 +10,6 @@
     "typescript": "^5"
   },
   "dependencies": {
-    "@mysten/sui": "^2.4.0"
+    "@mysten/sui": "^3.0.1"
   }
 }
